@@ -1,0 +1,73 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    
+    <linearGradient id="barGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Chat bubble -->
+  <path
+    d="M20 15 
+       C20 10, 25 5, 35 5 
+       L65 5 
+       C75 5, 80 10, 80 15 
+       L80 55 
+       C80 60, 75 65, 65 65 
+       L40 65 
+       L25 80 
+       L25 65 
+       L35 65 
+       C25 65, 20 60, 20 55 
+       Z"
+    stroke="url(#logoGradient)"
+    stroke-width="4"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+
+  <!-- Bars -->
+  <g filter="url(#glow)">
+    <path
+      d="M35 25 L35 45 C35 50, 40 52, 45 48"
+      stroke="url(#barGradient)"
+      stroke-width="5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    
+    <line
+      x1="52"
+      y1="22"
+      x2="52"
+      y2="50"
+      stroke="url(#barGradient)"
+      stroke-width="5"
+      stroke-linecap="round"
+    />
+    
+    <circle
+      cx="65"
+      cy="45"
+      r="4"
+      fill="url(#barGradient)"
+    />
+  </g>
+</svg>
+

@@ -1,0 +1,161 @@
+"""
+SvontAi - WhatsApp Business AI Assistant
+Main FastAPI application entry point.
+"""
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.core.config import settings
+from app.api.routers import (
+    auth_router,
+    users_router,
+    tenants_router,
+    bots_router,
+    knowledge_router,
+    conversations_router,
+    leads_router,
+    whatsapp_router,
+    public_router,
+    admin_router,
+    onboarding_router,
+    whatsapp_webhook_router,
+    subscription_router,
+    tenant_onboarding_router,
+    analytics_router,
+    operator_router
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO if settings.ENVIRONMENT == "dev" else logging.WARNING,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan events."""
+    # Startup
+    logger.info("SvontAi API starting up...")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    
+    # Initialize default plans if needed
+    from app.db.session import SessionLocal
+    from app.services.subscription_service import SubscriptionService
+    
+    try:
+        db = SessionLocal()
+        service = SubscriptionService(db)
+        service.get_or_create_free_plan()
+        db.close()
+        logger.info("Default plans initialized")
+    except Exception as e:
+        logger.warning(f"Could not initialize plans: {e}")
+    
+    yield
+    
+    # Shutdown
+    logger.info("SvontAi API shutting down...")
+
+
+# Create FastAPI application
+app = FastAPI(
+    title="SvontAi API",
+    description="WhatsApp Business AI Assistant - RESTful API",
+    version="1.0.0",
+    docs_url="/docs" if settings.ENVIRONMENT == "dev" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT == "dev" else None,
+    lifespan=lifespan
+)
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    # Return generic error in production
+    if settings.ENVIRONMENT == "prod":
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Bir hata oluştu. Lütfen daha sonra tekrar deneyin."}
+        )
+    
+    # Return detailed error in development
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "type": type(exc).__name__}
+    )
+
+
+# Configure CORS - Allow all origins in development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.ENVIRONMENT == "dev" else [settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+
+# Include routers - Core
+app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(tenants_router)
+app.include_router(bots_router)
+app.include_router(knowledge_router)
+app.include_router(conversations_router)
+app.include_router(leads_router)
+app.include_router(public_router)
+
+# Include routers - WhatsApp
+app.include_router(whatsapp_router)
+app.include_router(onboarding_router, prefix="/api")
+app.include_router(whatsapp_webhook_router)
+
+# Include routers - SaaS Features
+app.include_router(subscription_router)
+app.include_router(tenant_onboarding_router)
+app.include_router(analytics_router)
+app.include_router(operator_router)
+
+# Include routers - Admin
+app.include_router(admin_router)
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - API health check."""
+    return {
+        "name": "SvontAi API",
+        "version": "1.0.0",
+        "status": "healthy",
+        "environment": settings.ENVIRONMENT
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return {
+        "status": "ok",
+        "environment": settings.ENVIRONMENT
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.ENVIRONMENT == "dev"
+    )

@@ -1,0 +1,274 @@
+"""
+Onboarding API router for WhatsApp setup flow.
+"""
+
+from uuid import UUID
+from typing import Optional, List
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.dependencies.auth import get_current_user, get_current_tenant
+from app.models.user import User
+from app.models.tenant import Tenant
+from app.services.onboarding_service import OnboardingService
+from app.services.meta_api import MetaAPIError
+
+
+router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
+
+
+# Pydantic schemas
+class OnboardingStartResponse(BaseModel):
+    """Response for starting onboarding."""
+    oauth_url: str
+    embedded_config: dict
+    verify_token: str
+    state: str
+    webhook_url: str
+
+
+class OnboardingStepResponse(BaseModel):
+    """Response for a single onboarding step."""
+    step_key: str
+    step_order: int
+    step_name: str
+    step_description: Optional[str]
+    status: str
+    message: Optional[str]
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OnboardingStatusResponse(BaseModel):
+    """Response for onboarding status."""
+    steps: List[OnboardingStepResponse]
+    current_step: Optional[str]
+    is_complete: bool
+    whatsapp_connected: bool
+    phone_number: Optional[str]
+
+
+class OAuthCallbackRequest(BaseModel):
+    """Request for OAuth callback."""
+    code: str
+    state: str
+
+
+class WhatsAppAccountResponse(BaseModel):
+    """Response for WhatsApp account info."""
+    id: UUID
+    waba_id: Optional[str]
+    phone_number_id: Optional[str]
+    display_phone_number: Optional[str]
+    token_status: str
+    webhook_status: str
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.post("/whatsapp/start", response_model=OnboardingStartResponse)
+async def start_whatsapp_onboarding(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+) -> OnboardingStartResponse:
+    """
+    Start WhatsApp onboarding process.
+    
+    Returns OAuth URL and Embedded Signup configuration.
+    """
+    service = OnboardingService(db)
+    
+    try:
+        result = service.start_onboarding(current_tenant.id)
+        return OnboardingStartResponse(**result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Onboarding başlatılamadı: {str(e)}"
+        )
+
+
+@router.get("/whatsapp/callback")
+async def whatsapp_oauth_callback(
+    code: str = Query(..., description="Authorization code from Meta"),
+    state: str = Query(..., description="State parameter with tenant ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Handle OAuth callback from Meta.
+    
+    This endpoint is called by Meta after user completes authorization.
+    Exchanges code for token and saves credentials.
+    """
+    # Extract tenant_id from state
+    try:
+        tenant_id_str = state.split(":")[0]
+        tenant_id = UUID(tenant_id_str)
+    except (ValueError, IndexError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Geçersiz state parametresi"
+        )
+    
+    service = OnboardingService(db)
+    
+    try:
+        account = await service.process_oauth_callback(tenant_id, code)
+        
+        # Return HTML that closes popup and notifies parent
+        return {
+            "success": True,
+            "message": "WhatsApp bağlantısı başarılı!",
+            "redirect_html": """
+            <html>
+            <head><title>WhatsApp Bağlandı</title></head>
+            <body>
+                <script>
+                    if (window.opener) {
+                        window.opener.postMessage({type: 'WHATSAPP_CONNECTED', success: true}, '*');
+                        window.close();
+                    } else {
+                        window.location.href = '/dashboard/setup/whatsapp?success=true';
+                    }
+                </script>
+                <p>WhatsApp bağlantısı başarılı! Bu pencere kapanacak...</p>
+            </body>
+            </html>
+            """
+        }
+    except MetaAPIError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Meta API hatası: {e.message}"
+        )
+
+
+@router.get("/whatsapp/status", response_model=OnboardingStatusResponse)
+async def get_whatsapp_onboarding_status(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+) -> OnboardingStatusResponse:
+    """
+    Get current WhatsApp onboarding status.
+    
+    Returns all steps with their current statuses.
+    """
+    service = OnboardingService(db)
+    
+    steps = service.get_onboarding_steps(current_tenant.id)
+    account = service.get_whatsapp_account(current_tenant.id)
+    
+    # Find current step (first non-done step)
+    current_step = None
+    is_complete = True
+    for step in steps:
+        if step.status != "done":
+            current_step = step.step_key
+            is_complete = False
+            break
+    
+    return OnboardingStatusResponse(
+        steps=[OnboardingStepResponse.model_validate(s) for s in steps],
+        current_step=current_step,
+        is_complete=is_complete,
+        whatsapp_connected=account.is_active if account else False,
+        phone_number=account.display_phone_number if account else None
+    )
+
+
+@router.get("/whatsapp/account", response_model=Optional[WhatsAppAccountResponse])
+async def get_whatsapp_account(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+) -> Optional[WhatsAppAccountResponse]:
+    """
+    Get WhatsApp account details.
+    
+    Returns account info without sensitive data (tokens).
+    """
+    service = OnboardingService(db)
+    account = service.get_whatsapp_account(current_tenant.id)
+    
+    if not account:
+        return None
+    
+    return WhatsAppAccountResponse.model_validate(account)
+
+
+@router.post("/whatsapp/reset")
+async def reset_whatsapp_onboarding(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Reset WhatsApp onboarding to start fresh.
+    
+    Deletes existing WhatsApp account and resets steps.
+    """
+    service = OnboardingService(db)
+    
+    # Delete existing account
+    account = service.get_whatsapp_account(current_tenant.id)
+    if account:
+        db.delete(account)
+    
+    # Re-initialize steps
+    service.initialize_onboarding_steps(current_tenant.id)
+    
+    db.commit()
+    
+    service.create_audit_log(
+        tenant_id=current_tenant.id,
+        user_id=current_user.id,
+        action="whatsapp_onboarding_reset"
+    )
+    
+    return {"success": True, "message": "WhatsApp kurulumu sıfırlandı"}
+
+
+@router.post("/whatsapp/retry-step/{step_key}")
+async def retry_onboarding_step(
+    step_key: str,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Retry a failed onboarding step.
+    """
+    from app.models.onboarding import StepStatus
+    
+    service = OnboardingService(db)
+    
+    step = service.update_step_status(
+        current_tenant.id,
+        step_key,
+        StepStatus.PENDING,
+        message="Yeniden deneniyor..."
+    )
+    
+    if not step:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Adım bulunamadı"
+        )
+    
+    return {"success": True, "message": f"{step_key} adımı sıfırlandı"}
+
