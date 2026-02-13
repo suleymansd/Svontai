@@ -11,6 +11,7 @@ SvontAi is a production-ready SaaS application that provides AI-powered WhatsApp
 - **Knowledge Base**: Train your bot with Q&A pairs specific to your business
 - **Lead Collection**: Automatically capture customer information
 - **Modern Dashboard**: Beautiful, responsive admin interface
+- **n8n Workflow Engine**: Optional visual workflow automation for advanced use cases
 
 ## 📁 Project Structure
 
@@ -145,15 +146,22 @@ Frontend will be available at `http://localhost:3000`
 
 Add this script to any website:
 ```html
-<script src="http://localhost:8000/widget.js" data-bot-key="YOUR_BOT_PUBLIC_KEY"></script>
+<script
+  src="http://localhost:8000/widget.js"
+  data-bot-key="YOUR_BOT_PUBLIC_KEY"
+  data-api-url="http://localhost:8000"
+></script>
 ```
 
 ## 📱 WhatsApp Integration
 
-1. Create a Meta Business account
-2. Set up WhatsApp Business API
-3. Configure webhook URL: `https://your-backend-url/whatsapp/webhook`
-4. Add your credentials in the bot settings
+SvontAi uses the official **Embedded Signup** flow:
+
+1. Configure Meta App credentials (`META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`)
+2. Go to `/dashboard/setup/whatsapp`
+3. Click **"WhatsApp'ı Bağla"** and complete the popup flow
+
+See `docs/WHATSAPP_EMBEDDED_SIGNUP.md` for details.
 
 ## 🔒 Security
 
@@ -185,6 +193,7 @@ Add this script to any website:
 ### Public Chat
 - `POST /public/chat/init` - Initialize chat session
 - `POST /public/chat/send` - Send message and get response
+- `GET /public/chat/messages` - Fetch conversation messages
 - `POST /public/leads` - Submit lead information
 
 ### WhatsApp Webhook
@@ -208,6 +217,44 @@ web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ### Widget
 Serve `widget/index.js` via CDN or backend static files.
 
+## 🔄 n8n Workflow Engine (Optional)
+
+SvontAI can integrate with n8n for visual workflow automation:
+
+```bash
+# Start with n8n enabled
+docker compose up -d
+
+# Access n8n dashboard
+open http://localhost:5678
+```
+
+Configure in `.env`:
+```env
+USE_N8N=true
+N8N_INCOMING_WORKFLOW_ID=svontai-incoming
+SVONTAI_TO_N8N_SECRET=your-secure-random-secret-1
+N8N_TO_SVONTAI_SECRET=your-secure-random-secret-2
+```
+
+### Key Features
+
+- **Async Webhook Processing**: WhatsApp webhooks return HTTP 200 immediately. n8n workflow triggers run in background tasks to ensure Meta's 20-second timeout is never exceeded.
+- **Idempotency**: Duplicate messages (same `tenant_id` + `message_id`) are automatically detected and ignored. Safe for webhook retries.
+- **Production Security**: Default secrets are rejected at startup in production (`ENVIRONMENT=prod`). Generate secure secrets with: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+- **Retry with Backoff**: Failed n8n triggers are retried with exponential backoff.
+
+See `docs/N8N_INTEGRATION.md` for detailed setup guide.
+
+### Security Notes
+
+⚠️ **Production Checklist:**
+
+1. **Change all default secrets** - The app will refuse to start in production with insecure defaults
+2. **Use HTTPS** - All webhook and callback URLs must use HTTPS
+3. **Verify webhook signatures** - Meta webhook signatures should be verified (configurable)
+4. **Set proper CORS origins** - Restrict to your domains only
+
 ## 📝 License
 
 MIT License
@@ -215,4 +262,3 @@ MIT License
 ## 🤝 Contributing
 
 Contributions are welcome! Please read our contributing guidelines first.
-

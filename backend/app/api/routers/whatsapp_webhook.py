@@ -1,10 +1,16 @@
 """
 WhatsApp Webhook endpoint for receiving messages and events from Meta.
+
+This module handles all incoming WhatsApp webhook events. When n8n integration
+is enabled (USE_N8N=true and tenant.use_n8n=true), messages are forwarded to
+n8n for workflow processing. Otherwise, the legacy AI response flow is used.
 """
 
 import json
 import logging
+import uuid
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Request, Response, HTTPException, status, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -12,7 +18,9 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.onboarding_service import OnboardingService
 from app.services.meta_api import meta_api_service
+from app.services.system_event_service import SystemEventService
 from app.core.encryption import decrypt_token
+from app.core.config import settings
 from app.models.whatsapp_account import WhatsAppAccount
 
 logger = logging.getLogger(__name__)
@@ -111,6 +119,10 @@ async def webhook_events(
     - messages: incoming messages
     - message_status: delivery/read receipts
     - message_template_status_update: template status changes
+    
+    IMPORTANT: This endpoint MUST return HTTP 200 within 20 seconds.
+    All processing is done in background tasks to ensure quick response.
+    n8n triggers are executed asynchronously with their own DB sessions.
     """
     # Get raw body for signature verification
     body = await request.body()
@@ -135,19 +147,24 @@ async def webhook_events(
     logger.info(f"Webhook event received: {json.dumps(payload)[:500]}")
     
     # Acknowledge quickly (Meta expects response within 20 seconds)
-    # Process in background
-    background_tasks.add_task(process_webhook_event, payload, db)
+    # Process in background - pass background_tasks for nested async tasks
+    background_tasks.add_task(process_webhook_event, payload, db, background_tasks)
     
     return {"status": "ok"}
 
 
-async def process_webhook_event(payload: dict, db: Session):
+async def process_webhook_event(
+    payload: dict,
+    db: Session,
+    background_tasks: Optional[BackgroundTasks] = None
+):
     """
     Process webhook event in background.
     
     Args:
         payload: The webhook payload from Meta.
         db: Database session.
+        background_tasks: FastAPI background tasks for async operations.
     """
     try:
         obj = payload.get("object")
@@ -167,7 +184,7 @@ async def process_webhook_event(payload: dict, db: Session):
                 value = change.get("value", {})
                 
                 if field == "messages":
-                    await process_message_event(waba_id, value, db)
+                    await process_message_event(waba_id, value, db, background_tasks)
                 elif field == "message_template_status_update":
                     await process_template_status_event(waba_id, value, db)
                 else:
@@ -177,7 +194,12 @@ async def process_webhook_event(payload: dict, db: Session):
         logger.error(f"Error processing webhook event: {e}", exc_info=True)
 
 
-async def process_message_event(waba_id: str, value: dict, db: Session):
+async def process_message_event(
+    waba_id: str,
+    value: dict,
+    db: Session,
+    background_tasks: Optional[BackgroundTasks] = None
+):
     """
     Process incoming message event.
     
@@ -185,6 +207,7 @@ async def process_message_event(waba_id: str, value: dict, db: Session):
         waba_id: WhatsApp Business Account ID.
         value: The message value object.
         db: Database session.
+        background_tasks: FastAPI background tasks for async n8n operations.
     """
     metadata = value.get("metadata", {})
     phone_number_id = metadata.get("phone_number_id")
@@ -209,6 +232,7 @@ async def process_message_event(waba_id: str, value: dict, db: Session):
     
     for message in messages:
         message_id = message.get("id")
+        correlation_id = str(uuid.uuid4())
         from_number = message.get("from")
         timestamp = message.get("timestamp")
         message_type = message.get("type")
@@ -251,12 +275,10 @@ async def process_message_event(waba_id: str, value: dict, db: Session):
                 content = interactive["list_reply"].get("title")
         
         if content:
-            # TODO: Route to AI service for response
-            # For now, just log
             logger.info(f"Message content: {content[:100]}")
             
-            # Create conversation/message in database
-            # This would connect to your existing bot/conversation system
+            # Route to handler (n8n or legacy AI)
+            # Pass background_tasks for async n8n triggering
             await handle_incoming_message(
                 account=account,
                 from_number=from_number,
@@ -264,7 +286,10 @@ async def process_message_event(waba_id: str, value: dict, db: Session):
                 message_content=content,
                 message_type=message_type,
                 message_id=message_id,
-                db=db
+                db=db,
+                timestamp=timestamp,
+                raw_payload=value,  # Pass raw payload for n8n
+                background_tasks=background_tasks
             )
     
     # Handle statuses (delivery, read receipts)
@@ -308,18 +333,31 @@ async def handle_incoming_message(
     message_content: str,
     message_type: str,
     message_id: str,
-    db: Session
+    db: Session,
+    timestamp: Optional[str] = None,
+    raw_payload: Optional[dict] = None,
+    background_tasks: Optional[BackgroundTasks] = None
 ):
     """
-    Handle incoming message and generate AI response.
+    Handle incoming message and route to appropriate handler.
     
-    This connects to the existing bot/AI system.
+    This function routes messages to either:
+    1. n8n workflow engine (if USE_N8N=true and tenant.use_n8n=true)
+    2. Legacy AI response system (default)
+    
+    The routing is transparent - messages are always stored, and the
+    appropriate handler is selected based on feature flags.
+    
+    IMPORTANT: n8n triggering is done via BackgroundTasks to ensure
+    the webhook returns HTTP 200 quickly (Meta requires response within 20s).
     """
     from app.models.bot import Bot
-    from app.models.conversation import Conversation, ConversationSource
+    from app.models.conversation import Conversation, ConversationSource, ConversationStatus
     from app.models.message import Message, MessageSender
     from app.models.knowledge import BotKnowledgeItem
     from app.services.ai_service import ai_service
+    from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
+    from app.models.automation import AutomationChannel, AutomationRunStatus
     
     # Find a bot for this tenant
     bot = db.query(Bot).filter(
@@ -342,18 +380,23 @@ async def handle_incoming_message(
         conversation = Conversation(
             bot_id=bot.id,
             external_user_id=from_number,
-            customer_name=contact_name,
-            customer_phone=from_number,
-            source=ConversationSource.WHATSAPP.value
+            source=ConversationSource.WHATSAPP.value,
+            extra_data={
+                "contact_name": contact_name,
+                "phone_number": from_number
+            }
         )
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
-    elif contact_name and not conversation.customer_name:
-        conversation.customer_name = contact_name
+    elif contact_name and not (conversation.extra_data or {}).get("contact_name"):
+        conversation.extra_data = {
+            **(conversation.extra_data or {}),
+            "contact_name": contact_name
+        }
         db.commit()
     
-    # Save incoming message
+    # Save incoming message (always, regardless of n8n or legacy)
     user_message = Message(
         conversation_id=conversation.id,
         sender=MessageSender.USER.value,
@@ -362,6 +405,93 @@ async def handle_incoming_message(
     )
     db.add(user_message)
     db.commit()
+    
+    # Check if AI/automation is paused for this conversation
+    if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+        logger.info(
+            f"AI paused for conversation {conversation.id}; "
+            f"skipping auto-reply for WhatsApp message {message_id}"
+        )
+        return
+    
+    # ===========================================
+    # n8n WORKFLOW ROUTING (ASYNC/BACKGROUND)
+    # ===========================================
+    # Check if n8n should handle this message
+    n8n_client = get_n8n_client(db)
+    
+    if n8n_client.should_use_n8n(account.tenant_id):
+        logger.info(
+            f"Routing message {message_id} to n8n for tenant {account.tenant_id}"
+        )
+        
+        # Get workflow ID to validate configuration
+        workflow_id = n8n_client.get_workflow_id(account.tenant_id, AutomationChannel.WHATSAPP.value)
+        if not workflow_id:
+            logger.warning(
+                f"n8n workflow not triggered for tenant {account.tenant_id} "
+                f"(no workflow configured). Falling back to legacy AI."
+            )
+            # Fall through to legacy handling if no workflow configured
+        else:
+            # Schedule n8n trigger in background with its own DB session
+            # This ensures the webhook returns immediately without waiting for n8n
+            if background_tasks:
+                background_tasks.add_task(
+                    trigger_n8n_in_background,
+                    tenant_id=account.tenant_id,
+                    from_number=from_number,
+                    to_number=account.phone_number or "",
+                    text=message_content,
+                    message_id=message_id,
+                    timestamp=timestamp or datetime.utcnow().isoformat(),
+                    channel=AutomationChannel.WHATSAPP.value,
+                    correlation_id=correlation_id,
+                    contact_name=contact_name,
+                    raw_payload=raw_payload,
+                    extra_data={
+                        "bot_id": str(bot.id),
+                        "conversation_id": str(conversation.id),
+                        "message_type": message_type
+                    }
+                )
+                logger.info(f"n8n trigger scheduled in background for message {message_id}")
+            else:
+                # Fallback: run synchronously if no background_tasks provided
+                # (shouldn't happen in normal webhook flow)
+                logger.warning(
+                    f"No background_tasks available, running n8n trigger synchronously "
+                    f"for message {message_id}"
+                )
+                await trigger_n8n_in_background(
+                    tenant_id=account.tenant_id,
+                    from_number=from_number,
+                    to_number=account.phone_number or "",
+                    text=message_content,
+                    message_id=message_id,
+                    timestamp=timestamp or datetime.utcnow().isoformat(),
+                    channel=AutomationChannel.WHATSAPP.value,
+                    correlation_id=correlation_id,
+                    contact_name=contact_name,
+                    raw_payload=raw_payload,
+                    extra_data={
+                        "bot_id": str(bot.id),
+                        "conversation_id": str(conversation.id),
+                        "message_type": message_type
+                    }
+                )
+            
+            # When n8n is enabled, we don't generate AI response here
+            # n8n workflow will call back to /api/v1/channels/whatsapp/send
+            return
+    
+    # ===========================================
+    # LEGACY AI RESPONSE FLOW
+    # ===========================================
+    logger.info(
+        f"Using legacy AI response for message {message_id} "
+        f"(n8n disabled for tenant {account.tenant_id})"
+    )
     
     # Get knowledge items for context
     knowledge_items = db.query(BotKnowledgeItem).filter(
@@ -401,10 +531,36 @@ async def handle_incoming_message(
                 )
                 logger.info(f"Response sent to {from_number}")
             except Exception as e:
+                SystemEventService(db).log(
+                    tenant_id=str(account.tenant_id),
+                    source="whatsapp",
+                    level="error",
+                    code="WH_SEND_FAILED",
+                    message=str(e)[:500],
+                    meta_json={"message_id": message_id, "to": from_number},
+                    correlation_id=correlation_id
+                )
                 logger.error(f"Failed to send WhatsApp message: {e}")
         else:
+            SystemEventService(db).log(
+                tenant_id=str(account.tenant_id),
+                source="whatsapp",
+                level="error",
+                code="WH_NO_ACCESS_TOKEN",
+                message="Missing access token for WhatsApp send",
+                meta_json={"message_id": message_id, "to": from_number},
+                correlation_id=correlation_id
+            )
             logger.error("No access token available to send response")
     
     except Exception as e:
+        SystemEventService(db).log(
+            tenant_id=str(account.tenant_id),
+            source="whatsapp",
+            level="error",
+            code="WH_AI_ERROR",
+            message=str(e)[:500],
+            meta_json={"message_id": message_id},
+            correlation_id=correlation_id
+        )
         logger.error(f"Error generating AI response: {e}", exc_info=True)
-

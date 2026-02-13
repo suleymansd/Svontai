@@ -137,37 +137,29 @@ After creating a bot, copy the public key and test the widget:
 </head>
 <body>
     <h1>Widget Test Page</h1>
-    <script src="http://localhost:8000/widget.js" data-bot-key="YOUR_BOT_PUBLIC_KEY"></script>
+    <script
+      src="http://localhost:8000/widget.js"
+      data-bot-key="YOUR_BOT_PUBLIC_KEY"
+      data-api-url="http://localhost:8000"
+    ></script>
 </body>
 </html>
 ```
 
 ## WhatsApp Integration
 
-To enable WhatsApp messaging:
+SvontAi uses the official **Embedded Signup** flow for WhatsApp.
 
-### 1. Meta Business Setup
+### Quick Setup
 
-1. Go to [Meta for Developers](https://developers.facebook.com/)
-2. Create a new app (Business type)
-3. Add WhatsApp product
-4. Configure your phone number
+1. Go to `/dashboard/setup/whatsapp` in the dashboard
+2. Click **"WhatsApp'ı Bağla"**
+3. Complete Meta authorization in the popup
 
-### 2. Webhook Configuration
+For detailed configuration (Meta App, webhook, env vars), see:
+`docs/WHATSAPP_EMBEDDED_SIGNUP.md`
 
-In Meta Developer Console:
-- **Webhook URL**: `https://your-backend-url/whatsapp/webhook`
-- **Verify Token**: Use the token you set in bot settings
-
-### 3. Bot Configuration
-
-In SvontAi dashboard:
-1. Go to bot settings
-2. Enter WhatsApp credentials:
-   - Phone Number ID
-   - Business Account ID
-   - Access Token
-   - Verify Token
+> Manual token entry is now considered legacy and only needed if Embedded Signup is unavailable.
 
 ## Common Issues
 
@@ -222,4 +214,3 @@ Host `widget/index.js` on a CDN or serve from your backend.
 - Check the logs: `uvicorn` and browser console
 - API documentation: http://localhost:8000/docs
 - Create an issue on GitHub
-

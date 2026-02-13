@@ -7,6 +7,7 @@ import secrets
 import httpx
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+from urllib.parse import urlencode, urlparse
 
 from app.core.config import settings
 
@@ -45,6 +46,44 @@ class MetaAPIService:
         
         # Update base URLs with configured version
         self.graph_base = f"https://graph.facebook.com/{self.api_version}"
+
+    @staticmethod
+    def _is_placeholder(value: str) -> bool:
+        normalized = (value or "").strip().upper()
+        if not normalized:
+            return True
+        placeholder_tokens = ("YOUR_", "CHANGE_", "EXAMPLE", "PLACEHOLDER", "_HERE")
+        return any(token in normalized for token in placeholder_tokens)
+
+    def validate_onboarding_config(self) -> None:
+        errors: list[str] = []
+
+        app_id = (self.app_id or "").strip()
+        app_secret = (self.app_secret or "").strip()
+        redirect_uri = (self.redirect_uri or "").strip()
+        config_id = (getattr(settings, 'META_CONFIG_ID', '') or "").strip()
+
+        if self._is_placeholder(app_id):
+            errors.append("META_APP_ID eksik veya örnek değer olarak bırakılmış.")
+        elif not app_id.isdigit():
+            errors.append("META_APP_ID sayısal bir App ID olmalıdır.")
+
+        if self._is_placeholder(app_secret):
+            errors.append("META_APP_SECRET eksik veya örnek değer olarak bırakılmış.")
+
+        parsed = urlparse(redirect_uri)
+        if self._is_placeholder(redirect_uri) or not parsed.scheme or not parsed.netloc:
+            errors.append("META_REDIRECT_URI geçerli bir URL olmalıdır.")
+
+        if self._is_placeholder(config_id):
+            errors.append("META_CONFIG_ID eksik veya örnek değer olarak bırakılmış.")
+
+        if errors:
+            raise MetaAPIError(
+                message="Meta yapılandırması eksik/geçersiz.",
+                error_code="META_CONFIG_INVALID",
+                details={"errors": errors}
+            )
     
     def generate_verify_token(self) -> str:
         """
@@ -65,6 +104,8 @@ class MetaAPIService:
         Returns:
             Full OAuth URL for redirect.
         """
+        self.validate_onboarding_config()
+
         params = {
             "client_id": self.app_id,
             "redirect_uri": self.redirect_uri,
@@ -74,9 +115,8 @@ class MetaAPIService:
             # Enable Embedded Signup
             "config_id": getattr(settings, 'META_CONFIG_ID', ''),
         }
-        
-        # Build URL
-        query = "&".join(f"{k}={v}" for k, v in params.items() if v)
+
+        query = urlencode({k: v for k, v in params.items() if v})
         return f"https://www.facebook.com/{self.api_version}/dialog/oauth?{query}"
     
     def get_embedded_signup_config(self, state: str) -> Dict[str, Any]:
@@ -114,6 +154,8 @@ class MetaAPIService:
         Raises:
             MetaAPIError: If token exchange fails.
         """
+        self.validate_onboarding_config()
+
         url = f"{self.graph_base}/oauth/access_token"
         params = {
             "client_id": self.app_id,
@@ -121,23 +163,30 @@ class MetaAPIService:
             "redirect_uri": self.redirect_uri,
             "code": code,
         }
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params)
-            data = response.json()
-            
-            if "error" in data:
-                raise MetaAPIError(
-                    message=data["error"].get("message", "Token exchange failed"),
-                    error_code=data["error"].get("code"),
-                    details=data["error"]
-                )
-            
-            return {
-                "access_token": data.get("access_token"),
-                "token_type": data.get("token_type", "bearer"),
-                "expires_in": data.get("expires_in"),
-            }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params)
+                data = response.json()
+        except httpx.HTTPError as e:
+            raise MetaAPIError(
+                message="Meta API'ye bağlanılamadı.",
+                error_code="META_HTTP_ERROR",
+                details={"error": str(e)}
+            )
+
+        if "error" in data:
+            raise MetaAPIError(
+                message=data["error"].get("message", "Token exchange failed"),
+                error_code=data["error"].get("code"),
+                details=data["error"]
+            )
+
+        return {
+            "access_token": data.get("access_token"),
+            "token_type": data.get("token_type", "bearer"),
+            "expires_in": data.get("expires_in"),
+        }
     
     async def get_long_lived_token(self, short_lived_token: str) -> Dict[str, Any]:
         """
@@ -152,6 +201,8 @@ class MetaAPIService:
         Raises:
             MetaAPIError: If exchange fails.
         """
+        self.validate_onboarding_config()
+
         url = f"{self.graph_base}/oauth/access_token"
         params = {
             "grant_type": "fb_exchange_token",
@@ -159,23 +210,30 @@ class MetaAPIService:
             "client_secret": self.app_secret,
             "fb_exchange_token": short_lived_token,
         }
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params)
-            data = response.json()
-            
-            if "error" in data:
-                raise MetaAPIError(
-                    message=data["error"].get("message", "Long-lived token exchange failed"),
-                    error_code=data["error"].get("code"),
-                    details=data["error"]
-                )
-            
-            return {
-                "access_token": data.get("access_token"),
-                "token_type": data.get("token_type", "bearer"),
-                "expires_in": data.get("expires_in", 5184000),  # ~60 days default
-            }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params)
+                data = response.json()
+        except httpx.HTTPError as e:
+            raise MetaAPIError(
+                message="Meta API'ye bağlanılamadı.",
+                error_code="META_HTTP_ERROR",
+                details={"error": str(e)}
+            )
+
+        if "error" in data:
+            raise MetaAPIError(
+                message=data["error"].get("message", "Long-lived token exchange failed"),
+                error_code=data["error"].get("code"),
+                details=data["error"]
+            )
+
+        return {
+            "access_token": data.get("access_token"),
+            "token_type": data.get("token_type", "bearer"),
+            "expires_in": data.get("expires_in", 5184000),  # ~60 days default
+        }
     
     async def get_user_info(self, access_token: str) -> Dict[str, Any]:
         """
@@ -430,4 +488,3 @@ class MetaAPIService:
 
 # Singleton instance
 meta_api_service = MetaAPIService()
-

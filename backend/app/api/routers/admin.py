@@ -6,9 +6,9 @@ from datetime import datetime, timedelta
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy import select, func, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user
@@ -18,8 +18,17 @@ from app.models.bot import Bot
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.lead import Lead
+from app.models.automation import AutomationRun
+from app.models.subscription import TenantSubscription
+from app.models.feature_flag import FeatureFlag
+from app.models.incident import Incident
+from app.models.plan import Plan
+from app.models.tool import Tool
+from app.models.onboarding import AuditLog
 from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
+from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
+from app.schemas.tool import ToolCreate, ToolUpdate, ToolResponse
 from app.core.security import get_password_hash
 
 from pydantic import BaseModel, EmailStr
@@ -80,6 +89,47 @@ class TenantDetailResponse(BaseModel):
     total_pages: int
 
 
+class RecentRun(BaseModel):
+    id: str
+    status: str
+    created_at: datetime
+
+
+class RecentIncident(BaseModel):
+    id: str
+    title: str
+    severity: str
+    status: str
+    created_at: datetime
+
+
+class TenantAdminDetail(BaseModel):
+    tenant: TenantResponse
+    owner_email: str
+    owner_name: str
+    plan_name: str | None
+    feature_flags: list[str]
+    recent_runs: list[RecentRun]
+    recent_incidents: list[RecentIncident]
+
+
+class AuditLogResponse(BaseModel):
+    id: str
+    tenant_id: str | None
+    user_id: str | None
+    action: str
+    resource_type: str | None
+    resource_id: str | None
+    payload_json: dict | None
+    ip_address: str | None
+    user_agent: str | None
+    created_at: datetime
+
+
+class FeatureFlagUpdate(BaseModel):
+    enabled_flags: list[str]
+
+
 class ActivityLog(BaseModel):
     """Activity log entry."""
     id: str
@@ -105,6 +155,22 @@ class CreateUserAdmin(BaseModel):
     is_admin: bool = False
 
 
+class PlanListResponse(BaseModel):
+    items: list[PlanResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class ToolListResponse(BaseModel):
+    items: list[ToolResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 # Helper function to check admin
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """Require admin privileges."""
@@ -116,10 +182,33 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def log_admin_action(
+    db: Session,
+    admin: User,
+    action: str,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    payload: dict | None = None,
+    request: Request | None = None
+) -> None:
+    db.add(
+        AuditLog(
+            tenant_id=None,
+            user_id=admin.id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            payload_json=payload,
+            ip_address=request.client.host if request else None,
+            user_agent=request.headers.get("User-Agent") if request else None
+        )
+    )
+
+
 # Routes
 @router.get("/stats", response_model=AdminStats)
 async def get_admin_stats(
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
     """Get admin dashboard statistics."""
@@ -128,54 +217,66 @@ async def get_admin_stats(
     week_start = today_start - timedelta(days=7)
     
     # User counts
-    total_users = await db.scalar(select(func.count(User.id)))
-    active_users = await db.scalar(
-        select(func.count(User.id)).where(User.is_active == True)
-    )
-    new_users_today = await db.scalar(
-        select(func.count(User.id)).where(User.created_at >= today_start)
-    )
-    new_users_week = await db.scalar(
-        select(func.count(User.id)).where(User.created_at >= week_start)
-    )
-    
+    total_users = db.execute(
+        select(func.count()).select_from(User)
+    ).scalar() or 0
+    active_users = db.execute(
+        select(func.count()).select_from(User).where(User.is_active.is_(True))
+    ).scalar() or 0
+    new_users_today = db.execute(
+        select(func.count()).select_from(User).where(User.created_at >= today_start)
+    ).scalar() or 0
+    new_users_week = db.execute(
+        select(func.count()).select_from(User).where(User.created_at >= week_start)
+    ).scalar() or 0
+
     # Tenant counts
-    total_tenants = await db.scalar(select(func.count(Tenant.id)))
-    
+    total_tenants = db.execute(
+        select(func.count()).select_from(Tenant)
+    ).scalar() or 0
+
     # Bot counts
-    total_bots = await db.scalar(select(func.count(Bot.id)))
-    active_bots = await db.scalar(
-        select(func.count(Bot.id)).where(Bot.is_active == True)
-    )
-    
+    total_bots = db.execute(
+        select(func.count()).select_from(Bot)
+    ).scalar() or 0
+    active_bots = db.execute(
+        select(func.count()).select_from(Bot).where(Bot.is_active.is_(True))
+    ).scalar() or 0
+
     # Conversation counts
-    total_conversations = await db.scalar(select(func.count(Conversation.id)))
-    
+    total_conversations = db.execute(
+        select(func.count()).select_from(Conversation)
+    ).scalar() or 0
+
     # Message counts
-    total_messages = await db.scalar(select(func.count(Message.id)))
-    messages_today = await db.scalar(
-        select(func.count(Message.id)).where(Message.created_at >= today_start)
-    )
-    messages_week = await db.scalar(
-        select(func.count(Message.id)).where(Message.created_at >= week_start)
-    )
-    
+    total_messages = db.execute(
+        select(func.count()).select_from(Message)
+    ).scalar() or 0
+    messages_today = db.execute(
+        select(func.count()).select_from(Message).where(Message.created_at >= today_start)
+    ).scalar() or 0
+    messages_week = db.execute(
+        select(func.count()).select_from(Message).where(Message.created_at >= week_start)
+    ).scalar() or 0
+
     # Lead counts
-    total_leads = await db.scalar(select(func.count(Lead.id)))
+    total_leads = db.execute(
+        select(func.count()).select_from(Lead)
+    ).scalar() or 0
     
     return AdminStats(
-        total_users=total_users or 0,
-        active_users=active_users or 0,
-        total_tenants=total_tenants or 0,
-        total_bots=total_bots or 0,
-        active_bots=active_bots or 0,
-        total_conversations=total_conversations or 0,
-        total_messages=total_messages or 0,
-        total_leads=total_leads or 0,
-        new_users_today=new_users_today or 0,
-        new_users_week=new_users_week or 0,
-        messages_today=messages_today or 0,
-        messages_week=messages_week or 0
+        total_users=total_users,
+        active_users=active_users,
+        total_tenants=total_tenants,
+        total_bots=total_bots,
+        active_bots=active_bots,
+        total_conversations=total_conversations,
+        total_messages=total_messages,
+        total_leads=total_leads,
+        new_users_today=new_users_today,
+        new_users_week=new_users_week,
+        messages_today=messages_today,
+        messages_week=messages_week
     )
 
 
@@ -186,37 +287,34 @@ async def list_users(
     search: Optional[str] = None,
     is_admin: Optional[bool] = None,
     is_active: Optional[bool] = None,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
     """List all users with pagination and filters."""
-    query = select(User)
-    count_query = select(func.count(User.id))
+    query = db.query(User)
+    count_query = db.query(func.count(User.id))
     
     # Apply filters
     if search:
         search_filter = User.email.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%")
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
+        query = query.filter(search_filter)
+        count_query = count_query.filter(search_filter)
     
     if is_admin is not None:
-        query = query.where(User.is_admin == is_admin)
-        count_query = count_query.where(User.is_admin == is_admin)
+        query = query.filter(User.is_admin == is_admin)
+        count_query = count_query.filter(User.is_admin == is_admin)
     
     if is_active is not None:
-        query = query.where(User.is_active == is_active)
-        count_query = count_query.where(User.is_active == is_active)
+        query = query.filter(User.is_active == is_active)
+        count_query = count_query.filter(User.is_active == is_active)
     
     # Get total count
-    total = await db.scalar(count_query) or 0
+    total = count_query.scalar() or 0
     total_pages = (total + page_size - 1) // page_size
     
     # Apply pagination
     offset = (page - 1) * page_size
-    query = query.order_by(User.created_at.desc()).offset(offset).limit(page_size)
-    
-    result = await db.execute(query)
-    users = result.scalars().all()
+    users = query.order_by(User.created_at.desc()).offset(offset).limit(page_size).all()
     
     return UserListResponse(
         users=[UserResponse.model_validate(u) for u in users],
@@ -230,14 +328,13 @@ async def list_users(
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: CreateUserAdmin,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
 ):
     """Create a new user (admin only)."""
     # Check if email already exists
-    existing = await db.scalar(
-        select(User).where(User.email == user_data.email)
-    )
+    existing = db.query(User).filter(User.email == user_data.email).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -252,8 +349,17 @@ async def create_user(
         is_active=True
     )
     db.add(user)
-    await db.commit()
-    await db.refresh(user)
+    log_admin_action(
+        db,
+        admin,
+        "admin.user.create",
+        "user",
+        None,
+        {"email": user.email, "is_admin": user.is_admin},
+        request=request
+    )
+    db.commit()
+    db.refresh(user)
     
     return UserResponse.model_validate(user)
 
@@ -261,11 +367,11 @@ async def create_user(
 @router.get("/users/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
     """Get user by ID."""
-    user = await db.get(User, user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -278,11 +384,12 @@ async def get_user(
 async def update_user(
     user_id: UUID,
     user_update: UserAdminUpdate,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
 ):
     """Update user (admin only)."""
-    user = await db.get(User, user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -300,9 +407,20 @@ async def update_user(
     update_data = user_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(user, field, value)
-    
-    await db.commit()
-    await db.refresh(user)
+
+    if update_data:
+        log_admin_action(
+            db,
+            admin,
+            "admin.user.update",
+            "user",
+            str(user.id),
+            update_data,
+            request=request
+        )
+
+    db.commit()
+    db.refresh(user)
     
     return UserResponse.model_validate(user)
 
@@ -310,11 +428,12 @@ async def update_user(
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
 ):
     """Delete user (admin only)."""
-    user = await db.get(User, user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -327,9 +446,19 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
         )
-    
-    await db.delete(user)
-    await db.commit()
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.user.delete",
+        "user",
+        str(user.id),
+        {"email": user.email},
+        request=request
+    )
+
+    db.delete(user)
+    db.commit()
 
 
 @router.get("/tenants", response_model=TenantDetailResponse)
@@ -337,41 +466,54 @@ async def list_tenants(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
     """List all tenants with pagination."""
-    query = select(Tenant, User).join(User, Tenant.owner_id == User.id)
-    count_query = select(func.count(Tenant.id))
+    bot_counts = (
+        db.query(
+            Bot.tenant_id.label("tenant_id"),
+            func.count(Bot.id).label("bot_count")
+        )
+        .group_by(Bot.tenant_id)
+        .subquery()
+    )
+    conv_counts = (
+        db.query(
+            Bot.tenant_id.label("tenant_id"),
+            func.count(Conversation.id).label("conv_count")
+        )
+        .join(Conversation, Conversation.bot_id == Bot.id)
+        .group_by(Bot.tenant_id)
+        .subquery()
+    )
+
+    query = (
+        db.query(
+            Tenant,
+            User,
+            func.coalesce(bot_counts.c.bot_count, 0).label("bot_count"),
+            func.coalesce(conv_counts.c.conv_count, 0).label("conv_count")
+        )
+        .join(User, Tenant.owner_id == User.id)
+        .outerjoin(bot_counts, bot_counts.c.tenant_id == Tenant.id)
+        .outerjoin(conv_counts, conv_counts.c.tenant_id == Tenant.id)
+    )
+    count_query = db.query(func.count(Tenant.id))
     
     if search:
         search_filter = Tenant.name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%")
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
+        query = query.filter(search_filter)
+        count_query = count_query.filter(search_filter)
     
-    total = await db.scalar(count_query) or 0
+    total = count_query.scalar() or 0
     total_pages = (total + page_size - 1) // page_size
     
     offset = (page - 1) * page_size
-    query = query.order_by(Tenant.created_at.desc()).offset(offset).limit(page_size)
-    
-    result = await db.execute(query)
-    rows = result.all()
+    rows = query.order_by(Tenant.created_at.desc()).offset(offset).limit(page_size).all()
     
     tenants = []
-    for tenant, owner in rows:
-        # Get bot count
-        bot_count = await db.scalar(
-            select(func.count(Bot.id)).where(Bot.tenant_id == tenant.id)
-        ) or 0
-        
-        # Get conversation count
-        conv_count = await db.scalar(
-            select(func.count(Conversation.id))
-            .join(Bot, Conversation.bot_id == Bot.id)
-            .where(Bot.tenant_id == tenant.id)
-        ) or 0
-        
+    for tenant, owner, bot_count, conv_count in rows:
         tenants.append(TenantWithOwner(
             id=tenant.id,
             name=tenant.name,
@@ -393,33 +535,445 @@ async def list_tenants(
     )
 
 
+@router.get("/tenants/{tenant_id}", response_model=TenantAdminDetail)
+async def get_tenant_detail(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    owner = db.get(User, tenant.owner_id)
+    subscription = db.query(TenantSubscription).filter(TenantSubscription.tenant_id == tenant.id).first()
+    plan_name = None
+    if subscription:
+        plan = db.get(Plan, subscription.plan_id)
+        plan_name = plan.display_name if plan else None
+
+    flags = db.query(FeatureFlag).filter(
+        FeatureFlag.tenant_id == tenant.id,
+        FeatureFlag.enabled == True
+    ).all()
+    feature_flags = [flag.key for flag in flags]
+
+    runs = db.query(AutomationRun).filter(
+        AutomationRun.tenant_id == str(tenant.id)
+    ).order_by(AutomationRun.created_at.desc()).limit(5).all()
+
+    incidents = db.query(Incident).filter(
+        Incident.tenant_id == str(tenant.id)
+    ).order_by(Incident.created_at.desc()).limit(5).all()
+
+    return TenantAdminDetail(
+        tenant=TenantResponse.model_validate(tenant),
+        owner_email=owner.email if owner else "",
+        owner_name=owner.full_name if owner else "",
+        plan_name=plan_name,
+        feature_flags=feature_flags,
+        recent_runs=[RecentRun(id=r.id, status=r.status, created_at=r.created_at) for r in runs],
+        recent_incidents=[RecentIncident(id=i.id, title=i.title, severity=i.severity, status=i.status, created_at=i.created_at) for i in incidents],
+    )
+
+
+@router.patch("/tenants/{tenant_id}/feature-flags", response_model=TenantAdminDetail)
+async def update_tenant_feature_flags(
+    tenant_id: UUID,
+    payload: FeatureFlagUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    existing_flags = db.query(FeatureFlag).filter(FeatureFlag.tenant_id == tenant.id).all()
+    existing_map = {flag.key: flag for flag in existing_flags}
+
+    for key, flag in existing_map.items():
+        flag.enabled = key in payload.enabled_flags
+
+    for key in payload.enabled_flags:
+        if key not in existing_map:
+            db.add(FeatureFlag(tenant_id=tenant.id, key=key, enabled=True))
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.feature_flags.update",
+        "tenant",
+        str(tenant.id),
+        {"enabled_flags": payload.enabled_flags},
+        request=request
+    )
+
+    db.commit()
+
+    return await get_tenant_detail(tenant_id, db, admin)
+
+
+@router.post("/tenants/{tenant_id}/suspend", status_code=status.HTTP_200_OK)
+async def suspend_tenant(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    tenant.settings = {**(tenant.settings or {}), "suspended": True}
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.suspend",
+        "tenant",
+        str(tenant.id),
+        {"suspended": True},
+        request=request
+    )
+    db.commit()
+    return {"status": "suspended"}
+
+
+@router.post("/tenants/{tenant_id}/unsuspend", status_code=status.HTTP_200_OK)
+async def unsuspend_tenant(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    tenant.settings = {**(tenant.settings or {}), "suspended": False}
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.unsuspend",
+        "tenant",
+        str(tenant.id),
+        {"suspended": False},
+        request=request
+    )
+    db.commit()
+    return {"status": "active"}
+
+
+@router.get("/audit", response_model=list[AuditLogResponse])
+async def list_audit_logs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    tenant_id: Optional[str] = None,
+    action: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    query = db.query(AuditLog)
+    if tenant_id:
+        query = query.filter(AuditLog.tenant_id == tenant_id)
+    if action:
+        query = query.filter(AuditLog.action == action)
+    return query.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@router.get("/plans", response_model=PlanListResponse)
+async def list_plans_admin(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    is_public: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    query = db.query(Plan)
+    count_query = db.query(func.count(Plan.id))
+
+    if search:
+        search_filter = Plan.name.ilike(f"%{search}%") | Plan.display_name.ilike(f"%{search}%")
+        query = query.filter(search_filter)
+        count_query = count_query.filter(search_filter)
+
+    if is_active is not None:
+        query = query.filter(Plan.is_active == is_active)
+        count_query = count_query.filter(Plan.is_active == is_active)
+
+    if is_public is not None:
+        query = query.filter(Plan.is_public == is_public)
+        count_query = count_query.filter(Plan.is_public == is_public)
+
+    total = count_query.scalar() or 0
+    total_pages = (total + page_size - 1) // page_size
+    offset = (page - 1) * page_size
+    plans = query.order_by(Plan.sort_order.asc(), Plan.created_at.desc()).offset(offset).limit(page_size).all()
+
+    return PlanListResponse(
+        items=[PlanResponse.model_validate(plan) for plan in plans],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
+
+@router.post("/plans", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
+async def create_plan_admin(
+    payload: PlanCreate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    existing = db.query(Plan).filter(Plan.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan name already exists")
+
+    plan = Plan(**payload.model_dump())
+    db.add(plan)
+    log_admin_action(
+        db,
+        admin,
+        "admin.plan.create",
+        "plan",
+        None,
+        payload.model_dump(),
+        request=request
+    )
+    db.commit()
+    db.refresh(plan)
+    return PlanResponse.model_validate(plan)
+
+
+@router.put("/plans/{plan_id}", response_model=PlanResponse)
+async def update_plan_admin(
+    plan_id: UUID,
+    payload: PlanUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    plan = db.get(Plan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    if payload.name and payload.name != plan.name:
+        existing = db.query(Plan).filter(Plan.name == payload.name).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan name already exists")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(plan, key, value)
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.plan.update",
+        "plan",
+        str(plan.id),
+        update_data,
+        request=request
+    )
+    db.commit()
+    db.refresh(plan)
+    return PlanResponse.model_validate(plan)
+
+
+@router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plan_admin(
+    plan_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    plan = db.get(Plan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.plan.delete",
+        "plan",
+        str(plan.id),
+        {"name": plan.name},
+        request=request
+    )
+    db.delete(plan)
+    db.commit()
+
+
+@router.get("/tools", response_model=ToolListResponse)
+async def list_tools_admin(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    coming_soon: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    query = db.query(Tool)
+    count_query = db.query(func.count(Tool.id))
+
+    if search:
+        search_filter = Tool.name.ilike(f"%{search}%") | Tool.key.ilike(f"%{search}%")
+        query = query.filter(search_filter)
+        count_query = count_query.filter(search_filter)
+
+    if category:
+        query = query.filter(Tool.category == category)
+        count_query = count_query.filter(Tool.category == category)
+
+    if status_filter:
+        query = query.filter(Tool.status == status_filter)
+        count_query = count_query.filter(Tool.status == status_filter)
+
+    if coming_soon is not None:
+        query = query.filter(Tool.coming_soon == coming_soon)
+        count_query = count_query.filter(Tool.coming_soon == coming_soon)
+
+    total = count_query.scalar() or 0
+    total_pages = (total + page_size - 1) // page_size
+    offset = (page - 1) * page_size
+    tools = query.order_by(Tool.created_at.desc()).offset(offset).limit(page_size).all()
+
+    return ToolListResponse(
+        items=[ToolResponse.model_validate(tool) for tool in tools],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
+
+@router.post("/tools", response_model=ToolResponse, status_code=status.HTTP_201_CREATED)
+async def create_tool_admin(
+    payload: ToolCreate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    existing = db.query(Tool).filter(Tool.key == payload.key).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
+
+    tool = Tool(**payload.model_dump())
+    db.add(tool)
+    log_admin_action(
+        db,
+        admin,
+        "admin.tool.create",
+        "tool",
+        None,
+        payload.model_dump(),
+        request=request
+    )
+    db.commit()
+    db.refresh(tool)
+    return ToolResponse.model_validate(tool)
+
+
+@router.put("/tools/{tool_id}", response_model=ToolResponse)
+async def update_tool_admin(
+    tool_id: UUID,
+    payload: ToolUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tool = db.get(Tool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
+
+    if payload.key and payload.key != tool.key:
+        existing = db.query(Tool).filter(Tool.key == payload.key).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(tool, key, value)
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tool.update",
+        "tool",
+        str(tool.id),
+        update_data,
+        request=request
+    )
+    db.commit()
+    db.refresh(tool)
+    return ToolResponse.model_validate(tool)
+
+
+@router.delete("/tools/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tool_admin(
+    tool_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tool = db.get(Tool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tool.delete",
+        "tool",
+        str(tool.id),
+        {"key": tool.key},
+        request=request
+    )
+    db.delete(tool)
+    db.commit()
+
+
 @router.delete("/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tenant(
     tenant_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
 ):
     """Delete tenant (admin only)."""
-    tenant = await db.get(Tenant, tenant_id)
+    tenant = db.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tenant not found"
         )
-    
-    await db.delete(tenant)
-    await db.commit()
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.delete",
+        "tenant",
+        str(tenant.id),
+        {"name": tenant.name},
+        request=request
+    )
+
+    db.delete(tenant)
+    db.commit()
 
 
 @router.get("/health", response_model=SystemHealth)
 async def get_system_health(
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
     """Get system health status."""
     # Check database
     try:
-        await db.execute(select(1))
+        db.execute(select(1))
         db_status = "healthy"
     except Exception:
         db_status = "unhealthy"
@@ -435,11 +989,12 @@ async def get_system_health(
 @router.post("/make-admin/{user_id}", response_model=UserResponse)
 async def make_user_admin(
     user_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
 ):
     """Make a user admin."""
-    user = await db.get(User, user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -447,8 +1002,16 @@ async def make_user_admin(
         )
     
     user.is_admin = True
-    await db.commit()
-    await db.refresh(user)
+    log_admin_action(
+        db,
+        admin,
+        "admin.user.make_admin",
+        "user",
+        str(user.id),
+        {"email": user.email},
+        request=request
+    )
+    db.commit()
+    db.refresh(user)
     
     return UserResponse.model_validate(user)
-

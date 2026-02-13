@@ -63,6 +63,16 @@ class Tenant(Base):
         "User",
         back_populates="tenants"
     )
+    memberships: Mapped[list["TenantMembership"]] = relationship(
+        "TenantMembership",
+        back_populates="tenant",
+        cascade="all, delete-orphan"
+    )
+    feature_flags: Mapped[list["FeatureFlag"]] = relationship(
+        "FeatureFlag",
+        back_populates="tenant",
+        cascade="all, delete-orphan"
+    )
     bots: Mapped[list["Bot"]] = relationship(
         "Bot",
         back_populates="tenant",
@@ -89,6 +99,18 @@ class Tenant(Base):
         uselist=False
     )
     
+    # n8n Automation relationships
+    automation_settings: Mapped["TenantAutomationSettings | None"] = relationship(
+        "TenantAutomationSettings",
+        back_populates="tenant",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+    automation_runs: Mapped[list["AutomationRun"]] = relationship(
+        "AutomationRun",
+        back_populates="tenant",
+        cascade="all, delete-orphan"
+    )
+    
     def __repr__(self) -> str:
         return f"<Tenant {self.name}>"
-

@@ -5,17 +5,20 @@ Subscription API router for managing plans and subscriptions.
 from uuid import UUID
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.plan import Plan
 from app.models.subscription import TenantSubscription
 from app.services.subscription_service import SubscriptionService
+from app.services.audit_log_service import AuditLogService
+from app.services.email_service import EmailService
 
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
@@ -110,7 +113,8 @@ async def list_plans(
 async def get_current_subscription(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get current tenant's subscription."""
     service = SubscriptionService(db)
@@ -137,7 +141,8 @@ async def get_current_subscription(
 async def get_usage_stats(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get current usage statistics."""
     service = SubscriptionService(db)
@@ -157,7 +162,9 @@ async def upgrade_subscription(
     request: UpgradeRequest,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request_meta: Request = None,
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """
     Upgrade to a new plan.
@@ -182,6 +189,24 @@ async def upgrade_subscription(
     # For demo/development: Direct upgrade
     # TODO: Integrate with payment provider
     subscription = service.upgrade_plan(tenant.id, request.plan_name)
+    AuditLogService(db).log(
+        action="subscription.upgrade",
+        tenant_id=str(tenant.id),
+        user_id=str(current_user.id),
+        resource_type="subscription",
+        resource_id=str(subscription.id),
+        payload={"plan_name": request.plan_name},
+        ip_address=request_meta.client.host if request_meta else None,
+        user_agent=request_meta.headers.get("User-Agent") if request_meta else None
+    )
+
+    EmailService.send_plan_change_email(
+        email=current_user.email,
+        full_name=current_user.full_name,
+        tenant_name=tenant.name,
+        plan_display_name=plan.display_name,
+        action="Plan yükseltildi"
+    )
     
     return {
         "success": True,
@@ -199,7 +224,9 @@ async def cancel_subscription(
     immediate: bool = False,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request_meta: Request = None,
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """Cancel current subscription."""
     service = SubscriptionService(db)
@@ -210,7 +237,26 @@ async def cancel_subscription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Abonelik bulunamadı"
         )
-    
+
+    AuditLogService(db).log(
+        action="subscription.cancel",
+        tenant_id=str(tenant.id),
+        user_id=str(current_user.id),
+        resource_type="subscription",
+        resource_id=str(subscription.id),
+        payload={"immediate": immediate},
+        ip_address=request_meta.client.host if request_meta else None,
+        user_agent=request_meta.headers.get("User-Agent") if request_meta else None
+    )
+
+    EmailService.send_plan_change_email(
+        email=current_user.email,
+        full_name=current_user.full_name,
+        tenant_name=tenant.name,
+        plan_display_name=subscription.plan.display_name if subscription.plan else "Mevcut Plan",
+        action="Abonelik iptal edildi"
+    )
+
     return {
         "success": True,
         "message": "Abonelik iptal edildi" if immediate else "Abonelik dönem sonunda iptal edilecek",
@@ -223,7 +269,8 @@ async def check_feature(
     feature_key: str,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Check if a feature is enabled for the current plan."""
     service = SubscriptionService(db)
@@ -233,4 +280,3 @@ async def check_feature(
         "feature": feature_key,
         "enabled": enabled
     }
-

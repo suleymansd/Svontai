@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { 
-  MessageSquare, 
+import {
+  MessageSquare,
   User,
   Bot,
   Clock,
@@ -90,7 +90,7 @@ export default function OperatorPage() {
   // Fetch messages for selected conversation
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ['operator-messages', selectedConversation],
-    queryFn: () => selectedConversation 
+    queryFn: () => selectedConversation
       ? operatorApi.getConversationMessages(selectedConversation).then(res => res.data)
       : Promise.resolve([]),
     enabled: !!selectedConversation && hasFeature,
@@ -105,8 +105,8 @@ export default function OperatorPage() {
       toast({ title: 'Başarılı', description: 'Konuşma devralındı' })
     },
     onError: (error: any) => {
-      toast({ 
-        title: 'Hata', 
+      toast({
+        title: 'Hata',
         description: error.response?.data?.detail || 'Bir hata oluştu',
         variant: 'destructive'
       })
@@ -121,8 +121,8 @@ export default function OperatorPage() {
       toast({ title: 'Başarılı', description: 'Konuşma AI\'ya devredildi' })
     },
     onError: (error: any) => {
-      toast({ 
-        title: 'Hata', 
+      toast({
+        title: 'Hata',
         description: error.response?.data?.detail || 'Bir hata oluştu',
         variant: 'destructive'
       })
@@ -131,16 +131,25 @@ export default function OperatorPage() {
 
   // Send message mutation
   const sendMutation = useMutation({
-    mutationFn: ({ conversationId, content }: { conversationId: string, content: string }) => 
+    mutationFn: ({ conversationId, content }: { conversationId: string, content: string }) =>
       operatorApi.sendMessage(conversationId, content),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['operator-messages', selectedConversation] })
       setNewMessage('')
+      const payload = response.data
+      if (payload?.delivered === false) {
+        toast({
+          title: 'Gönderim Başarısız',
+          description: payload?.note || 'Mesaj kaydedildi ama WhatsApp tarafına iletilemedi.',
+          variant: 'destructive'
+        })
+        return
+      }
       toast({ title: 'Mesaj gönderildi' })
     },
     onError: (error: any) => {
-      toast({ 
-        title: 'Hata', 
+      toast({
+        title: 'Hata',
         description: error.response?.data?.detail || 'Mesaj gönderilemedi',
         variant: 'destructive'
       })
@@ -159,13 +168,13 @@ export default function OperatorPage() {
 
   if (!hasFeature) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="border-amber-200 dark:border-amber-800">
+      <div className="max-w-2xl mx-auto animate-scale-in">
+        <Card className="border-amber-200 dark:border-amber-800 glass-card">
           <CardContent className="p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <Lock className="w-10 h-10 text-amber-600" />
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center animate-breathe shadow-lg shadow-amber-500/30">
+              <Lock className="w-10 h-10 text-white" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Operatör Devralma Özelliği</h2>
+            <h2 className="text-2xl font-bold mb-2 gradient-text-vivid">Operatör Devralma Özelliği</h2>
             <p className="text-muted-foreground mb-6">
               Konuşmalara manuel müdahale ve canlı destek için planınızı yükseltin.
             </p>
@@ -185,7 +194,7 @@ export default function OperatorPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Operatör Paneli 🎧</h1>
+          <h1 className="text-3xl font-bold gradient-text-vivid">Operatör Paneli 🎧</h1>
           <p className="text-muted-foreground mt-1">
             Konuşmalara manuel müdahale edin
           </p>
@@ -200,22 +209,22 @@ export default function OperatorPage() {
 
       {/* Filters */}
       <div className="flex gap-2">
-        <Button 
-          variant={!statusFilter ? 'default' : 'outline'} 
+        <Button
+          variant={!statusFilter ? 'default' : 'outline'}
           size="sm"
           onClick={() => setStatusFilter(undefined)}
         >
           Tümü
         </Button>
-        <Button 
-          variant={statusFilter === 'human_takeover' ? 'default' : 'outline'} 
+        <Button
+          variant={statusFilter === 'human_takeover' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setStatusFilter('human_takeover')}
         >
           Devralınmış
         </Button>
-        <Button 
-          variant={statusFilter === 'ai_active' ? 'default' : 'outline'} 
+        <Button
+          variant={statusFilter === 'ai_active' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setStatusFilter('ai_active')}
         >
@@ -226,7 +235,7 @@ export default function OperatorPage() {
       {/* Main Layout */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Conversations List */}
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-1 glass-card">
           <CardHeader>
             <CardTitle className="text-lg">Konuşmalar</CardTitle>
             <CardDescription>{conversations?.length || 0} aktif konuşma</CardDescription>
@@ -250,10 +259,10 @@ export default function OperatorPage() {
                     key={conv.id}
                     onClick={() => setSelectedConversation(conv.id)}
                     className={cn(
-                      'p-4 cursor-pointer transition-colors',
-                      selectedConversation === conv.id 
-                        ? 'bg-blue-50 dark:bg-blue-900/20' 
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      'p-4 cursor-pointer transition-all duration-200',
+                      selectedConversation === conv.id
+                        ? 'bg-gradient-to-r from-blue-50 to-violet-50 dark:from-blue-900/20 dark:to-violet-900/20 border-l-2 border-l-blue-500'
+                        : 'hover:bg-muted/50'
                     )}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -290,7 +299,7 @@ export default function OperatorPage() {
         </Card>
 
         {/* Chat View */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 glass-card">
           {selectedConversation && selectedConv ? (
             <>
               <CardHeader className="border-b dark:border-slate-800">
@@ -310,8 +319,8 @@ export default function OperatorPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {selectedConv.is_ai_paused ? (
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => releaseMutation.mutate(selectedConversation)}
                         disabled={releaseMutation.isPending}
@@ -320,7 +329,7 @@ export default function OperatorPage() {
                         AI'ya Devret
                       </Button>
                     ) : (
-                      <Button 
+                      <Button
                         size="sm"
                         onClick={() => takeoverMutation.mutate(selectedConversation)}
                         disabled={takeoverMutation.isPending}
@@ -332,7 +341,7 @@ export default function OperatorPage() {
                   </div>
                 </div>
               </CardHeader>
-              
+
               <CardContent className="p-0">
                 {/* Messages */}
                 <div className="h-[400px] overflow-y-auto p-4 space-y-4">
@@ -357,11 +366,11 @@ export default function OperatorPage() {
                       >
                         <div className={cn(
                           'max-w-[70%] rounded-2xl px-4 py-2',
-                          msg.sender === 'user' 
-                            ? 'bg-slate-100 dark:bg-slate-800' 
+                          msg.sender === 'user'
+                            ? 'bg-slate-100 dark:bg-slate-800'
                             : msg.sender === 'operator'
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-green-500 text-white'
+                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/20'
+                              : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20'
                         )}>
                           <p className="text-sm">{msg.content}</p>
                           <div className={cn(
@@ -371,9 +380,9 @@ export default function OperatorPage() {
                             {msg.sender === 'bot' && <Bot className="w-3 h-3" />}
                             {msg.sender === 'operator' && <User className="w-3 h-3" />}
                             <span>
-                              {new Date(msg.created_at).toLocaleTimeString('tr-TR', { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
+                              {new Date(msg.created_at).toLocaleTimeString('tr-TR', {
+                                hour: '2-digit',
+                                minute: '2-digit'
                               })}
                             </span>
                           </div>
@@ -386,13 +395,13 @@ export default function OperatorPage() {
                 {/* Input */}
                 {selectedConv.is_ai_paused && (
                   <div className="p-4 border-t dark:border-slate-800">
-                    <form 
+                    <form
                       onSubmit={(e) => {
                         e.preventDefault()
                         if (newMessage.trim() && selectedConversation) {
-                          sendMutation.mutate({ 
-                            conversationId: selectedConversation, 
-                            content: newMessage 
+                          sendMutation.mutate({
+                            conversationId: selectedConversation,
+                            content: newMessage
                           })
                         }
                       }}
@@ -402,7 +411,7 @@ export default function OperatorPage() {
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Mesajınızı yazın..."
-                        className="flex-1"
+                        className="flex-1 input-glow rounded-xl transition-all duration-300"
                       />
                       <Button type="submit" disabled={!newMessage.trim() || sendMutation.isPending}>
                         {sendMutation.isPending ? (
@@ -422,9 +431,9 @@ export default function OperatorPage() {
             </>
           ) : (
             <CardContent className="flex items-center justify-center h-[500px] text-muted-foreground">
-              <div className="text-center">
-                <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Görüntülemek için bir konuşma seçin</p>
+              <div className="text-center animate-fade-in-up">
+                <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-30 animate-breathe" />
+                <p className="text-lg font-medium">Görüntülemek için bir konuşma seçin</p>
               </div>
             </CardContent>
           )}
@@ -433,4 +442,3 @@ export default function OperatorPage() {
     </div>
   )
 }
-

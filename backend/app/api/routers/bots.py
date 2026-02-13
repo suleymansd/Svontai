@@ -4,23 +4,28 @@ Bot management router.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.schemas.bot import BotCreate, BotResponse, BotUpdate
+from app.services.audit_log_service import AuditLogService
 
 router = APIRouter(prefix="/bots", tags=["Bots"])
 
 
 @router.get("", response_model=list[BotResponse])
 async def list_bots(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Bot]:
     """
     List all bots for the current tenant.
@@ -32,7 +37,14 @@ async def list_bots(
     Returns:
         List of bots.
     """
-    bots = db.query(Bot).filter(Bot.tenant_id == current_tenant.id).all()
+    bots = (
+        db.query(Bot)
+        .filter(Bot.tenant_id == current_tenant.id)
+        .order_by(Bot.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return bots
 
 
@@ -40,7 +52,10 @@ async def list_bots(
 async def create_bot(
     bot_data: BotCreate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> Bot:
     """
     Create a new bot.
@@ -66,6 +81,17 @@ async def create_bot(
     db.add(bot)
     db.commit()
     db.refresh(bot)
+
+    AuditLogService(db).log(
+        action="bot.create",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="bot",
+        resource_id=str(bot.id),
+        payload={"name": bot.name},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return bot
 
@@ -74,7 +100,8 @@ async def create_bot(
 async def get_bot(
     bot_id: UUID,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> Bot:
     """
     Get a specific bot by ID.
@@ -106,7 +133,10 @@ async def update_bot(
     bot_id: UUID,
     bot_update: BotUpdate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> Bot:
     """
     Update a bot.
@@ -140,6 +170,17 @@ async def update_bot(
     
     db.commit()
     db.refresh(bot)
+
+    AuditLogService(db).log(
+        action="bot.update",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="bot",
+        resource_id=str(bot.id),
+        payload=bot_update.model_dump(exclude_unset=True),
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return bot
 
@@ -148,7 +189,10 @@ async def update_bot(
 async def delete_bot(
     bot_id: UUID,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> None:
     """
     Delete a bot.
@@ -172,3 +216,13 @@ async def delete_bot(
     db.delete(bot)
     db.commit()
 
+    AuditLogService(db).log(
+        action="bot.delete",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="bot",
+        resource_id=str(bot.id),
+        payload={"name": bot.name},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )

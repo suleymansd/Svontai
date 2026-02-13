@@ -5,7 +5,7 @@ User model for authentication and user management.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Boolean
+from sqlalchemy import String, DateTime, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -48,6 +48,15 @@ class User(Base):
         DateTime,
         nullable=True
     )
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
@@ -66,7 +75,16 @@ class User(Base):
         back_populates="owner",
         cascade="all, delete-orphan"
     )
+    memberships: Mapped[list["TenantMembership"]] = relationship(
+        "TenantMembership",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    sessions: Mapped[list["UserSession"]] = relationship(
+        "UserSession",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
         return f"<User {self.email}>"
-

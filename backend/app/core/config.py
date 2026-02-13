@@ -3,10 +3,21 @@ Application configuration using Pydantic Settings.
 All environment variables are loaded and validated here.
 """
 
+import logging
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
+
+logger = logging.getLogger(__name__)
+
+# Insecure default secrets that must not be used in production
+INSECURE_DEFAULT_SECRETS = [
+    "change-this-to-a-secure-random-string-svontai-to-n8n",
+    "change-this-to-a-secure-random-string-n8n-to-svontai",
+    "your-super-secret-jwt-key-change-in-production",
+]
 
 
 class Settings(BaseSettings):
@@ -50,12 +61,103 @@ class Settings(BaseSettings):
     # Application URLs
     BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
+
+    # Email / SMTP
+    EMAIL_ENABLED: bool = False
+    EMAIL_PROVIDER: Literal["resend", "smtp"] = "resend"
+
+    # Resend
+    RESEND_API_KEY: str = ""
+    RESEND_API_BASE_URL: str = "https://api.resend.com"
+    RESEND_TIMEOUT_SECONDS: int = 20
+
+    # SMTP (optional fallback)
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "no-reply@svontai.com"
+    SMTP_FROM_NAME: str = "SvontAI"
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 20
+
+    # Password reset
+    PASSWORD_RESET_CODE_EXPIRE_MINUTES: int = 10
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5
     
     # Environment
     ENVIRONMENT: Literal["dev", "prod"] = "dev"
     
     # Redis (optional)
     REDIS_URL: str = "redis://localhost:6379"
+    
+    # ===========================================
+    # n8n Workflow Engine Integration
+    # ===========================================
+    # Feature flag: Set to True to enable n8n workflow execution
+    USE_N8N: bool = False
+    
+    # n8n Base URL (internal network or external)
+    N8N_BASE_URL: str = "http://n8n:5678"
+    
+    # Optional n8n API key for authenticated requests
+    N8N_API_KEY: Optional[str] = None
+    
+    # Shared secrets for secure communication between SvontAI and n8n
+    # Used for HMAC signature verification
+    SVONTAI_TO_N8N_SECRET: str = "change-this-to-a-secure-random-string-svontai-to-n8n"
+    N8N_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-n8n-to-svontai"
+    
+    # Default workflow ID for incoming WhatsApp messages
+    N8N_INCOMING_WORKFLOW_ID: str = ""
+    
+    # Request timeout for n8n API calls (seconds)
+    N8N_TIMEOUT_SECONDS: int = 10
+    
+    # Number of retries for failed n8n requests
+    N8N_RETRY_COUNT: int = 2
+    
+    # n8n webhook path pattern (used for triggering workflows)
+    N8N_WEBHOOK_PATH: str = "/webhook"
+
+    @model_validator(mode='after')
+    def validate_production_secrets(self) -> 'Settings':
+        """
+        Validate that insecure default secrets are not used in production.
+        
+        Raises ValueError at startup if:
+        - ENVIRONMENT is 'prod' AND
+        - Any of the security-sensitive secrets are set to their insecure defaults
+        """
+        if self.ENVIRONMENT != "prod":
+            return self
+        
+        # Check JWT secret
+        if self.JWT_SECRET_KEY in INSECURE_DEFAULT_SECRETS:
+            raise ValueError(
+                "FATAL: JWT_SECRET_KEY is set to an insecure default value. "
+                "You MUST set a secure, randomly generated secret in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        
+        # Only validate n8n secrets if n8n is enabled
+        if self.USE_N8N:
+            if self.SVONTAI_TO_N8N_SECRET in INSECURE_DEFAULT_SECRETS:
+                raise ValueError(
+                    "FATAL: SVONTAI_TO_N8N_SECRET is set to an insecure default value. "
+                    "You MUST set a secure, randomly generated secret in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+            
+            if self.N8N_TO_SVONTAI_SECRET in INSECURE_DEFAULT_SECRETS:
+                raise ValueError(
+                    "FATAL: N8N_TO_SVONTAI_SECRET is set to an insecure default value. "
+                    "You MUST set a secure, randomly generated secret in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+        
+        return self
 
 
 @lru_cache()
@@ -65,4 +167,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

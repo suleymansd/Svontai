@@ -3,12 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { 
-  ArrowLeft, 
-  Check, 
-  Circle, 
-  Loader2, 
-  AlertCircle, 
+import {
+  ArrowLeft,
+  Check,
+  Circle,
+  Loader2,
+  AlertCircle,
   RefreshCw,
   ExternalLink,
   Smartphone,
@@ -96,22 +96,22 @@ export default function WhatsAppSetupPage() {
     onSuccess: (data) => {
       // Start polling
       setPollInterval(2000)
-      
+
       // Open Meta OAuth in popup
       const width = 600
       const height = 700
       const left = window.screenX + (window.outerWidth - width) / 2
       const top = window.screenY + (window.outerHeight - height) / 2
-      
+
       const popup = window.open(
         data.oauth_url,
         'whatsapp_connect',
         `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
       )
-      
+
       if (popup) {
         setIsConnecting(true)
-        
+
         // Listen for popup close or message
         const checkPopup = setInterval(() => {
           if (popup.closed) {
@@ -120,7 +120,7 @@ export default function WhatsAppSetupPage() {
             refetch()
           }
         }, 500)
-        
+
         // Listen for postMessage from popup
         const handleMessage = (event: MessageEvent) => {
           if (event.data?.type === 'WHATSAPP_CONNECTED') {
@@ -135,7 +135,7 @@ export default function WhatsAppSetupPage() {
           }
         }
         window.addEventListener('message', handleMessage)
-        
+
         return () => {
           window.removeEventListener('message', handleMessage)
         }
@@ -193,8 +193,8 @@ export default function WhatsAppSetupPage() {
   }, [])
 
   const currentStepIndex = status?.steps.findIndex(s => s.step_key === status.current_step) ?? -1
-  const progressPercent = status?.steps 
-    ? (status.steps.filter(s => s.status === 'done').length / status.steps.length) * 100 
+  const progressPercent = status?.steps
+    ? (status.steps.filter(s => s.status === 'done').length / status.steps.length) * 100
     : 0
 
   return (
@@ -262,7 +262,7 @@ export default function WhatsAppSetupPage() {
             <span className="font-medium">{Math.round(progressPercent)}%</span>
           </div>
           <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
@@ -290,7 +290,7 @@ export default function WhatsAppSetupPage() {
               </div>
               <h3 className="text-xl font-semibold mb-2">WhatsApp'ı Bağlayın</h3>
               <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                WhatsApp Business hesabınızı bağlayarak müşterilerinize WhatsApp üzerinden 
+                WhatsApp Business hesabınızı bağlayarak müşterilerinize WhatsApp üzerinden
                 7/24 otomatik yanıt vermeye başlayın.
               </p>
               <Button
@@ -320,9 +320,9 @@ export default function WhatsAppSetupPage() {
                 const StatusIcon = config.icon
                 const isActive = step.step_key === status.current_step
                 const isPast = index < currentStepIndex
-                
+
                 return (
-                  <div 
+                  <div
                     key={step.step_key}
                     className={cn(
                       'flex items-start gap-4 p-4 rounded-xl transition-all',
@@ -339,10 +339,10 @@ export default function WhatsAppSetupPage() {
                       <StatusIcon className={cn(
                         'w-5 h-5',
                         config.color,
-                        config.animate && 'animate-spin'
+                        (config as any).animate && 'animate-spin'
                       )} />
                     </div>
-                    
+
                     {/* Step Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -362,7 +362,7 @@ export default function WhatsAppSetupPage() {
                       <p className="text-sm text-muted-foreground mt-1">
                         {step.message || step.step_description}
                       </p>
-                      
+
                       {/* Error retry button */}
                       {step.status === 'error' && (
                         <Button
@@ -376,7 +376,7 @@ export default function WhatsAppSetupPage() {
                         </Button>
                       )}
                     </div>
-                    
+
                     {/* Step Icon */}
                     <div className={cn(
                       'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
@@ -390,7 +390,7 @@ export default function WhatsAppSetupPage() {
                   </div>
                 )
               })}
-              
+
               {/* Action Button */}
               {!status.is_complete && !isConnecting && (
                 <div className="pt-4 border-t">
@@ -437,7 +437,7 @@ export default function WhatsAppSetupPage() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -449,7 +449,7 @@ export default function WhatsAppSetupPage() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mb-4">

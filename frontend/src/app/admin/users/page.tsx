@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { ContentContainer } from '@/components/shared/content-container'
+import { PageHeader } from '@/components/shared/page-header'
 
 interface User {
   id: string
@@ -203,70 +205,67 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Kullanıcılar</h1>
-          <p className="text-slate-400 mt-1">Toplam {total} kullanıcı</p>
-        </div>
-        <Button 
-          onClick={() => setShowCreateModal(true)}
-          className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Yeni Kullanıcı
-        </Button>
-      </div>
+    <ContentContainer>
+      <div className="space-y-6">
+        <PageHeader
+          title="Kullanıcılar"
+          description={`Toplam ${total} kullanıcı`}
+          actions={(
+            <Button onClick={() => setShowCreateModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Yeni Kullanıcı
+            </Button>
+          )}
+        />
 
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-        <Input
-          placeholder="İsim veya e-posta ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10 bg-slate-900 border-slate-800 text-white placeholder:text-slate-500"
-        />
-      </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            placeholder="İsim veya e-posta ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
 
       {/* Users Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="bg-card border border-border/70 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-800">
-                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Kullanıcı</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Durum</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Rol</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Kayıt Tarihi</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-slate-400">İşlemler</th>
+              <tr className="border-b border-border/70">
+                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Kullanıcı</th>
+                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Durum</th>
+                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Rol</th>
+                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Kayıt Tarihi</th>
+                <th className="text-right px-6 py-4 text-sm font-medium text-muted-foreground">İşlemler</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={5} className="text-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-violet-500 mx-auto"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-slate-400">
+                  <td colSpan={5} className="text-center py-12 text-muted-foreground">
                     Kullanıcı bulunamadı
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
+                  <tr key={user.id} className="border-b border-border/70 hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center text-white font-semibold">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-foreground font-semibold">
                           {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
                         </div>
                         <div>
-                          <p className="text-white font-medium">{user.full_name}</p>
-                          <p className="text-sm text-slate-400">{user.email}</p>
+                          <p className="text-foreground font-medium">{user.full_name}</p>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
                         </div>
                       </div>
                     </td>
@@ -285,17 +284,17 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       {user.is_admin ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-violet-500/20 text-violet-400">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                           <Shield className="w-3 h-3" />
                           Admin
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-500/20 text-slate-400">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted/60 text-muted-foreground">
                           Kullanıcı
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-slate-400 text-sm">
+                    <td className="px-6 py-4 text-muted-foreground text-sm">
                       {new Date(user.created_at).toLocaleDateString('tr-TR')}
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -304,23 +303,23 @@ export default function UsersPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setActionMenuId(actionMenuId === user.id ? null : user.id)}
-                          className="text-slate-400 hover:text-white"
+                          className="text-muted-foreground hover:text-foreground"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                         
                         {actionMenuId === user.id && (
-                          <div className="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-10 py-1">
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-muted border border-border/70 rounded-xl shadow-xl z-10 py-1">
                             <button
                               onClick={() => openEditModal(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
                             >
                               <Edit className="w-4 h-4" />
                               Düzenle
                             </button>
                             <button
                               onClick={() => handleToggleAdmin(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
                             >
                               {user.is_admin ? (
                                 <>
@@ -336,7 +335,7 @@ export default function UsersPage() {
                             </button>
                             <button
                               onClick={() => handleToggleActive(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
                             >
                               {user.is_active ? (
                                 <>
@@ -350,7 +349,7 @@ export default function UsersPage() {
                                 </>
                               )}
                             </button>
-                            <hr className="my-1 border-slate-700" />
+                            <hr className="my-1 border-border/70" />
                             <button
                               onClick={() => handleDeleteUser(user.id)}
                               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
@@ -371,8 +370,8 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800">
-            <p className="text-sm text-slate-400">
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border/70">
+            <p className="text-sm text-muted-foreground">
               Sayfa {page} / {totalPages}
             </p>
             <div className="flex gap-2">
@@ -381,7 +380,7 @@ export default function UsersPage() {
                 size="sm"
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="border-slate-700 text-slate-400 hover:text-white"
+                className="border-border/70 text-muted-foreground hover:text-foreground"
               >
                 Önceki
               </Button>
@@ -390,7 +389,7 @@ export default function UsersPage() {
                 size="sm"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="border-slate-700 text-slate-400 hover:text-white"
+                className="border-border/70 text-muted-foreground hover:text-foreground"
               >
                 Sonraki
               </Button>
@@ -402,40 +401,40 @@ export default function UsersPage() {
       {/* Create User Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-slate-800">
-              <h2 className="text-xl font-semibold text-white">Yeni Kullanıcı</h2>
-              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white">
+          <div className="bg-card border border-border/70 rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-border/70">
+              <h2 className="text-xl font-semibold text-foreground">Yeni Kullanıcı</h2>
+              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleCreateUser} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Ad Soyad</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Ad Soyad</label>
                 <Input
                   value={createForm.full_name}
                   onChange={(e) => setCreateForm(f => ({ ...f, full_name: e.target.value }))}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-muted border-border/70 text-foreground"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">E-posta</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">E-posta</label>
                 <Input
                   type="email"
                   value={createForm.email}
                   onChange={(e) => setCreateForm(f => ({ ...f, email: e.target.value }))}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-muted border-border/70 text-foreground"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Şifre</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Şifre</label>
                 <Input
                   type="password"
                   value={createForm.password}
                   onChange={(e) => setCreateForm(f => ({ ...f, password: e.target.value }))}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-muted border-border/70 text-foreground"
                   required
                 />
               </div>
@@ -445,15 +444,15 @@ export default function UsersPage() {
                   id="is_admin"
                   checked={createForm.is_admin}
                   onChange={(e) => setCreateForm(f => ({ ...f, is_admin: e.target.checked }))}
-                  className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-violet-600 focus:ring-violet-500"
+                  className="w-4 h-4 rounded border-border/70 bg-muted text-primary focus:ring-primary"
                 />
-                <label htmlFor="is_admin" className="text-sm text-slate-400">Admin yetkisi ver</label>
+                <label htmlFor="is_admin" className="text-sm text-muted-foreground">Admin yetkisi ver</label>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)} className="flex-1 border-slate-700 text-slate-400">
+                <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)} className="flex-1 border-border/70 text-muted-foreground">
                   İptal
                 </Button>
-                <Button type="submit" className="flex-1 bg-gradient-to-r from-violet-600 to-purple-600">
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90">
                   Oluştur
                 </Button>
               </div>
@@ -465,30 +464,30 @@ export default function UsersPage() {
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-slate-800">
-              <h2 className="text-xl font-semibold text-white">Kullanıcıyı Düzenle</h2>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white">
+          <div className="bg-card border border-border/70 rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-border/70">
+              <h2 className="text-xl font-semibold text-foreground">Kullanıcıyı Düzenle</h2>
+              <button onClick={() => setShowEditModal(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleEditUser} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Ad Soyad</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Ad Soyad</label>
                 <Input
                   value={editForm.full_name}
                   onChange={(e) => setEditForm(f => ({ ...f, full_name: e.target.value }))}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-muted border-border/70 text-foreground"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">E-posta</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">E-posta</label>
                 <Input
                   type="email"
                   value={editForm.email}
                   onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-muted border-border/70 text-foreground"
                   required
                 />
               </div>
@@ -499,9 +498,9 @@ export default function UsersPage() {
                     id="edit_is_admin"
                     checked={editForm.is_admin}
                     onChange={(e) => setEditForm(f => ({ ...f, is_admin: e.target.checked }))}
-                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-violet-600 focus:ring-violet-500"
+                    className="w-4 h-4 rounded border-border/70 bg-muted text-primary focus:ring-primary"
                   />
-                  <label htmlFor="edit_is_admin" className="text-sm text-slate-400">Admin</label>
+                  <label htmlFor="edit_is_admin" className="text-sm text-muted-foreground">Admin</label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -509,16 +508,16 @@ export default function UsersPage() {
                     id="edit_is_active"
                     checked={editForm.is_active}
                     onChange={(e) => setEditForm(f => ({ ...f, is_active: e.target.checked }))}
-                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-violet-600 focus:ring-violet-500"
+                    className="w-4 h-4 rounded border-border/70 bg-muted text-primary focus:ring-primary"
                   />
-                  <label htmlFor="edit_is_active" className="text-sm text-slate-400">Aktif</label>
+                  <label htmlFor="edit_is_active" className="text-sm text-muted-foreground">Aktif</label>
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowEditModal(false)} className="flex-1 border-slate-700 text-slate-400">
+                <Button type="button" variant="outline" onClick={() => setShowEditModal(false)} className="flex-1 border-border/70 text-muted-foreground">
                   İptal
                 </Button>
-                <Button type="submit" className="flex-1 bg-gradient-to-r from-violet-600 to-purple-600">
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90">
                   Kaydet
                 </Button>
               </div>
@@ -526,7 +525,7 @@ export default function UsersPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ContentContainer>
   )
 }
-

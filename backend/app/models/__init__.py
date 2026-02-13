@@ -14,6 +14,19 @@ from app.models.subscription import TenantSubscription, SubscriptionStatus
 from app.models.usage_log import UsageLog, UsageType, DailyStats
 from app.models.bot_settings import BotSettings, ResponseTone, EmojiUsage, DEFAULT_BOT_SETTINGS
 from app.models.tenant_onboarding import TenantOnboarding, OnboardingStepKey, ONBOARDING_STEPS_CONFIG
+from app.models.automation import AutomationRun, AutomationRunStatus, AutomationChannel, TenantAutomationSettings
+from app.models.role import Role
+from app.models.permission import Permission
+from app.models.tenant_membership import TenantMembership
+from app.models.session import UserSession
+from app.models.feature_flag import FeatureFlag
+from app.models.system_event import SystemEvent
+from app.models.incident import Incident
+from app.models.tool import Tool
+from app.models.ticket import Ticket, TicketMessage
+from app.models.password_reset import PasswordResetCode
+from app.models.appointment import Appointment
+from app.models.note import WorkspaceNote
 
 __all__ = [
     # Core models
@@ -55,5 +68,25 @@ __all__ = [
     # Tenant Onboarding
     "TenantOnboarding",
     "OnboardingStepKey",
-    "ONBOARDING_STEPS_CONFIG"
+    "ONBOARDING_STEPS_CONFIG",
+    # n8n Automation
+    "AutomationRun",
+    "AutomationRunStatus",
+    "AutomationChannel",
+    "TenantAutomationSettings",
+    # RBAC & Sessions
+    "Role",
+    "Permission",
+    "TenantMembership",
+    "UserSession",
+    "FeatureFlag",
+    # Observability
+    "SystemEvent",
+    "Incident",
+    "Tool",
+    "Ticket",
+    "TicketMessage",
+    "PasswordResetCode",
+    "Appointment",
+    "WorkspaceNote"
 ]

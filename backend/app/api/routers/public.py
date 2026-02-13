@@ -4,14 +4,16 @@ No authentication required.
 """
 
 import secrets
+from datetime import datetime
 from uuid import UUID
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.bot import Bot
-from app.models.conversation import Conversation, ConversationSource
+from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message, MessageSender
 from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead
@@ -19,13 +21,16 @@ from app.schemas.public import (
     ChatInitRequest,
     ChatInitResponse,
     ChatSendRequest,
-    ChatSendResponse
+    ChatSendResponse,
+    ChatMessagesResponse,
+    ChatMessage
 )
 from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
 
 router = APIRouter(prefix="/public", tags=["Public Chat"])
+logger = logging.getLogger(__name__)
 
 
 def generate_external_user_id() -> str:
@@ -89,7 +94,9 @@ async def init_chat(
             primary_color=bot.primary_color,
             widget_position=bot.widget_position
         ),
-        welcome_message=bot.welcome_message
+        welcome_message=bot.welcome_message,
+        conversation_status=conversation.status,
+        is_ai_paused=conversation.is_ai_paused
     )
 
 
@@ -119,6 +126,18 @@ async def send_chat_message(
             detail="Konuşma bulunamadı"
         )
     
+    if request.external_user_id and request.external_user_id != conversation.external_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu konuşmaya erişim izniniz yok"
+        )
+
+    if request.external_user_id is None:
+        logger.warning(
+            "Public chat send without external_user_id for conversation %s",
+            request.conversation_id
+        )
+
     # Get bot
     bot = db.query(Bot).filter(
         Bot.id == conversation.bot_id,
@@ -139,6 +158,17 @@ async def send_chat_message(
     )
     db.add(user_message)
     db.commit()
+    
+    if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+        return ChatSendResponse(
+            user_message_id=user_message.id,
+            reply_message_id=None,
+            reply=None,
+            user_created_at=user_message.created_at,
+            reply_created_at=None,
+            conversation_status=conversation.status,
+            is_ai_paused=conversation.is_ai_paused
+        )
     
     # Get knowledge items
     knowledge_items = db.query(BotKnowledgeItem).filter(
@@ -167,8 +197,60 @@ async def send_chat_message(
     db.refresh(bot_message)
     
     return ChatSendResponse(
-        message_id=bot_message.id,
-        reply=ai_response
+        user_message_id=user_message.id,
+        reply_message_id=bot_message.id,
+        reply=ai_response,
+        user_created_at=user_message.created_at,
+        reply_created_at=bot_message.created_at,
+        conversation_status=conversation.status,
+        is_ai_paused=conversation.is_ai_paused
+    )
+
+
+@router.get("/chat/messages", response_model=ChatMessagesResponse)
+async def list_chat_messages(
+    conversation_id: UUID,
+    external_user_id: str,
+    since: datetime | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+) -> ChatMessagesResponse:
+    """
+    List messages for a public chat conversation.
+    """
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.external_user_id == external_user_id,
+        Conversation.source == ConversationSource.WEB_WIDGET.value
+    ).first()
+    
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Konuşma bulunamadı"
+        )
+    
+    query = db.query(Message).filter(
+        Message.conversation_id == conversation.id
+    )
+    
+    if since is not None:
+        query = query.filter(Message.created_at > since)
+    
+    messages = query.order_by(Message.created_at.asc()).limit(limit).all()
+    
+    return ChatMessagesResponse(
+        messages=[
+            ChatMessage(
+                id=message.id,
+                sender=message.sender,
+                content=message.content,
+                created_at=message.created_at
+            )
+            for message in messages
+        ],
+        conversation_status=conversation.status,
+        is_ai_paused=conversation.is_ai_paused
     )
 
 
@@ -213,6 +295,7 @@ async def create_public_lead(
             )
     
     lead = Lead(
+        tenant_id=bot.tenant_id,
         bot_id=bot.id,
         conversation_id=lead_data.conversation_id,
         name=lead_data.name,
@@ -226,4 +309,3 @@ async def create_public_lead(
     db.refresh(lead)
     
     return lead
-

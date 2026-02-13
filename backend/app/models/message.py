@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import String, DateTime, ForeignKey, Text, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +23,9 @@ class Message(Base):
     """Message model representing a single chat message."""
     
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+    )
     
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -58,4 +61,3 @@ class Message(Base):
     
     def __repr__(self) -> str:
         return f"<Message {self.id} from {self.sender}>"
-

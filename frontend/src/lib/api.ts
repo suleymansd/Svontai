@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
@@ -15,6 +16,14 @@ api.interceptors.request.use((config) => {
     const token = localStorage.getItem('access_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+
+    const tenantContextId = localStorage.getItem(ADMIN_TENANT_CONTEXT_ID_KEY)
+    const headers = config.headers as Record<string, string>
+    if (tenantContextId) {
+      headers['X-Tenant-ID'] = tenantContextId
+    } else {
+      delete headers['X-Tenant-ID']
     }
   }
   return config
@@ -36,8 +45,11 @@ api.interceptors.response.use(
             refresh_token: refreshToken,
           })
 
-          const { access_token } = response.data
+          const { access_token, refresh_token: newRefreshToken } = response.data
           localStorage.setItem('access_token', access_token)
+          if (newRefreshToken) {
+            localStorage.setItem('refresh_token', newRefreshToken)
+          }
 
           originalRequest.headers.Authorization = `Bearer ${access_token}`
           return api(originalRequest)
@@ -66,6 +78,12 @@ export const authApi = {
   
   refresh: (refresh_token: string) =>
     api.post('/auth/refresh', { refresh_token }),
+
+  requestPasswordReset: (email: string) =>
+    api.post('/auth/password-reset/request', { email }),
+
+  confirmPasswordReset: (data: { email: string; code: string; new_password: string }) =>
+    api.post('/auth/password-reset/confirm', data),
 }
 
 // User API
@@ -73,6 +91,10 @@ export const userApi = {
   getMe: () => api.get('/me'),
   updateMe: (data: { full_name?: string; email?: string }) =>
     api.put('/me', data),
+}
+
+export const meApi = {
+  getContext: () => api.get('/api/me'),
 }
 
 // Tenant API
@@ -172,7 +194,84 @@ export const adminApi = {
   // Tenants
   listTenants: (params?: { page?: number; page_size?: number; search?: string }) =>
     api.get('/admin/tenants', { params }),
+  getTenant: (id: string) => api.get(`/admin/tenants/${id}`),
+  updateTenantFeatureFlags: (id: string, enabled_flags: string[]) =>
+    api.patch(`/admin/tenants/${id}/feature-flags`, { enabled_flags }),
+  suspendTenant: (id: string) => api.post(`/admin/tenants/${id}/suspend`),
+  unsuspendTenant: (id: string) => api.post(`/admin/tenants/${id}/unsuspend`),
   deleteTenant: (id: string) => api.delete(`/admin/tenants/${id}`),
+
+  // Plans
+  listPlans: (params?: { page?: number; page_size?: number; search?: string; is_active?: boolean; is_public?: boolean }) =>
+    api.get('/admin/plans', { params }),
+  createPlan: (data: {
+    name: string
+    display_name: string
+    description?: string
+    plan_type: string
+    price_monthly: number
+    price_yearly: number
+    currency: string
+    message_limit: number
+    bot_limit: number
+    knowledge_items_limit: number
+    feature_flags: Record<string, unknown>
+    trial_days: number
+    is_active: boolean
+    is_public: boolean
+    sort_order: number
+  }) => api.post('/admin/plans', data),
+  updatePlan: (id: string, data: Partial<{
+    name: string
+    display_name: string
+    description: string
+    plan_type: string
+    price_monthly: number
+    price_yearly: number
+    currency: string
+    message_limit: number
+    bot_limit: number
+    knowledge_items_limit: number
+    feature_flags: Record<string, unknown>
+    trial_days: number
+    is_active: boolean
+    is_public: boolean
+    sort_order: number
+  }>) => api.put(`/admin/plans/${id}`, data),
+  deletePlan: (id: string) => api.delete(`/admin/plans/${id}`),
+
+  // Tools
+  listTools: (params?: { page?: number; page_size?: number; search?: string; category?: string; status?: string; coming_soon?: boolean }) =>
+    api.get('/admin/tools', { params }),
+  createTool: (data: {
+    key: string
+    name: string
+    description?: string
+    category?: string
+    icon?: string
+    tags?: string[]
+    required_plan?: string
+    status: string
+    is_public: boolean
+    coming_soon: boolean
+  }) => api.post('/admin/tools', data),
+  updateTool: (id: string, data: Partial<{
+    key: string
+    name: string
+    description: string
+    category: string
+    icon: string
+    tags: string[]
+    required_plan: string
+    status: string
+    is_public: boolean
+    coming_soon: boolean
+  }>) => api.put(`/admin/tools/${id}`, data),
+  deleteTool: (id: string) => api.delete(`/admin/tools/${id}`),
+
+  // Audit logs
+  listAuditLogs: (params?: { skip?: number; limit?: number; tenant_id?: string; action?: string }) =>
+    api.get('/admin/audit', { params }),
   
   // System
   getHealth: () => api.get('/admin/health'),
@@ -228,4 +327,107 @@ export const operatorApi = {
     api.post('/operator/send-message', { conversation_id: conversationId, content }),
   getConversationMessages: (conversationId: string, skip?: number, limit?: number) =>
     api.get(`/operator/conversation/${conversationId}/messages`, { params: { skip, limit } }),
+}
+
+// Appointments API
+export const appointmentsApi = {
+  list: (params?: { status?: string }) => api.get('/appointments', { params }),
+  create: (data: {
+    customer_name: string
+    customer_email?: string
+    subject: string
+    starts_at: string
+    notes?: string
+    reminder_before_minutes?: number
+  }) => api.post('/appointments', data),
+  update: (id: string, data: Partial<{
+    customer_name: string
+    customer_email: string
+    subject: string
+    starts_at: string
+    notes: string
+    status: 'scheduled' | 'completed' | 'cancelled'
+    reminder_before_minutes: number
+  }>) => api.patch(`/appointments/${id}`, data),
+  sendReminders: () => api.post('/appointments/send-reminders'),
+}
+
+// Notes API
+export const notesApi = {
+  list: (params?: { archived?: boolean }) => api.get('/notes', { params }),
+  create: (data: {
+    title: string
+    content: string
+    color?: string
+    pinned?: boolean
+    position_x?: number
+    position_y?: number
+  }) => api.post('/notes', data),
+  update: (id: string, data: Partial<{
+    title: string
+    content: string
+    color: string
+    pinned: boolean
+    position_x: number
+    position_y: number
+    archived: boolean
+  }>) => api.patch(`/notes/${id}`, data),
+  delete: (id: string) => api.delete(`/notes/${id}`),
+}
+
+// Automation API (n8n Integration)
+export const automationApi = {
+  // Settings
+  getSettings: () => api.get('/automation/settings'),
+  updateSettings: (data: {
+    use_n8n?: boolean
+    default_workflow_id?: string
+    whatsapp_workflow_id?: string
+    widget_workflow_id?: string
+    custom_n8n_url?: string
+    enable_auto_retry?: boolean
+    max_retries?: number
+    timeout_seconds?: number
+  }) => api.put('/automation/settings', data),
+  
+  // Status
+  getStatus: () => api.get('/automation/status'),
+  
+  // Runs
+  listRuns: (params?: { skip?: number; limit?: number; status_filter?: string }) =>
+    api.get('/automation/runs', { params }),
+  
+  // Test
+  sendTestEvent: (testMessage?: string) =>
+    api.post('/automation/test', { test_message: testMessage || 'Test message' }),
+}
+
+// System Events API
+export const systemEventsApi = {
+  list: (params?: { skip?: number; limit?: number; level?: string; source?: string; code?: string; tenant_id?: string }) =>
+    api.get('/system-events', { params }),
+}
+
+// Incidents API
+export const incidentsApi = {
+  list: (params?: { skip?: number; limit?: number; status?: string; severity?: string }) =>
+    api.get('/incidents', { params }),
+  get: (id: string) => api.get(`/incidents/${id}`),
+  create: (data: { title: string; severity: string; status: string; tenant_id?: string | null }) =>
+    api.post('/incidents', data),
+  update: (id: string, data: Partial<{ title: string; severity: string; status: string; assigned_to?: string | null; root_cause?: string | null; resolution?: string | null }>) =>
+    api.patch(`/incidents/${id}`, data),
+}
+
+// Tickets API
+export const ticketsApi = {
+  list: (params?: { skip?: number; limit?: number; status?: string; priority?: string; tenant_id?: string }) =>
+    api.get('/tickets', { params }),
+  get: (id: string) => api.get(`/tickets/${id}`),
+  create: (data: { subject: string; priority: string; message: string }) =>
+    api.post('/tickets', data),
+  addMessage: (id: string, data: { body: string }) =>
+    api.post(`/tickets/${id}/messages`, data),
+  update: (id: string, data: Partial<{ status: string; priority: string; assigned_to?: string | null }>) =>
+    api.patch(`/tickets/${id}`, data),
 }

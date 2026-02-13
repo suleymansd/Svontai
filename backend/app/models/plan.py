@@ -153,7 +153,12 @@ DEFAULT_PLANS = [
             "api_access": False,
             "export_data": False,
             "operator_takeover": False,
-            "lead_automation": False
+            "lead_automation": False,
+            "tickets": True,
+            "error_center": True,
+            "usage": True,
+            "tools_catalog": True,
+            "tool_guides": True
         }
     },
     {
@@ -176,7 +181,12 @@ DEFAULT_PLANS = [
             "api_access": False,
             "export_data": True,
             "operator_takeover": False,
-            "lead_automation": True
+            "lead_automation": True,
+            "tickets": True,
+            "error_center": True,
+            "usage": True,
+            "tools_catalog": True,
+            "tool_guides": True
         }
     },
     {
@@ -199,7 +209,12 @@ DEFAULT_PLANS = [
             "api_access": True,
             "export_data": True,
             "operator_takeover": True,
-            "lead_automation": True
+            "lead_automation": True,
+            "tickets": True,
+            "error_center": True,
+            "usage": True,
+            "tools_catalog": True,
+            "tool_guides": True
         }
     },
     {
@@ -224,8 +239,12 @@ DEFAULT_PLANS = [
             "operator_takeover": True,
             "lead_automation": True,
             "white_label": True,
-            "dedicated_support": True
+            "dedicated_support": True,
+            "tickets": True,
+            "error_center": True,
+            "usage": True,
+            "tools_catalog": True,
+            "tool_guides": True
         }
     }
 ]
-

@@ -12,6 +12,8 @@ from sqlalchemy import select
 from app.models.plan import Plan, DEFAULT_PLANS
 from app.models.subscription import TenantSubscription, SubscriptionStatus
 from app.models.tenant import Tenant
+from app.models.system_event import SystemEvent
+from app.services.system_event_service import SystemEventService
 
 
 class SubscriptionService:
@@ -19,6 +21,30 @@ class SubscriptionService:
     
     def __init__(self, db: Session):
         self.db = db
+
+    def _log_limit_event(
+        self,
+        tenant_id: uuid.UUID,
+        code: str,
+        message: str,
+        meta: dict
+    ) -> None:
+        window_start = datetime.utcnow() - timedelta(minutes=15)
+        existing = self.db.query(SystemEvent).filter(
+            SystemEvent.tenant_id == str(tenant_id),
+            SystemEvent.code == code,
+            SystemEvent.created_at >= window_start
+        ).first()
+        if existing:
+            return
+        SystemEventService(self.db).log(
+            tenant_id=str(tenant_id),
+            source="subscription",
+            level="warn",
+            code=code,
+            message=message,
+            meta_json=meta
+        )
     
     def get_or_create_free_plan(self) -> Plan:
         """Get or create the free plan."""
@@ -102,6 +128,16 @@ class SubscriptionService:
         # Check message limit
         plan = subscription.plan
         if subscription.messages_used_this_month >= plan.message_limit:
+            self._log_limit_event(
+                tenant_id,
+                "MESSAGE_LIMIT_EXCEEDED",
+                "Monthly message limit exceeded",
+                {
+                    "limit": plan.message_limit,
+                    "used": subscription.messages_used_this_month,
+                    "plan": plan.name
+                }
+            )
             return False, f"Aylık mesaj limitinize ({plan.message_limit}) ulaştınız. Planınızı yükseltin."
         
         return True, "OK"
@@ -124,6 +160,16 @@ class SubscriptionService:
         
         plan = subscription.plan
         if current_bot_count >= plan.bot_limit:
+            self._log_limit_event(
+                tenant_id,
+                "BOT_LIMIT_EXCEEDED",
+                "Bot limit exceeded",
+                {
+                    "limit": plan.bot_limit,
+                    "current": current_bot_count,
+                    "plan": plan.name
+                }
+            )
             return False, f"Bot limitinize ({plan.bot_limit}) ulaştınız. Planınızı yükseltin."
         
         return True, "OK"
@@ -242,4 +288,3 @@ def check_subscription_limit(
         return service.check_bot_limit(tenant_id, bot_count)
     else:
         return True, "OK"
-

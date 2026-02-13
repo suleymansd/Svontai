@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { authApi, tenantApi, userApi } from '@/lib/api'
+import { authApi, tenantApi, meApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
+import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { setUser, setTenant } = useAuthStore()
+  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
@@ -39,18 +40,24 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
       })
-      
+
       const { access_token, refresh_token } = loginResponse.data
       localStorage.setItem('access_token', access_token)
       localStorage.setItem('refresh_token', refresh_token)
 
-      const userResponse = await userApi.getMe()
-      setUser(userResponse.data)
-
       const tenantResponse = await tenantApi.createTenant({
         name: formData.company_name || formData.full_name + "'in İşletmesi",
       })
-      setTenant(tenantResponse.data)
+
+      const contextResponse = await meApi.getContext()
+      const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data
+      setUser(user)
+      setTenant(tenant || tenantResponse.data)
+      setRole(role)
+      setPermissions(permissions || [])
+      setEntitlements(entitlements || {})
+      setFeatureFlags(feature_flags || {})
+      clearAdminTenantContext()
 
       router.push('/dashboard')
     } catch (err: any) {
@@ -73,22 +80,22 @@ export default function RegisterPage() {
       <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-violet-600 via-purple-600 to-blue-600 overflow-hidden">
         {/* Pattern */}
         <div className="absolute inset-0 dot-pattern opacity-20" />
-        
+
         {/* Floating Elements */}
         <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-20 left-20 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
-        
+
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center p-16 text-white">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-8">
             <Sparkles className="w-4 h-4 text-yellow-400" />
             <span className="text-sm font-medium">Ücretsiz Başlayın</span>
           </div>
-          
+
           <h2 className="text-4xl font-bold text-center mb-6 max-w-lg">
             İşletmenizi 7/24 açık tutun
           </h2>
-          
+
           <p className="text-lg text-purple-100 text-center max-w-md mb-12">
             Yapay zeka destekli asistanınız müşterilerinize anında yanıt versin.
           </p>
@@ -96,8 +103,8 @@ export default function RegisterPage() {
           {/* Benefits */}
           <div className="space-y-4">
             {benefits.map((benefit, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+              <div key={i} className="flex items-center gap-3 animate-slide-up" style={{ animationDelay: `${i * 150}ms` }}>
+                <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
                   <Check className="w-4 h-4" />
                 </div>
                 <span>{benefit}</span>
@@ -106,9 +113,9 @@ export default function RegisterPage() {
           </div>
 
           {/* Testimonial */}
-          <div className="mt-16 p-6 rounded-2xl bg-white/10 backdrop-blur-sm max-w-md">
+          <div className="mt-16 p-6 rounded-2xl glass-card border border-white/20 max-w-md hover:border-white/30 transition-all duration-300 card-hover-lift">
             <p className="text-purple-100 mb-4">
-              "SvontAi sayesinde müşteri sorularına anında yanıt veriyoruz. 
+              "SvontAi sayesinde müşteri sorularına anında yanıt veriyoruz.
               Satışlarımız %40 arttı!"
             </p>
             <div className="flex items-center gap-3">
@@ -124,7 +131,7 @@ export default function RegisterPage() {
 
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md animate-slide-up">
           {/* Logo */}
           <Link href="/" className="inline-flex items-center gap-3 mb-12">
             <Logo size="lg" showText={true} animated={true} />
@@ -132,7 +139,7 @@ export default function RegisterPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Hesap oluşturun</h1>
+            <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Hesap oluşturun</h1>
             <p className="text-muted-foreground">
               14 günlük ücretsiz deneme ile başlayın
             </p>
@@ -141,15 +148,15 @@ export default function RegisterPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="full_name" className="text-sm font-medium">Ad Soyad</Label>
-              <div className="relative">
+              <div className="relative input-glow rounded-xl transition-all duration-300">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="full_name"
@@ -177,7 +184,7 @@ export default function RegisterPage() {
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">E-posta</Label>
               <div className="relative">
@@ -193,7 +200,7 @@ export default function RegisterPage() {
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium">Şifre</Label>
               <div className="relative">
@@ -211,9 +218,9 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25" 
+            <Button
+              type="submit"
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25 btn-shimmer"
               disabled={isLoading}
             >
               {isLoading ? (

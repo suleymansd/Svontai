@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.conversation import Conversation
@@ -24,7 +25,8 @@ async def list_all_conversations(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Conversation]:
     """
     List all conversations for the tenant's bots.
@@ -53,7 +55,8 @@ async def list_bot_conversations(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Conversation]:
     """
     List conversations for a specific bot.
@@ -93,7 +96,8 @@ async def list_bot_conversations(
 async def get_conversation(
     conversation_id: UUID,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> Conversation:
     """
     Get a specific conversation with messages.
@@ -126,7 +130,8 @@ async def get_conversation_messages(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Message]:
     """
     Get messages for a specific conversation.
@@ -160,4 +165,3 @@ async def get_conversation_messages(
     ).offset(skip).limit(limit).all()
     
     return messages
-

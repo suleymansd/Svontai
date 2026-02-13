@@ -1,0 +1,298 @@
+{
+  "name": "SvontAI - Incoming WhatsApp Message Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-incoming",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "svontai-incoming"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming message from SvontAI\nconst body = $input.first().json.body;\n\n// Extract key fields\nconst data = {\n  runId: body.runId,\n  tenantId: body.tenantId,\n  channel: body.channel,\n  from: body.from,\n  to: body.to,\n  text: body.text,\n  messageId: body.messageId,\n  timestamp: body.timestamp,\n  contactName: body.contactName,\n  callbackUrl: body.callback?.url,\n  callbackToken: body.callback?.token,\n  extra: body.extra || {}\n};\n\n// Log for debugging\nconsole.log('Incoming message:', data.text);\nconsole.log('From:', data.from);\n\nreturn [{ json: data }];"
+      },
+      "id": "parse-message",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.text.toLowerCase() }}",
+              "rightValue": "fiyat",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $json.text.toLowerCase() }}",
+              "rightValue": "price",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $json.text.toLowerCase() }}",
+              "rightValue": "ücret",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ]
+        }
+      },
+      "id": "price-check",
+      "name": "Fiyat Sorgusu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare price response\nconst input = $input.first().json;\n\nconst response = {\n  ...input,\n  responseText: `Merhaba ${input.contactName || 'değerli müşterimiz'}! 🙏\\n\\nFiyatlarımız hakkında bilgi almak için lütfen web sitemizi ziyaret edin veya size özel bir teklif hazırlamamız için iletişim bilgilerinizi paylaşın.\\n\\nTeşekkürler! 💙`\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "price-response",
+      "name": "Fiyat Yanıtı Hazırla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare default response\nconst input = $input.first().json;\n\nconst response = {\n  ...input,\n  responseText: `Merhaba ${input.contactName || 'değerli müşterimiz'}! 👋\\n\\nMesajınız için teşekkürler. En kısa sürede size yardımcı olacağız.\\n\\nBilgi almak istediğiniz konuyu detaylandırabilir misiniz?`\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "default-response",
+      "name": "Varsayılan Yanıt Hazırla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 100]
+    },
+    {
+      "parameters": {
+        "operation": "merge",
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-responses",
+      "name": "Yanıtları Birleştir",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.callbackToken }}"
+            },
+            {
+              "name": "X-Tenant-Id",
+              "value": "={{ $json.tenantId }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tenantId\": \"{{ $json.tenantId }}\",\n  \"to\": \"{{ $json.from }}\",\n  \"text\": \"{{ $json.responseText }}\",\n  \"meta\": {\n    \"runId\": \"{{ $json.runId }}\",\n    \"n8nExecutionId\": \"{{ $execution.id }}\"\n  }\n}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "id": "send-response",
+      "name": "SvontAI'a Yanıt Gönder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, executionId: $execution.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "webhook-response",
+      "name": "Webhook Yanıtı",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Parse Message').item.json.callbackUrl.replace('/whatsapp/send', '/automation/status') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Parse Message').item.json.callbackToken }}"
+            },
+            {
+              "name": "X-Tenant-Id",
+              "value": "={{ $('Parse Message').item.json.tenantId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"runId\": \"{{ $('Parse Message').item.json.runId }}\",\n  \"status\": \"failed\",\n  \"errorMessage\": \"{{ $json.error?.message || 'Workflow execution failed' }}\"\n}",
+        "options": {}
+      },
+      "id": "error-handler",
+      "name": "Hata Bildirimi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          {
+            "node": "Fiyat Sorgusu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fiyat Sorgusu?": {
+      "main": [
+        [
+          {
+            "node": "Fiyat Yanıtı Hazırla",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Varsayılan Yanıt Hazırla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fiyat Yanıtı Hazırla": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları Birleştir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Varsayılan Yanıt Hazırla": {
+      "main": [
+        [
+          {
+            "node": "Yanıtları Birleştir",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Yanıtları Birleştir": {
+      "main": [
+        [
+          {
+            "node": "SvontAI'a Yanıt Gönder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SvontAI'a Yanıt Gönder": {
+      "main": [
+        [
+          {
+            "node": "Webhook Yanıtı",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "instanceId": "svontai"
+  },
+  "pinData": {},
+  "tags": [
+    {
+      "name": "SvontAI",
+      "createdAt": "2024-01-20T10:00:00.000Z",
+      "updatedAt": "2024-01-20T10:00:00.000Z"
+    },
+    {
+      "name": "WhatsApp",
+      "createdAt": "2024-01-20T10:00:00.000Z",
+      "updatedAt": "2024-01-20T10:00:00.000Z"
+    }
+  ]
+}

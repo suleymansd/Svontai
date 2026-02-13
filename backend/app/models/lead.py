@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Boolean, JSON, Integer
+from sqlalchemy import String, DateTime, ForeignKey, Text, Boolean, JSON, Integer, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -33,6 +33,9 @@ class Lead(Base):
     """Lead model for storing customer contact information."""
     
     __tablename__ = "leads"
+    __table_args__ = (
+        Index("ix_leads_bot_created", "bot_id", "created_at"),
+    )
     
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -149,4 +152,3 @@ class Lead(Base):
     
     def __repr__(self) -> str:
         return f"<Lead {self.name or self.email or self.phone}>"
-

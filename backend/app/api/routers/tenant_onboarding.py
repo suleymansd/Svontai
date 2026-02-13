@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.services.tenant_onboarding_service import TenantOnboardingService
@@ -54,7 +55,8 @@ class CompleteStepRequest(BaseModel):
 async def get_onboarding_status(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get current onboarding status."""
     service = TenantOnboardingService(db)
@@ -66,7 +68,8 @@ async def complete_onboarding_step(
     request: CompleteStepRequest,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """Mark an onboarding step as completed."""
     service = TenantOnboardingService(db)
@@ -77,7 +80,8 @@ async def complete_onboarding_step(
 async def dismiss_onboarding(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """Dismiss the onboarding wizard."""
     service = TenantOnboardingService(db)
@@ -88,7 +92,8 @@ async def dismiss_onboarding(
 async def check_onboarding_progress(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """Auto-check and update onboarding progress based on current state."""
     service = TenantOnboardingService(db)
@@ -99,9 +104,9 @@ async def check_onboarding_progress(
 async def get_next_action(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get the next recommended action for onboarding."""
     service = TenantOnboardingService(db)
     return service.get_next_action(tenant.id)
-

@@ -4,11 +4,12 @@ Knowledge base management router.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.knowledge import BotKnowledgeItem
@@ -40,8 +41,11 @@ def get_bot_for_tenant(bot_id: UUID, tenant: Tenant, db: Session) -> Bot:
 @router.get("", response_model=list[KnowledgeItemResponse])
 async def list_knowledge_items(
     bot_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[BotKnowledgeItem]:
     """
     List all knowledge items for a bot.
@@ -56,9 +60,14 @@ async def list_knowledge_items(
     """
     get_bot_for_tenant(bot_id, current_tenant, db)
     
-    items = db.query(BotKnowledgeItem).filter(
-        BotKnowledgeItem.bot_id == bot_id
-    ).order_by(BotKnowledgeItem.created_at.desc()).all()
+    items = (
+        db.query(BotKnowledgeItem)
+        .filter(BotKnowledgeItem.bot_id == bot_id)
+        .order_by(BotKnowledgeItem.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     
     return items
 
@@ -68,7 +77,8 @@ async def create_knowledge_item(
     bot_id: UUID,
     item_data: KnowledgeItemCreate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> BotKnowledgeItem:
     """
     Create a new knowledge item.
@@ -104,7 +114,8 @@ async def update_knowledge_item(
     item_id: UUID,
     item_update: KnowledgeItemUpdate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> BotKnowledgeItem:
     """
     Update a knowledge item.
@@ -148,7 +159,8 @@ async def delete_knowledge_item(
     bot_id: UUID,
     item_id: UUID,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"]))
 ) -> None:
     """
     Delete a knowledge item.
@@ -174,4 +186,3 @@ async def delete_knowledge_item(
     
     db.delete(item)
     db.commit()
-

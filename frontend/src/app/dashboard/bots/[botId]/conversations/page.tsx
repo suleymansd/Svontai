@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { conversationApi, botApi } from '@/lib/api'
 import { formatDateTime, truncate } from '@/lib/utils'
+import { ContentContainer } from '@/components/shared/content-container'
+import { PageHeader } from '@/components/shared/page-header'
 
 interface Conversation {
   id: string
@@ -34,19 +36,20 @@ export default function BotConversationsPage() {
   })
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/dashboard/conversations">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold">Konuşmalar</h1>
-          <p className="text-muted-foreground">{bot?.name}</p>
-        </div>
-      </div>
+    <ContentContainer>
+      <div className="space-y-6">
+        <PageHeader
+          title="Konuşmalar"
+          description={bot?.name || 'Bot konuşmaları'}
+          actions={(
+            <Link href="/dashboard/conversations">
+              <Button variant="outline">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Tüm Konuşmalar
+              </Button>
+            </Link>
+          )}
+        />
 
       {/* Conversations List */}
       {isLoading ? (
@@ -109,7 +112,7 @@ export default function BotConversationsPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </ContentContainer>
   )
 }
-

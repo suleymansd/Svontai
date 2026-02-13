@@ -1,18 +1,37 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Sora } from 'next/font/google'
 import './globals.css'
 import { Providers } from '@/components/providers'
 
-const inter = Inter({ 
+const sora = Sora({ 
   subsets: ['latin'],
   variable: '--font-sans',
 })
 
+const metadataBase = new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://svontai.com')
+
 export const metadata: Metadata = {
-  title: 'SvontAi - AI Workflow Optimizer',
-  description: 'İşletmeniz için 7/24 AI asistanı. Müşteri sorularını otomatik yanıtlayın, lead toplayın.',
+  metadataBase,
+  title: {
+    default: 'SvontAI — Automation OS for WhatsApp-first teams',
+    template: '%s — SvontAI',
+  },
+  description: 'SvontAI, WhatsApp müşteri desteğini otomasyonlarla ölçekleyen kurumsal operasyon platformudur.',
   icons: {
     icon: '/logo.png',
+  },
+  openGraph: {
+    title: 'SvontAI — Automation OS for WhatsApp-first teams',
+    description: 'SvontAI, WhatsApp müşteri desteğini otomasyonlarla ölçekleyen kurumsal operasyon platformudur.',
+    url: metadataBase,
+    siteName: 'SvontAI',
+    locale: 'tr_TR',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'SvontAI — Automation OS for WhatsApp-first teams',
+    description: 'SvontAI, WhatsApp müşteri desteğini otomasyonlarla ölçekleyen kurumsal operasyon platformudur.',
   },
 }
 
@@ -23,7 +42,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${sora.variable} font-sans antialiased`}>
         <Providers>
           {children}
         </Providers>

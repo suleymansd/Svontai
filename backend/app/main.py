@@ -27,7 +27,16 @@ from app.api.routers import (
     subscription_router,
     tenant_onboarding_router,
     analytics_router,
-    operator_router
+    operator_router,
+    channels_router,
+    automation_router,
+    me_router,
+    feature_flags_router,
+    system_events_router,
+    incidents_router,
+    tickets_router,
+    appointments_router,
+    notes_router
 )
 
 # Configure logging
@@ -48,11 +57,13 @@ async def lifespan(app: FastAPI):
     # Initialize default plans if needed
     from app.db.session import SessionLocal
     from app.services.subscription_service import SubscriptionService
+    from app.services.rbac_service import RbacService
     
     try:
         db = SessionLocal()
         service = SubscriptionService(db)
         service.get_or_create_free_plan()
+        RbacService(db).ensure_defaults()
         db.close()
         logger.info("Default plans initialized")
     except Exception as e:
@@ -129,6 +140,19 @@ app.include_router(operator_router)
 
 # Include routers - Admin
 app.include_router(admin_router)
+
+# Include routers - n8n Channel Callbacks
+app.include_router(channels_router)
+
+# Include routers - Automation Settings
+app.include_router(automation_router)
+app.include_router(me_router)
+app.include_router(feature_flags_router)
+app.include_router(system_events_router)
+app.include_router(incidents_router)
+app.include_router(tickets_router)
+app.include_router(appointments_router)
+app.include_router(notes_router)
 
 
 @app.get("/")

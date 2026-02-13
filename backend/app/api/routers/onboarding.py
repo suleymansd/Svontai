@@ -2,16 +2,19 @@
 Onboarding API router for WhatsApp setup flow.
 """
 
+import json
 from uuid import UUID
 from typing import Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.services.onboarding_service import OnboardingService
@@ -83,7 +86,8 @@ class WhatsAppAccountResponse(BaseModel):
 async def start_whatsapp_onboarding(
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ) -> OnboardingStartResponse:
     """
     Start WhatsApp onboarding process.
@@ -95,6 +99,15 @@ async def start_whatsapp_onboarding(
     try:
         result = service.start_onboarding(current_tenant.id)
         return OnboardingStartResponse(**result)
+    except MetaAPIError as e:
+        error_messages = e.details.get("errors") if isinstance(e.details, dict) else None
+        detail = "Meta yapılandırması eksik veya geçersiz."
+        if error_messages:
+            detail = f"{detail} " + " ".join(error_messages)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -127,13 +140,9 @@ async def whatsapp_oauth_callback(
     service = OnboardingService(db)
     
     try:
-        account = await service.process_oauth_callback(tenant_id, code)
-        
-        # Return HTML that closes popup and notifies parent
-        return {
-            "success": True,
-            "message": "WhatsApp bağlantısı başarılı!",
-            "redirect_html": """
+        await service.process_oauth_callback(tenant_id, code)
+        return HTMLResponse(
+            content="""
             <html>
             <head><title>WhatsApp Bağlandı</title></head>
             <body>
@@ -149,11 +158,25 @@ async def whatsapp_oauth_callback(
             </body>
             </html>
             """
-        }
+        )
     except MetaAPIError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Meta API hatası: {e.message}"
+        error_message = f"Meta API hatası: {e.message}"
+        error_message_js = json.dumps(error_message)
+        return HTMLResponse(
+            content=f"""
+            <html>
+            <head><title>WhatsApp Bağlantı Hatası</title></head>
+            <body>
+                <script>
+                    if (window.opener) {{
+                        window.opener.postMessage({{type: 'WHATSAPP_CONNECTED', success: false, error: {error_message_js}}}, '*');
+                    }}
+                </script>
+                <p>{error_message}</p>
+            </body>
+            </html>
+            """,
+            status_code=status.HTTP_400_BAD_REQUEST
         )
 
 
@@ -161,7 +184,8 @@ async def whatsapp_oauth_callback(
 async def get_whatsapp_onboarding_status(
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> OnboardingStatusResponse:
     """
     Get current WhatsApp onboarding status.
@@ -195,7 +219,8 @@ async def get_whatsapp_onboarding_status(
 async def get_whatsapp_account(
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> Optional[WhatsAppAccountResponse]:
     """
     Get WhatsApp account details.
@@ -215,7 +240,8 @@ async def get_whatsapp_account(
 async def reset_whatsapp_onboarding(
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """
     Reset WhatsApp onboarding to start fresh.
@@ -248,7 +274,8 @@ async def retry_onboarding_step(
     step_key: str,
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
 ):
     """
     Retry a failed onboarding step.
@@ -271,4 +298,3 @@ async def retry_onboarding_step(
         )
     
     return {"success": True, "message": f"{step_key} adımı sıfırlandı"}
-

@@ -6,23 +6,38 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
-import { 
-  LayoutDashboard, 
-  Users, 
-  Building2, 
-  Settings, 
+import { userApi } from '@/lib/api'
+import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  Settings,
   LogOut,
   Menu,
   X,
   Shield,
   Activity,
-  ChevronLeft
+  ChevronLeft,
+  User,
+  Boxes,
+  Package,
+  LifeBuoy,
+  AlertTriangle
 } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Kullanıcılar', href: '/admin/users', icon: Users },
+  { name: 'Müşteriler', href: '/admin/customers', icon: Building2 },
   { name: 'Tenantlar', href: '/admin/tenants', icon: Building2 },
+  { name: 'Planlar', href: '/admin/plans', icon: Package },
+  { name: 'Araçlar', href: '/admin/tools', icon: Boxes },
+  { name: 'Tickets', href: '/admin/tickets', icon: LifeBuoy },
+  { name: 'Hata Merkezi', href: '/admin/errors', icon: AlertTriangle },
+  { name: 'Incidents', href: '/admin/incidents', icon: Activity },
+  { name: 'Audit Logs', href: '/admin/audit', icon: Shield },
   { name: 'Ayarlar', href: '/admin/settings', icon: Settings },
 ]
 
@@ -35,6 +50,7 @@ export default function AdminLayout({
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState<{ full_name: string; email: string; is_admin: boolean } | null>(null)
+  const [tenantContext, setTenantContext] = useState<{ id: string; name?: string } | null>(null)
 
   useEffect(() => {
     // Check if user is admin
@@ -46,26 +62,18 @@ export default function AdminLayout({
           return
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-
-        if (!response.ok) {
-          throw new Error('Unauthorized')
-        }
-
-        const userData = await response.json()
-        if (!userData.is_admin) {
+        const response = await userApi.getMe()
+        const user = response.data
+        if (!user.is_admin) {
           router.push('/dashboard')
           return
         }
-
-        setUser(userData)
+        setUser(user)
+        setTenantContext(getAdminTenantContext())
       } catch (error) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
+        clearAdminTenantContext()
         router.push('/login')
       }
     }
@@ -73,25 +81,45 @@ export default function AdminLayout({
     checkAuth()
   }, [router])
 
+  useEffect(() => {
+    const syncTenantContext = () => setTenantContext(getAdminTenantContext())
+    window.addEventListener('storage', syncTenantContext)
+    return () => window.removeEventListener('storage', syncTenantContext)
+  }, [])
+
   const handleLogout = () => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    clearAdminTenantContext()
     router.push('/login')
+  }
+
+  const handleOpenCustomerPanel = () => {
+    if (!tenantContext?.id) {
+      router.push('/admin/tenants')
+      return
+    }
+    router.push('/dashboard')
+  }
+
+  const handleClearTenantContext = () => {
+    clearAdminTenantContext()
+    setTenantContext(null)
   }
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-500"></div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-transparent" style={{ borderImage: 'linear-gradient(135deg, hsl(var(--primary)), hsl(262 83% 58%)) 1' }}></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -99,24 +127,24 @@ export default function AdminLayout({
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed top-0 left-0 z-50 h-full w-72 bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0",
+        "fixed top-0 left-0 z-50 h-full w-72 bg-card/95 backdrop-blur-xl border-r border-border/70 transform transition-transform duration-300 lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-slate-800">
+          <div className="p-6 border-b border-border/70">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-violet-600 to-purple-600 rounded-xl">
-                  <Shield className="w-6 h-6 text-white" />
+                <div className="p-2 bg-gradient-to-br from-primary/15 to-primary/5 rounded-xl text-primary shadow-glow-primary">
+                  <Shield className="w-6 h-6" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-white">Admin Panel</h1>
-                  <p className="text-xs text-slate-400">SvontAi Yönetim</p>
+                  <h1 className="text-lg font-bold">Admin Panel</h1>
+                  <p className="text-xs text-muted-foreground">SvontAi Yönetim</p>
                 </div>
               </div>
-              <button 
-                className="lg:hidden text-slate-400 hover:text-white"
+              <button
+                className="lg:hidden text-muted-foreground hover:text-foreground"
                 onClick={() => setSidebarOpen(false)}
               >
                 <X className="w-5 h-5" />
@@ -125,9 +153,9 @@ export default function AdminLayout({
           </div>
 
           {/* Back to Dashboard */}
-          <Link 
-            href="/dashboard" 
-            className="flex items-center gap-2 px-6 py-3 text-sm text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 px-6 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
             Dashboard'a Dön
@@ -143,15 +171,15 @@ export default function AdminLayout({
                   href={item.href}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",
-                    isActive 
-                      ? "bg-gradient-to-r from-violet-600/20 to-purple-600/20 text-violet-400 border border-violet-500/30" 
-                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                    isActive
+                      ? "nav-active-glow text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >
                   <item.icon className={cn(
                     "w-5 h-5",
-                    isActive ? "text-violet-400" : ""
+                    isActive ? "text-primary" : ""
                   )} />
                   {item.name}
                 </Link>
@@ -160,22 +188,22 @@ export default function AdminLayout({
           </nav>
 
           {/* User Info & Logout */}
-          <div className="p-4 border-t border-slate-800">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800/50 mb-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center text-white font-semibold">
+          <div className="p-4 border-t border-border/70">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl glass-card mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary flex items-center justify-center font-semibold ring-2 ring-primary/20">
                 {user.full_name?.charAt(0)?.toUpperCase() || 'A'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                <p className="text-sm font-medium truncate">{user.full_name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
-              <div className="px-2 py-1 bg-violet-500/20 rounded-full">
-                <span className="text-xs text-violet-400 font-medium">Admin</span>
+              <div className="px-2 py-1 bg-gradient-to-r from-primary/15 to-violet-500/15 rounded-full">
+                <span className="text-xs text-primary font-medium">Admin</span>
               </div>
             </div>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start text-slate-400 hover:text-white hover:bg-slate-800"
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={handleLogout}
             >
               <LogOut className="w-5 h-5 mr-3" />
@@ -188,33 +216,59 @@ export default function AdminLayout({
       {/* Main Content */}
       <div className="lg:pl-72">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/70">
           <div className="flex items-center justify-between h-16 px-4 lg:px-8">
-            <button 
-              className="lg:hidden p-2 text-slate-400 hover:text-white"
+            <button
+              className="lg:hidden p-2 text-muted-foreground hover:text-foreground"
               onClick={() => setSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
             </button>
 
             <div className="flex items-center gap-2 text-sm">
-              <Activity className="w-4 h-4 text-green-500" />
-              <span className="text-slate-400">Sistem durumu:</span>
-              <span className="text-green-500 font-medium">Çalışıyor</span>
+              <Activity className="w-4 h-4 text-success animate-pulse" />
+              <span className="text-muted-foreground">Sistem durumu:</span>
+              <span className="text-success font-medium">Çalışıyor</span>
             </div>
 
             <div className="flex items-center gap-4">
-              <Logo size="sm" showText={false} />
+              <div className="hidden md:flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleOpenCustomerPanel}>
+                  {tenantContext?.id ? `Müşteri: ${tenantContext?.name || tenantContext.id}` : 'Tenant Seç'}
+                </Button>
+                {tenantContext?.id && (
+                  <Button variant="ghost" size="sm" onClick={handleClearTenantContext}>
+                    Temizle
+                  </Button>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full border border-border/60">
+                    <span className="text-sm font-semibold">{user.full_name?.charAt(0)?.toUpperCase() || 'A'}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem className="gap-2">
+                    <User className="h-4 w-4" />
+                    Profil
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="gap-2 text-destructive">
+                    <LogOut className="h-4 w-4" />
+                    Çıkış Yap
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="p-4 lg:p-8">
+        <main className="p-0">
           {children}
         </main>
       </div>
     </div>
   )
 }
-

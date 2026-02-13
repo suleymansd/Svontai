@@ -23,6 +23,8 @@ import {
 import { knowledgeApi, botApi } from '@/lib/api'
 import { formatDate, truncate } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
+import { ContentContainer } from '@/components/shared/content-container'
+import { PageHeader } from '@/components/shared/page-header'
 
 interface KnowledgeItem {
   id: string
@@ -147,31 +149,26 @@ export default function KnowledgeBasePage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={`/dashboard/bots/${botId}`}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Brain className="w-8 h-8 text-violet-600" />
-              AI Bilgi Tabanı
-            </h1>
-            <p className="text-muted-foreground">{bot?.name} - AI'ın bilmesi gereken bilgileri ekleyin</p>
-          </div>
-        </div>
-        <Button 
-          onClick={openCreateDialog}
-          className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Bilgi Ekle
-        </Button>
-      </div>
+    <ContentContainer>
+      <div className="space-y-6">
+        <PageHeader
+          title="AI Bilgi Tabanı"
+          description={`${bot?.name || ''} - AI'ın bilmesi gereken bilgileri ekleyin.`}
+          actions={(
+            <div className="flex gap-2">
+              <Link href={`/dashboard/bots/${botId}`}>
+                <Button variant="outline">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Bot Ayarları
+                </Button>
+              </Link>
+              <Button onClick={openCreateDialog}>
+                <Plus className="w-4 h-4 mr-2" />
+                Bilgi Ekle
+              </Button>
+            </div>
+          )}
+        />
 
       {/* How it works info */}
       <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-violet-50 dark:from-blue-900/20 dark:to-violet-900/20">
@@ -419,6 +416,7 @@ export default function KnowledgeBasePage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </ContentContainer>
   )
 }

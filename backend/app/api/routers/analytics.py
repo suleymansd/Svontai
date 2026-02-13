@@ -11,8 +11,10 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
+from app.models.bot import Bot
 from app.services.analytics_service import AnalyticsService
 from app.services.subscription_service import SubscriptionService
 
@@ -67,7 +69,8 @@ class SourceBreakdownResponse(BaseModel):
 async def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get dashboard statistics for the current tenant."""
     # Check if analytics feature is enabled
@@ -90,7 +93,8 @@ async def get_chart_data(
     days: int = Query(default=30, ge=1, le=90),
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get daily statistics for charts."""
     # Check analytics feature
@@ -112,9 +116,20 @@ async def get_bot_stats(
     bot_id: UUID,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get statistics for a specific bot."""
+    bot = db.query(Bot).filter(
+        Bot.id == bot_id,
+        Bot.tenant_id == tenant.id
+    ).first()
+    if bot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bot bulunamadı"
+        )
+
     analytics_service = AnalyticsService(db)
     stats = analytics_service.get_bot_stats(tenant.id, bot_id)
     
@@ -125,7 +140,8 @@ async def get_bot_stats(
 async def get_source_breakdown(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get message breakdown by source (WhatsApp vs Widget)."""
     analytics_service = AnalyticsService(db)
@@ -138,7 +154,8 @@ async def get_source_breakdown(
 async def get_usage_summary(
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ):
     """Get combined usage and subscription summary."""
     subscription_service = SubscriptionService(db)
@@ -151,4 +168,3 @@ async def get_usage_summary(
         "subscription": usage_stats,
         "stats": dashboard_stats
     }
-

@@ -2,6 +2,10 @@
 
 Bu rehber, SvontAi'ı WhatsApp Business API ile entegre etmenizi adım adım anlatır.
 
+> Not: SvontAi artık **Embedded Signup** akışını kullanır ve önerilen yöntem budur.  
+> Yeni ve hızlı kurulum için `docs/WHATSAPP_EMBEDDED_SIGNUP.md` dokümanını takip edin.  
+> Bu sayfa, sadece Embedded Signup kullanılamayan durumlar için **manuel kurulum** rehberidir.
+
 ---
 
 ## 📋 İçindekiler
@@ -320,4 +324,3 @@ Sorun yaşarsanız:
 ---
 
 **Son güncelleme:** Aralık 2024
-

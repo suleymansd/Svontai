@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { authApi, userApi, tenantApi } from '@/lib/api'
+import { authApi, meApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
+import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { setUser, setTenant } = useAuthStore()
+  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
@@ -29,19 +30,24 @@ export default function LoginPage() {
     try {
       const loginResponse = await authApi.login(formData)
       const { access_token, refresh_token } = loginResponse.data
-      
+
       localStorage.setItem('access_token', access_token)
       localStorage.setItem('refresh_token', refresh_token)
 
-      const userResponse = await userApi.getMe()
-      setUser(userResponse.data)
+      const contextResponse = await meApi.getContext()
+      const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data
+      setUser(user)
+      setTenant(tenant)
+      setRole(role)
+      setPermissions(permissions || [])
+      setEntitlements(entitlements || {})
+      setFeatureFlags(feature_flags || {})
 
-      const tenantResponse = await tenantApi.getMyTenants()
-      if (tenantResponse.data.length > 0) {
-        setTenant(tenantResponse.data[0])
+      if (!user?.is_admin) {
+        clearAdminTenantContext()
       }
 
-      router.push('/dashboard')
+      router.push(user?.is_admin ? '/admin' : '/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
     } finally {
@@ -53,7 +59,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
       {/* Left Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md animate-slide-up">
           {/* Logo */}
           <Link href="/" className="inline-flex items-center gap-3 mb-12">
             <Logo size="lg" showText={true} animated={true} />
@@ -61,7 +67,7 @@ export default function LoginPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Tekrar hoş geldiniz</h1>
+            <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Tekrar hoş geldiniz</h1>
             <p className="text-muted-foreground">
               Hesabınıza giriş yaparak devam edin
             </p>
@@ -70,15 +76,15 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">E-posta</Label>
-              <div className="relative">
+              <div className="relative input-glow rounded-xl transition-all duration-300">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="email"
@@ -91,7 +97,7 @@ export default function LoginPage() {
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-sm font-medium">Şifre</Label>
@@ -99,7 +105,7 @@ export default function LoginPage() {
                   Şifremi unuttum
                 </Link>
               </div>
-              <div className="relative">
+              <div className="relative input-glow rounded-xl transition-all duration-300">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="password"
@@ -113,9 +119,9 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25" 
+            <Button
+              type="submit"
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25 btn-shimmer"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -145,22 +151,22 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-blue-600 via-violet-600 to-purple-600 overflow-hidden">
         {/* Pattern */}
         <div className="absolute inset-0 dot-pattern opacity-20" />
-        
+
         {/* Floating Elements */}
         <div className="absolute top-20 left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
-        
+
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center p-16 text-white">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-8">
             <Sparkles className="w-4 h-4 text-yellow-400" />
             <span className="text-sm font-medium">AI-Powered Customer Support</span>
           </div>
-          
+
           <h2 className="text-4xl font-bold text-center mb-6 max-w-lg">
             Müşteri desteğinizi yapay zeka ile güçlendirin
           </h2>
-          
+
           <p className="text-lg text-blue-100 text-center max-w-md">
             7/24 kesintisiz hizmet, anında yanıtlar ve mutlu müşteriler.
           </p>
@@ -172,7 +178,7 @@ export default function LoginPage() {
               { value: '5M+', label: 'Mesaj' },
               { value: '%99', label: 'Memnuniyet' },
             ].map((stat, i) => (
-              <div key={i} className="text-center">
+              <div key={i} className="text-center animate-scale-in" style={{ animationDelay: `${i * 200}ms` }}>
                 <div className="text-3xl font-bold">{stat.value}</div>
                 <div className="text-sm text-blue-200">{stat.label}</div>
               </div>

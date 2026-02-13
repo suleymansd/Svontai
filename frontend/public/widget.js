@@ -499,7 +499,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversation_id: state.conversationId,
-          message: message
+          message: message,
+          external_user_id: state.externalUserId
         })
       });
       
@@ -592,4 +593,3 @@
     init();
   }
 })();
-

@@ -2,14 +2,18 @@
 Tenant management router.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
+from app.models.tenant_membership import TenantMembership
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.services.rbac_service import RbacService
+from app.services.audit_log_service import AuditLogService
 
 router = APIRouter(prefix="/tenants", tags=["Tenants"])
 
@@ -18,7 +22,8 @@ router = APIRouter(prefix="/tenants", tags=["Tenants"])
 async def create_tenant(
     tenant_data: TenantCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ) -> Tenant:
     """
     Create a new tenant (business).
@@ -47,12 +52,38 @@ async def create_tenant(
     db.add(tenant)
     db.commit()
     db.refresh(tenant)
+
+    rbac_service = RbacService(db)
+    rbac_service.ensure_defaults()
+    owner_role = rbac_service.get_role_by_name("owner")
+    if owner_role:
+        membership = TenantMembership(
+            tenant_id=tenant.id,
+            user_id=current_user.id,
+            role_id=owner_role.id,
+            status="active"
+        )
+        db.add(membership)
+        db.commit()
+
+    AuditLogService(db).log(
+        action="tenant.create",
+        tenant_id=str(tenant.id),
+        user_id=str(current_user.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload={"name": tenant.name},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return tenant
 
 
 @router.get("/my", response_model=list[TenantResponse])
 async def get_my_tenants(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> list[Tenant]:
@@ -66,7 +97,14 @@ async def get_my_tenants(
     Returns:
         List of tenants owned by the user.
     """
-    tenants = db.query(Tenant).filter(Tenant.owner_id == current_user.id).all()
+    tenants = (
+        db.query(Tenant)
+        .filter(Tenant.owner_id == current_user.id)
+        .order_by(Tenant.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return tenants
 
 
@@ -75,7 +113,9 @@ async def update_tenant(
     tenant_id: str,
     tenant_update: TenantUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    _: None = Depends(require_permissions(["settings:write"]))
 ) -> Tenant:
     """
     Update a tenant.
@@ -107,6 +147,16 @@ async def update_tenant(
     
     db.commit()
     db.refresh(tenant)
+
+    AuditLogService(db).log(
+        action="tenant.update",
+        tenant_id=str(tenant.id),
+        user_id=str(current_user.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload=update_data,
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return tenant
-

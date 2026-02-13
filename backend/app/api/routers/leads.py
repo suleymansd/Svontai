@@ -5,17 +5,20 @@ Lead management router.
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel, EmailStr
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_tenant
+from app.dependencies.auth import get_current_tenant, get_current_user
+from app.dependencies.permissions import require_permissions
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.lead import Lead
 from app.schemas.lead import LeadResponse, LeadWithBotName
+from app.services.audit_log_service import AuditLogService
+from app.models.user import User
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
@@ -43,7 +46,8 @@ async def list_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Lead]:
     """
     List all leads for the tenant.
@@ -63,11 +67,11 @@ async def list_leads(
     tenant_bot_ids = db.query(Bot.id).filter(Bot.tenant_id == current_tenant.id).all()
     tenant_bot_ids = [b[0] for b in tenant_bot_ids]
     
-    # Query leads that belong to tenant's bots OR have no bot
+    # Query leads that belong to tenant's bots OR tenant itself
     query = db.query(Lead).filter(
         or_(
             Lead.bot_id.in_(tenant_bot_ids),
-            Lead.bot_id.is_(None)
+            Lead.tenant_id == current_tenant.id
         )
     )
     
@@ -95,7 +99,10 @@ async def list_leads(
 async def create_lead(
     lead_data: LeadCreate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["dashboard:edit"]))
 ) -> Lead:
     """
     Create a new lead manually.
@@ -112,6 +119,7 @@ async def create_lead(
     bot = db.query(Bot).filter(Bot.tenant_id == current_tenant.id).first()
     
     lead = Lead(
+        tenant_id=current_tenant.id,
         bot_id=bot.id if bot else None,
         name=lead_data.name,
         email=lead_data.email,
@@ -124,6 +132,17 @@ async def create_lead(
     db.add(lead)
     db.commit()
     db.refresh(lead)
+
+    AuditLogService(db).log(
+        action="lead.create",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="lead",
+        resource_id=str(lead.id),
+        payload={"name": lead.name, "source": lead.source},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return lead
 
@@ -133,7 +152,10 @@ async def update_lead(
     lead_id: UUID,
     lead_data: LeadUpdate,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["dashboard:edit"]))
 ) -> Lead:
     """
     Update a lead.
@@ -151,12 +173,12 @@ async def update_lead(
     tenant_bot_ids = db.query(Bot.id).filter(Bot.tenant_id == current_tenant.id).all()
     tenant_bot_ids = [b[0] for b in tenant_bot_ids]
     
-    # Find lead that belongs to tenant's bots OR has no bot
+    # Find lead that belongs to tenant's bots OR tenant itself
     lead = db.query(Lead).filter(
         Lead.id == lead_id,
         or_(
             Lead.bot_id.in_(tenant_bot_ids),
-            Lead.bot_id.is_(None)
+            Lead.tenant_id == current_tenant.id
         )
     ).first()
     
@@ -172,6 +194,17 @@ async def update_lead(
     
     db.commit()
     db.refresh(lead)
+
+    AuditLogService(db).log(
+        action="lead.update",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="lead",
+        resource_id=str(lead.id),
+        payload=update_data,
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return lead
 
@@ -180,7 +213,10 @@ async def update_lead(
 async def delete_lead(
     lead_id: UUID,
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permissions(["dashboard:edit"]))
 ):
     """
     Delete a lead.
@@ -194,12 +230,12 @@ async def delete_lead(
     tenant_bot_ids = db.query(Bot.id).filter(Bot.tenant_id == current_tenant.id).all()
     tenant_bot_ids = [b[0] for b in tenant_bot_ids]
     
-    # Find lead that belongs to tenant's bots OR has no bot
+    # Find lead that belongs to tenant's bots OR tenant itself
     lead = db.query(Lead).filter(
         Lead.id == lead_id,
         or_(
             Lead.bot_id.in_(tenant_bot_ids),
-            Lead.bot_id.is_(None)
+            Lead.tenant_id == current_tenant.id
         )
     ).first()
     
@@ -211,6 +247,17 @@ async def delete_lead(
     
     db.delete(lead)
     db.commit()
+
+    AuditLogService(db).log(
+        action="lead.delete",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="lead",
+        resource_id=str(lead.id),
+        payload={"name": lead.name},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
     
     return None
 
@@ -221,7 +268,8 @@ async def list_bot_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
 ) -> list[Lead]:
     """
     List leads for a specific bot.
@@ -255,4 +303,3 @@ async def list_bot_leads(
     ).offset(skip).limit(limit).all()
     
     return leads
-

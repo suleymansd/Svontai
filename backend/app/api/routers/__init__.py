@@ -15,6 +15,15 @@ from app.api.routers.subscription import router as subscription_router
 from app.api.routers.tenant_onboarding import router as tenant_onboarding_router
 from app.api.routers.analytics import router as analytics_router
 from app.api.routers.operator import router as operator_router
+from app.api.routers.channels import router as channels_router
+from app.api.routers.automation import router as automation_router
+from app.api.routers.me import router as me_router
+from app.api.routers.feature_flags import router as feature_flags_router
+from app.api.routers.system_events import router as system_events_router
+from app.api.routers.incidents import router as incidents_router
+from app.api.routers.tickets import router as tickets_router
+from app.api.routers.appointments import router as appointments_router
+from app.api.routers.notes import router as notes_router
 
 __all__ = [
     "auth_router",
@@ -32,5 +41,14 @@ __all__ = [
     "subscription_router",
     "tenant_onboarding_router",
     "analytics_router",
-    "operator_router"
+    "operator_router",
+    "channels_router",
+    "automation_router",
+    "me_router",
+    "feature_flags_router",
+    "system_events_router",
+    "incidents_router",
+    "tickets_router",
+    "appointments_router",
+    "notes_router"
 ]
