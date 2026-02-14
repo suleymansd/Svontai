@@ -1,7 +1,14 @@
 import axios from 'axios'
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+function normalizeApiUrl(value?: string): string {
+  const raw = (value || '').trim()
+  if (!raw) return 'http://localhost:8000'
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, '')
+  return `https://${raw.replace(/\/+$/, '')}`
+}
+
+const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
 
 export const api = axios.create({
   baseURL: API_URL,
