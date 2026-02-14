@@ -25,6 +25,7 @@ from app.core.rate_limit import login_rate_limiter, register_rate_limiter, refre
 from app.models.user import User
 from app.models.session import UserSession
 from app.models.password_reset import PasswordResetCode
+from app.models.email_verification import EmailVerificationCode
 from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
@@ -35,6 +36,11 @@ from app.schemas.password_reset import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     PasswordResetResponse
+)
+from app.schemas.email_verification import (
+    EmailVerificationConfirmRequest,
+    EmailVerificationRequest,
+    EmailVerificationResponse
 )
 from app.services.session_service import SessionService
 from app.services.email_service import EmailService
@@ -51,9 +57,37 @@ def _hash_reset_code(email: str, code: str) -> str:
     return hashlib.sha256(f"{normalized}:{code}:{settings.JWT_SECRET_KEY}".encode()).hexdigest()
 
 
+def _hash_email_verification_code(email: str, code: str) -> str:
+    normalized = email.strip().lower()
+    return hashlib.sha256(f"verify:{normalized}:{code}:{settings.JWT_SECRET_KEY}".encode()).hexdigest()
+
+
 def _get_user_by_email(db: Session, email: str) -> User | None:
     normalized = email.strip().lower()
     return db.query(User).filter(func.lower(User.email) == normalized).first()
+
+
+def _issue_email_verification_code(db: Session, user: User) -> tuple[str, datetime]:
+    now = datetime.utcnow()
+    normalized_email = user.email.strip().lower()
+    db.query(EmailVerificationCode).filter(
+        EmailVerificationCode.user_id == user.id,
+        EmailVerificationCode.used_at.is_(None)
+    ).update(
+        {"used_at": now},
+        synchronize_session=False
+    )
+
+    code = str(secrets.randbelow(900000) + 100000)
+    verification_record = EmailVerificationCode(
+        user_id=user.id,
+        email=normalized_email,
+        code_hash=_hash_email_verification_code(normalized_email, code),
+        expires_at=now + timedelta(minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES)
+    )
+    db.add(verification_record)
+    db.commit()
+    return code, now
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -97,14 +131,33 @@ async def register(
     user = User(
         email=normalized_email,
         password_hash=get_password_hash(user_data.password),
-        full_name=user_data.full_name
+        full_name=user_data.full_name,
+        email_verified=False
     )
     
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    EmailService.send_welcome_email(user.email, user.full_name)
+    code, now = _issue_email_verification_code(db, user)
+    sent = EmailService.send_email_verification_code(
+        user.email,
+        user.full_name,
+        code,
+        settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+    )
+    if not sent:
+        if settings.ENVIRONMENT == "dev":
+            return user
+        db.query(EmailVerificationCode).filter(
+            EmailVerificationCode.user_id == user.id,
+            EmailVerificationCode.used_at.is_(None)
+        ).update({"used_at": now}, synchronize_session=False)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Doğrulama kodu e-postası gönderilemedi. Lütfen tekrar deneyin."
+        )
     
     return user
 
@@ -184,6 +237,12 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hesabınız devre dışı bırakıldı"
+        )
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="E-posta adresinizi doğrulayın. Lütfen e-postanıza gelen kodu onaylayın."
         )
 
     if user.failed_login_attempts or user.locked_until:
@@ -367,6 +426,107 @@ async def request_password_reset_code(
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Doğrulama kodu e-postası gönderilemedi. Lütfen tekrar deneyin."
+    )
+
+
+@router.post("/email-verification/request", response_model=EmailVerificationResponse)
+async def request_email_verification_code(
+    payload: EmailVerificationRequest,
+    db: Session = Depends(get_db)
+) -> EmailVerificationResponse:
+    message = "E-posta kayıtlıysa doğrulama kodu gönderildi."
+    normalized_email = payload.email.strip().lower()
+    user = _get_user_by_email(db, normalized_email)
+
+    if not user or not user.is_active:
+        return EmailVerificationResponse(success=True, message=message)
+    if user.email_verified:
+        return EmailVerificationResponse(success=True, message="E-posta adresiniz zaten doğrulandı.")
+
+    code, now = _issue_email_verification_code(db, user)
+    sent = EmailService.send_email_verification_code(
+        user.email,
+        user.full_name,
+        code,
+        settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+    )
+    if sent:
+        return EmailVerificationResponse(success=True, message=message)
+
+    if settings.ENVIRONMENT == "dev":
+        return EmailVerificationResponse(
+            success=True,
+            message=f"Mail gönderimi başarısız, geliştirme kodu: {code}"
+        )
+
+    db.query(EmailVerificationCode).filter(
+        EmailVerificationCode.user_id == user.id,
+        EmailVerificationCode.used_at.is_(None)
+    ).update({"used_at": now}, synchronize_session=False)
+    db.commit()
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Doğrulama kodu e-postası gönderilemedi. Lütfen tekrar deneyin."
+    )
+
+
+@router.post("/email-verification/confirm", response_model=EmailVerificationResponse)
+async def confirm_email_verification(
+    payload: EmailVerificationConfirmRequest,
+    db: Session = Depends(get_db)
+) -> EmailVerificationResponse:
+    normalized_email = payload.email.strip().lower()
+    user = _get_user_by_email(db, normalized_email)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kod geçersiz veya süresi dolmuş"
+        )
+
+    if user.email_verified:
+        return EmailVerificationResponse(
+            success=True,
+            message="E-posta adresiniz zaten doğrulandı."
+        )
+
+    verification_record = db.query(EmailVerificationCode).filter(
+        EmailVerificationCode.email == normalized_email,
+        EmailVerificationCode.used_at.is_(None)
+    ).order_by(EmailVerificationCode.created_at.desc()).first()
+
+    now = datetime.utcnow()
+    if not verification_record or verification_record.expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kod geçersiz veya süresi dolmuş"
+        )
+
+    if verification_record.attempt_count >= settings.EMAIL_VERIFICATION_MAX_ATTEMPTS:
+        verification_record.used_at = now
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Çok fazla hatalı deneme yapıldı, yeni kod isteyin"
+        )
+
+    incoming_hash = _hash_email_verification_code(normalized_email, payload.code.strip())
+    if not secrets.compare_digest(incoming_hash, verification_record.code_hash):
+        verification_record.attempt_count += 1
+        if verification_record.attempt_count >= settings.EMAIL_VERIFICATION_MAX_ATTEMPTS:
+            verification_record.used_at = now
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kod geçersiz veya süresi dolmuş"
+        )
+
+    verification_record.used_at = now
+    user.email_verified = True
+    db.commit()
+    EmailService.send_welcome_email(user.email, user.full_name)
+    return EmailVerificationResponse(
+        success=True,
+        message="E-posta adresiniz başarıyla doğrulandı"
     )
 
 

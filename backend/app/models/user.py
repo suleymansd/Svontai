@@ -44,6 +44,11 @@ class User(Base):
         default=True,
         nullable=False
     )
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
     last_login: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=True

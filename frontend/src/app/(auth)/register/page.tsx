@@ -17,6 +17,15 @@ export default function RegisterPage() {
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
+  const [verificationRequired, setVerificationRequired] = useState(false)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [pendingCredentials, setPendingCredentials] = useState<{
+    email: string
+    password: string
+    full_name: string
+    company_name: string
+  } | null>(null)
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -24,10 +33,42 @@ export default function RegisterPage() {
     company_name: '',
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const completeSignupAfterVerification = async () => {
+    if (!pendingCredentials) {
+      throw new Error('Doğrulama bilgisi bulunamadı')
+    }
+
+    const loginResponse = await authApi.login({
+      email: pendingCredentials.email,
+      password: pendingCredentials.password,
+    })
+
+    const { access_token, refresh_token } = loginResponse.data
+    localStorage.setItem('access_token', access_token)
+    localStorage.setItem('refresh_token', refresh_token)
+
+    const tenantResponse = await tenantApi.createTenant({
+      name: pendingCredentials.company_name || pendingCredentials.full_name + "'in İşletmesi",
+    })
+
+    const contextResponse = await meApi.getContext()
+    const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data
+    setUser(user)
+    setTenant(tenant || tenantResponse.data)
+    setRole(role)
+    setPermissions(permissions || [])
+    setEntitlements(entitlements || {})
+    setFeatureFlags(feature_flags || {})
+    clearAdminTenantContext()
+
+    router.push('/dashboard')
+  }
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
+    setInfoMessage('')
 
     try {
       await authApi.register({
@@ -35,33 +76,55 @@ export default function RegisterPage() {
         password: formData.password,
         full_name: formData.full_name,
       })
-
-      const loginResponse = await authApi.login({
+      setPendingCredentials({
         email: formData.email,
         password: formData.password,
+        full_name: formData.full_name,
+        company_name: formData.company_name,
       })
-
-      const { access_token, refresh_token } = loginResponse.data
-      localStorage.setItem('access_token', access_token)
-      localStorage.setItem('refresh_token', refresh_token)
-
-      const tenantResponse = await tenantApi.createTenant({
-        name: formData.company_name || formData.full_name + "'in İşletmesi",
-      })
-
-      const contextResponse = await meApi.getContext()
-      const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data
-      setUser(user)
-      setTenant(tenant || tenantResponse.data)
-      setRole(role)
-      setPermissions(permissions || [])
-      setEntitlements(entitlements || {})
-      setFeatureFlags(feature_flags || {})
-      clearAdminTenantContext()
-
-      router.push('/dashboard')
+      setVerificationRequired(true)
+      setInfoMessage('Kayıt başarılı. E-posta adresinize gönderilen 6 haneli kodu girin.')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Kayıt başarısız. Lütfen tekrar deneyin.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleVerificationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pendingCredentials) {
+      setError('Doğrulama bilgisi bulunamadı, lütfen tekrar kayıt olun.')
+      return
+    }
+
+    setIsLoading(true)
+    setError('')
+    setInfoMessage('')
+
+    try {
+      await authApi.confirmEmailVerification({
+        email: pendingCredentials.email,
+        code: verificationCode.trim(),
+      })
+      await completeSignupAfterVerification()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Doğrulama başarısız. Kodu kontrol edip tekrar deneyin.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleResendCode = async () => {
+    if (!pendingCredentials) return
+    setIsLoading(true)
+    setError('')
+    setInfoMessage('')
+    try {
+      const response = await authApi.requestEmailVerification(pendingCredentials.email)
+      setInfoMessage(response.data?.message || 'Doğrulama kodu tekrar gönderildi.')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Kod tekrar gönderilemedi. Lütfen tekrar deneyin.')
     } finally {
       setIsLoading(false)
     }
@@ -146,77 +209,104 @@ export default function RegisterPage() {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={verificationRequired ? handleVerificationSubmit : handleRegisterSubmit} className="space-y-5">
             {error && (
               <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />
                 {error}
               </div>
             )}
+            {infoMessage && (
+              <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-300 text-sm">
+                {infoMessage}
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="full_name" className="text-sm font-medium">Ad Soyad</Label>
-              <div className="relative input-glow rounded-xl transition-all duration-300">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            {!verificationRequired ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="full_name" className="text-sm font-medium">Ad Soyad</Label>
+                  <div className="relative input-glow rounded-xl transition-all duration-300">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="full_name"
+                      type="text"
+                      placeholder="Adınız Soyadınız"
+                      className="pl-12 h-12 rounded-xl"
+                      value={formData.full_name}
+                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company_name" className="text-sm font-medium">İşletme Adı</Label>
+                  <div className="relative">
+                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="company_name"
+                      type="text"
+                      placeholder="İşletmenizin adı"
+                      className="pl-12 h-12 rounded-xl"
+                      value={formData.company_name}
+                      onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-medium">E-posta</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="ornek@email.com"
+                      className="pl-12 h-12 rounded-xl"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium">Şifre</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="En az 8 karakter"
+                      className="pl-12 h-12 rounded-xl"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      required
+                      minLength={8}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="verification_code" className="text-sm font-medium">Doğrulama Kodu</Label>
                 <Input
-                  id="full_name"
+                  id="verification_code"
                   type="text"
-                  placeholder="Adınız Soyadınız"
-                  className="pl-12 h-12 rounded-xl"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder="6 haneli kod"
+                  className="h-12 rounded-xl text-center tracking-[0.4em] text-lg"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   required
+                  minLength={6}
+                  maxLength={6}
                 />
+                <p className="text-sm text-muted-foreground">
+                  {pendingCredentials?.email} adresine gönderilen kodu girin.
+                </p>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="company_name" className="text-sm font-medium">İşletme Adı</Label>
-              <div className="relative">
-                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="company_name"
-                  type="text"
-                  placeholder="İşletmenizin adı"
-                  className="pl-12 h-12 rounded-xl"
-                  value={formData.company_name}
-                  onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">E-posta</Label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="ornek@email.com"
-                  className="pl-12 h-12 rounded-xl"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">Şifre</Label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="En az 8 karakter"
-                  className="pl-12 h-12 rounded-xl"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                  minLength={8}
-                />
-              </div>
-            </div>
+            )}
 
             <Button
               type="submit"
@@ -226,23 +316,34 @@ export default function RegisterPage() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Hesap oluşturuluyor...
+                  {verificationRequired ? 'Doğrulanıyor...' : 'Hesap oluşturuluyor...'}
                 </>
               ) : (
                 <>
-                  Ücretsiz Başla
+                  {verificationRequired ? 'E-postayı Doğrula' : 'Ücretsiz Başla'}
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </>
               )}
             </Button>
 
-            <p className="text-xs text-muted-foreground text-center">
-              Kayıt olarak{' '}
-              <Link href="/terms" className="text-primary hover:underline">Kullanım Koşulları</Link>
-              {' '}ve{' '}
-              <Link href="/privacy" className="text-primary hover:underline">Gizlilik Politikası</Link>
-              'nı kabul etmiş olursunuz.
-            </p>
+            {verificationRequired ? (
+              <button
+                type="button"
+                className="w-full text-sm text-primary hover:underline"
+                onClick={handleResendCode}
+                disabled={isLoading}
+              >
+                Kodu tekrar gönder
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center">
+                Kayıt olarak{' '}
+                <Link href="/terms" className="text-primary hover:underline">Kullanım Koşulları</Link>
+                {' '}ve{' '}
+                <Link href="/privacy" className="text-primary hover:underline">Gizlilik Politikası</Link>
+                'nı kabul etmiş olursunuz.
+              </p>
+            )}
           </form>
 
           <div className="mt-8 text-center">

@@ -91,6 +91,12 @@ export const authApi = {
 
   confirmPasswordReset: (data: { email: string; code: string; new_password: string }) =>
     api.post('/auth/password-reset/confirm', data),
+
+  requestEmailVerification: (email: string) =>
+    api.post('/auth/email-verification/request', { email }),
+
+  confirmEmailVerification: (data: { email: string; code: string }) =>
+    api.post('/auth/email-verification/confirm', data),
 }
 
 // User API

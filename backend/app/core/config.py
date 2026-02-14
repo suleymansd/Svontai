@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     # Password reset
     PASSWORD_RESET_CODE_EXPIRE_MINUTES: int = 10
     PASSWORD_RESET_MAX_ATTEMPTS: int = 5
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 15
+    EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
     
     # Environment
     ENVIRONMENT: Literal["dev", "prod"] = "dev"

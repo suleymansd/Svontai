@@ -25,6 +25,7 @@ from app.models.incident import Incident
 from app.models.tool import Tool
 from app.models.ticket import Ticket, TicketMessage
 from app.models.password_reset import PasswordResetCode
+from app.models.email_verification import EmailVerificationCode
 from app.models.appointment import Appointment
 from app.models.note import WorkspaceNote
 
@@ -87,6 +88,7 @@ __all__ = [
     "Ticket",
     "TicketMessage",
     "PasswordResetCode",
+    "EmailVerificationCode",
     "Appointment",
     "WorkspaceNote"
 ]

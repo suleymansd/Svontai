@@ -105,6 +105,11 @@ export default function LoginPage() {
                   Şifremi unuttum
                 </Link>
               </div>
+              <div className="flex items-center justify-end">
+                <Link href="/register" className="text-xs text-muted-foreground hover:underline">
+                  E-postanı doğrulamadın mı? Kayıt ekranından kod gir
+                </Link>
+              </div>
               <div className="relative input-glow rounded-xl transition-all duration-300">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input

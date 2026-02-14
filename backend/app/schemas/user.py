@@ -40,6 +40,7 @@ class UserResponse(UserBase):
     id: UUID
     is_admin: bool = False
     is_active: bool = True
+    email_verified: bool = True
     last_login: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -53,4 +54,3 @@ class UserWithTenants(UserResponse):
 # Avoid circular import
 from app.schemas.tenant import TenantResponse
 UserWithTenants.model_rebuild()
-

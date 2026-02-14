@@ -188,6 +188,24 @@ class EmailService:
         return EmailService.send_email(email, subject, text)
 
     @staticmethod
+    def send_email_verification_code(
+        email: str,
+        full_name: str,
+        code: str,
+        expire_minutes: int
+    ) -> bool:
+        subject = "SvontAI e-posta doğrulama kodunuz"
+        text = (
+            f"Merhaba {full_name},\n\n"
+            "SvontAI hesabınızı doğrulamak için aşağıdaki kodu kullanın:\n\n"
+            f"{code}\n\n"
+            f"Bu kod {expire_minutes} dakika boyunca geçerlidir.\n\n"
+            "Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayın.\n\n"
+            "SvontAI"
+        )
+        return EmailService.send_email(email, subject, text)
+
+    @staticmethod
     def send_plan_change_email(
         email: str,
         full_name: str,
