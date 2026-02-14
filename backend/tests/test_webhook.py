@@ -148,19 +148,27 @@ class TestOAuthURLGeneration:
     def test_oauth_url_contains_required_params(self):
         """Test that OAuth URL contains all required parameters."""
         from app.services.meta_api import MetaAPIService
+        from app.core.config import settings
         
         service = MetaAPIService()
-        service.app_id = "test_app_id"
-        service.redirect_uri = "https://example.com/callback"
-        
-        url = service.get_oauth_url("test_state")
-        
-        assert "client_id=test_app_id" in url
-        assert "redirect_uri=https://example.com/callback" in url
-        assert "state=test_state" in url
-        assert "response_type=code" in url
-        assert "whatsapp_business_management" in url
-        assert "whatsapp_business_messaging" in url
+        old_config_id = getattr(settings, "META_CONFIG_ID", "")
+        try:
+            settings.META_CONFIG_ID = "test_config_id"
+            service.app_id = "123456789"
+            service.app_secret = "test_secret"
+            service.redirect_uri = "https://svontai.test/callback"
+
+            url = service.get_oauth_url("test_state")
+
+            assert "client_id=123456789" in url
+            assert "redirect_uri=https%3A%2F%2Fsvontai.test%2Fcallback" in url
+            assert "state=test_state" in url
+            assert "response_type=code" in url
+            assert "config_id=test_config_id" in url
+            assert "whatsapp_business_management" in url
+            assert "whatsapp_business_messaging" in url
+        finally:
+            settings.META_CONFIG_ID = old_config_id
 
 
 class TestOnboardingSteps:
@@ -202,24 +210,33 @@ class TestMetaAPIIntegration:
     async def test_token_exchange_mock(self):
         """Mock test for token exchange."""
         from app.services.meta_api import MetaAPIService
+        from app.core.config import settings
         
         service = MetaAPIService()
+        old_config_id = getattr(settings, "META_CONFIG_ID", "")
+        try:
+            settings.META_CONFIG_ID = "test_config_id"
+            service.app_id = "123456789"
+            service.app_secret = "test_secret"
+            service.redirect_uri = "https://svontai.test/callback"
         
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "access_token": "test_token",
-                "token_type": "bearer",
-                "expires_in": 3600
-            }
-            
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.return_value = mock_response
-            mock_client.return_value.__aenter__.return_value = mock_client_instance
-            
-            result = await service.exchange_code_for_token("test_code")
-            
-            assert result["access_token"] == "test_token"
+            with patch('httpx.AsyncClient') as mock_client:
+                mock_response = Mock()
+                mock_response.json.return_value = {
+                    "access_token": "test_token",
+                    "token_type": "bearer",
+                    "expires_in": 3600
+                }
+                
+                mock_client_instance = AsyncMock()
+                mock_client_instance.get.return_value = mock_response
+                mock_client.return_value.__aenter__.return_value = mock_client_instance
+                
+                result = await service.exchange_code_for_token("test_code")
+                
+                assert result["access_token"] == "test_token"
+        finally:
+            settings.META_CONFIG_ID = old_config_id
     
     @pytest.mark.asyncio
     async def test_get_phone_numbers_mock(self):
@@ -254,4 +271,3 @@ class TestMetaAPIIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
