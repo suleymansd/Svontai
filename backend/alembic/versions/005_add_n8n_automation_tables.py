@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.create_table(
         'automation_runs',
         sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('tenant_id', sa.String(36), nullable=False),
         sa.Column('channel', sa.String(20), nullable=False, server_default='whatsapp'),
         sa.Column('from_number', sa.String(50), nullable=False),
         sa.Column('to_number', sa.String(50), nullable=True),
@@ -56,7 +56,7 @@ def upgrade() -> None:
     op.create_table(
         'tenant_automation_settings',
         sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False, unique=True),
+        sa.Column('tenant_id', sa.String(36), nullable=False, unique=True),
         sa.Column('use_n8n', sa.Boolean, nullable=False, server_default='0'),
         sa.Column('default_workflow_id', sa.String(255), nullable=True),
         sa.Column('whatsapp_workflow_id', sa.String(255), nullable=True),

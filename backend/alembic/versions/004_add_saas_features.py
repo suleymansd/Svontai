@@ -22,7 +22,7 @@ def upgrade() -> None:
     # Create plans table
     op.create_table(
         'plans',
-        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('id', sa.UUID(), primary_key=True),
         sa.Column('name', sa.String(50), unique=True, nullable=False),
         sa.Column('display_name', sa.String(100), nullable=False),
         sa.Column('description', sa.String(500), nullable=True),
@@ -45,9 +45,9 @@ def upgrade() -> None:
     # Create tenant_subscriptions table
     op.create_table(
         'tenant_subscriptions',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False, unique=True),
-        sa.Column('plan_id', sa.String(36), sa.ForeignKey('plans.id', ondelete='RESTRICT'), nullable=False),
+        sa.Column('id', sa.UUID(), primary_key=True),
+        sa.Column('tenant_id', sa.UUID(), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False, unique=True),
+        sa.Column('plan_id', sa.UUID(), sa.ForeignKey('plans.id', ondelete='RESTRICT'), nullable=False),
         sa.Column('status', sa.String(20), nullable=False, server_default='trial'),
         sa.Column('started_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.Column('trial_ends_at', sa.DateTime, nullable=True),
@@ -68,9 +68,9 @@ def upgrade() -> None:
     # Create usage_logs table
     op.create_table(
         'usage_logs',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('bot_id', sa.String(36), sa.ForeignKey('bots.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('id', sa.UUID(), primary_key=True),
+        sa.Column('tenant_id', sa.UUID(), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('bot_id', sa.UUID(), sa.ForeignKey('bots.id', ondelete='SET NULL'), nullable=True),
         sa.Column('usage_type', sa.String(50), nullable=False),
         sa.Column('count', sa.Integer, nullable=False, server_default='1'),
         sa.Column('extra_data', sa.JSON, nullable=False, server_default='{}'),
@@ -83,8 +83,8 @@ def upgrade() -> None:
     # Create daily_stats table
     op.create_table(
         'daily_stats',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('id', sa.UUID(), primary_key=True),
+        sa.Column('tenant_id', sa.UUID(), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False),
         sa.Column('date', sa.Date, nullable=False),
         sa.Column('messages_sent', sa.Integer, nullable=False, server_default='0'),
         sa.Column('messages_received', sa.Integer, nullable=False, server_default='0'),
@@ -105,8 +105,8 @@ def upgrade() -> None:
     # Create bot_settings table
     op.create_table(
         'bot_settings',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('bot_id', sa.String(36), sa.ForeignKey('bots.id', ondelete='CASCADE'), nullable=False, unique=True),
+        sa.Column('id', sa.UUID(), primary_key=True),
+        sa.Column('bot_id', sa.UUID(), sa.ForeignKey('bots.id', ondelete='CASCADE'), nullable=False, unique=True),
         sa.Column('response_tone', sa.String(20), nullable=False, server_default='friendly'),
         sa.Column('emoji_usage', sa.String(10), nullable=False, server_default='light'),
         sa.Column('max_response_length', sa.Integer, nullable=False, server_default='500'),
@@ -128,8 +128,8 @@ def upgrade() -> None:
     # Create tenant_onboarding table
     op.create_table(
         'tenant_onboarding',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False, unique=True),
+        sa.Column('id', sa.UUID(), primary_key=True),
+        sa.Column('tenant_id', sa.UUID(), sa.ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False, unique=True),
         sa.Column('is_completed', sa.Boolean, nullable=False, server_default='0'),
         sa.Column('completed_at', sa.DateTime, nullable=True),
         sa.Column('steps', sa.JSON, nullable=False, server_default='{}'),
@@ -143,7 +143,7 @@ def upgrade() -> None:
     # Add new columns to conversations table
     op.add_column('conversations', sa.Column('status', sa.String(20), nullable=True, server_default='ai_active'))
     op.add_column('conversations', sa.Column('is_ai_paused', sa.Boolean, nullable=True, server_default='0'))
-    op.add_column('conversations', sa.Column('operator_id', sa.String(36), nullable=True))
+    op.add_column('conversations', sa.Column('operator_id', sa.UUID(), nullable=True))
     op.add_column('conversations', sa.Column('takeover_at', sa.DateTime, nullable=True))
     op.add_column('conversations', sa.Column('has_lead', sa.Boolean, nullable=True, server_default='0'))
     op.add_column('conversations', sa.Column('lead_score', sa.Integer, nullable=True, server_default='0'))
@@ -151,7 +151,7 @@ def upgrade() -> None:
     op.add_column('conversations', sa.Column('tags', sa.JSON, nullable=True, server_default='[]'))
     
     # Add new columns to leads table
-    op.add_column('leads', sa.Column('tenant_id', sa.String(36), nullable=True))
+    op.add_column('leads', sa.Column('tenant_id', sa.UUID(), nullable=True))
     op.add_column('leads', sa.Column('company', sa.String(255), nullable=True))
     op.add_column('leads', sa.Column('score', sa.Integer, nullable=True, server_default='0'))
     op.add_column('leads', sa.Column('is_auto_detected', sa.Boolean, nullable=True, server_default='0'))
@@ -215,4 +215,3 @@ def downgrade() -> None:
     op.drop_table('usage_logs')
     op.drop_table('tenant_subscriptions')
     op.drop_table('plans')
-

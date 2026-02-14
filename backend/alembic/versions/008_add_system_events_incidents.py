@@ -21,7 +21,7 @@ def upgrade() -> None:
     op.create_table(
         'system_events',
         sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('tenant_id', sa.String(36), nullable=True),
         sa.Column('source', sa.String(50), nullable=False),
         sa.Column('level', sa.String(20), nullable=False),
         sa.Column('code', sa.String(100), nullable=False),
@@ -40,11 +40,11 @@ def upgrade() -> None:
     op.create_table(
         'incidents',
         sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('tenant_id', sa.String(36), sa.ForeignKey('tenants.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('tenant_id', sa.String(36), nullable=True),
         sa.Column('title', sa.String(255), nullable=False),
         sa.Column('severity', sa.String(10), nullable=False),
         sa.Column('status', sa.String(20), nullable=False, server_default='open'),
-        sa.Column('assigned_to', sa.String(36), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('assigned_to', sa.String(36), nullable=True),
         sa.Column('root_cause', sa.Text(), nullable=True),
         sa.Column('resolution', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),

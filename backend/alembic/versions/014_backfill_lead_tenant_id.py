@@ -18,22 +18,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = {column["name"] for column in inspector.get_columns("leads")}
+
     with op.batch_alter_table("leads") as batch_op:
-        batch_op.add_column(
-            sa.Column(
-                "tenant_id",
-                sa.String(36),
-                nullable=True
+        if "tenant_id" not in existing_columns:
+            batch_op.add_column(
+                sa.Column(
+                    "tenant_id",
+                    sa.UUID(),
+                    nullable=True
+                )
             )
-        )
-        batch_op.create_foreign_key(
-            "fk_leads_tenant_id",
-            "tenants",
-            ["tenant_id"],
-            ["id"],
-            ondelete="CASCADE"
-        )
-        batch_op.create_index("ix_leads_tenant_id", ["tenant_id"])
+
+        existing_fks = {fk["name"] for fk in inspector.get_foreign_keys("leads") if fk.get("name")}
+        if "fk_leads_tenant_id" not in existing_fks:
+            batch_op.create_foreign_key(
+                "fk_leads_tenant_id",
+                "tenants",
+                ["tenant_id"],
+                ["id"],
+                ondelete="CASCADE"
+            )
+
+        existing_indexes = {index["name"] for index in inspector.get_indexes("leads")}
+        if "ix_leads_tenant_id" not in existing_indexes:
+            batch_op.create_index("ix_leads_tenant_id", ["tenant_id"])
 
     op.execute(
         """
