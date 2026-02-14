@@ -64,10 +64,10 @@ def upgrade() -> None:
         sa.Column("title", sa.String(140), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("color", sa.String(30), nullable=False, server_default="slate"),
-        sa.Column("pinned", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("pinned", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("position_x", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("position_y", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("archived", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("archived", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
