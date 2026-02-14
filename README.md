@@ -207,13 +207,53 @@ See `docs/WHATSAPP_EMBEDDED_SIGNUP.md` for details.
 2. Deploy from repository root (Railway reads root `requirements.txt` + `Procfile`)
 3. Start command from `Procfile`:
 ```
-web: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+web: cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+#### Railway environment variables (minimum recommended)
+```env
+# Core
+ENVIRONMENT=prod
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+JWT_SECRET_KEY=change-this-to-a-secure-random-string
+
+# URLs
+FRONTEND_URL=https://<your-vercel-domain>
+BACKEND_URL=https://<your-railway-domain>
+WEBHOOK_PUBLIC_URL=https://<your-railway-domain>
+
+# Email (required for register/forgot-password in prod)
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+SMTP_FROM_EMAIL=no-reply@<your-domain>
+SMTP_FROM_NAME=SvontAI
+
+# Optional: OpenAI
+OPENAI_API_KEY=sk-...
+
+# Optional: WhatsApp Embedded Signup
+META_APP_ID=...
+META_APP_SECRET=...
+META_CONFIG_ID=...
+META_REDIRECT_URI=https://<your-railway-domain>/api/onboarding/whatsapp/callback
+GRAPH_API_VERSION=v18.0
+
+# Optional: n8n
+USE_N8N=false
+SVONTAI_TO_N8N_SECRET=change-this-to-a-secure-random-string-svontai-to-n8n
+N8N_TO_SVONTAI_SECRET=change-this-to-a-secure-random-string-n8n-to-svontai
 ```
 
 ### Frontend (Vercel)
 1. Connect GitHub repository
 2. Set `NEXT_PUBLIC_BACKEND_URL`
 3. Deploy
+
+#### Vercel environment variables
+```env
+NEXT_PUBLIC_BACKEND_URL=https://<your-railway-domain>
+```
 
 ### Widget
 Serve `widget/index.js` via CDN or backend static files.

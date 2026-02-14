@@ -2,6 +2,8 @@
 Tenant management router.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 
@@ -110,7 +112,7 @@ async def get_my_tenants(
 
 @router.put("/{tenant_id}", response_model=TenantResponse)
 async def update_tenant(
-    tenant_id: str,
+    tenant_id: UUID,
     tenant_update: TenantUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

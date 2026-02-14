@@ -3,8 +3,9 @@ Schemas for appointment management.
 """
 
 from datetime import datetime
+from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class AppointmentCreate(BaseModel):
@@ -27,9 +28,11 @@ class AppointmentUpdate(BaseModel):
 
 
 class AppointmentResponse(BaseModel):
-    id: str
-    tenant_id: str
-    created_by: str | None
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    created_by: UUID | None
     customer_name: str
     customer_email: str | None
     subject: str
@@ -41,9 +44,6 @@ class AppointmentResponse(BaseModel):
     reminder_after_sent_at: datetime | None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class AppointmentReminderResult(BaseModel):
