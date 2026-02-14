@@ -204,9 +204,10 @@ See `docs/WHATSAPP_EMBEDDED_SIGNUP.md` for details.
 
 ### Backend (Railway/Render)
 1. Set environment variables
-2. Deploy with `Procfile`:
+2. Deploy from repository root (Railway reads root `requirements.txt` + `Procfile`)
+3. Start command from `Procfile`:
 ```
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+web: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
 ### Frontend (Vercel)
