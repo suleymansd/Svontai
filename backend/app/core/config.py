@@ -6,6 +6,7 @@ All environment variables are loaded and validated here.
 import logging
 from functools import lru_cache
 from typing import Literal, Optional
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     
     # Database (SQLite for development, PostgreSQL for production)
     DATABASE_URL: str = "sqlite:///./smartwa.db"
+    PGHOST: str = ""
+    PGPORT: str = ""
+    PGUSER: str = ""
+    PGPASSWORD: str = ""
+    PGDATABASE: str = ""
     
     # JWT Configuration
     JWT_SECRET_KEY: str = "your-super-secret-jwt-key-change-in-production"
@@ -120,6 +126,34 @@ class Settings(BaseSettings):
     
     # n8n webhook path pattern (used for triggering workflows)
     N8N_WEBHOOK_PATH: str = "/webhook"
+
+    @model_validator(mode='after')
+    def normalize_database_url(self) -> 'Settings':
+        """Normalize DATABASE_URL for Railway/Postgres variants."""
+        raw_url = (self.DATABASE_URL or "").strip().strip('"').strip("'")
+
+        if (
+            (not raw_url or raw_url.startswith("${"))
+            and self.PGHOST
+            and self.PGPORT
+            and self.PGUSER
+            and self.PGDATABASE
+        ):
+            encoded_password = quote_plus(self.PGPASSWORD or "")
+            raw_url = (
+                "postgresql+psycopg://"
+                f"{self.PGUSER}:{encoded_password}@{self.PGHOST}:{self.PGPORT}/{self.PGDATABASE}"
+            )
+
+        if raw_url.startswith("postgres://"):
+            raw_url = raw_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif raw_url.startswith("postgresql://"):
+            raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif raw_url.startswith("postgresql+psycopg2://"):
+            raw_url = raw_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+
+        self.DATABASE_URL = raw_url or "sqlite:///./smartwa.db"
+        return self
 
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
