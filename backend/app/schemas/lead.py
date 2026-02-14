@@ -5,7 +5,7 @@ Pydantic schemas for Lead model.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 
 class LeadBase(BaseModel):
@@ -16,6 +16,13 @@ class LeadBase(BaseModel):
     notes: str | None = None
     source: str | None = None
     status: str | None = None
+
+    @field_validator("email", "phone", "notes", "source", "status", mode="before")
+    @classmethod
+    def _empty_string_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class LeadCreate(LeadBase):
@@ -51,4 +58,3 @@ class LeadResponse(LeadBase):
 class LeadWithBotName(LeadResponse):
     """Schema for lead response with bot name."""
     bot_name: str
-

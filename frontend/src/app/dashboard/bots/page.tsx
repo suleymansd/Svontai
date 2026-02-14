@@ -33,7 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { botApi } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate, maskSecret } from '@/lib/utils'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { KPIStat } from '@/components/shared/kpi-stat'
@@ -44,6 +44,7 @@ export default function BotsPage() {
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [formErrors, setFormErrors] = useState<{ name?: string }>({})
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -100,6 +101,12 @@ export default function BotsPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
+    const trimmedName = formData.name.trim()
+    if (!trimmedName) {
+      setFormErrors({ name: 'Bot adı zorunludur.' })
+      return
+    }
+    setFormErrors({})
     createMutation.mutate(formData)
   }
 
@@ -213,7 +220,7 @@ export default function BotsPage() {
                       </Button>
                     </div>
                     <code className="text-xs text-muted-foreground font-mono truncate block">
-                      {bot.public_key}
+                      {maskSecret(bot.public_key, 8, 6)}
                     </code>
                   </div>
 
@@ -262,11 +269,16 @@ export default function BotsPage() {
                   <Input
                     id="name"
                     placeholder="Örn: Müşteri Destek Botu"
-                    className="h-11"
+                    className={cn('h-11', formErrors.name && 'border-destructive focus-visible:ring-destructive')}
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value })
+                      if (formErrors.name) setFormErrors({})
+                    }}
                   />
+                  {formErrors.name && (
+                    <p className="text-xs text-destructive">{formErrors.name}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">Açıklama</Label>
@@ -295,7 +307,7 @@ export default function BotsPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending}
+                  disabled={createMutation.isPending || !formData.name.trim()}
                 >
                   {createMutation.isPending ? 'Oluşturuluyor...' : 'Bot Oluştur'}
                 </Button>

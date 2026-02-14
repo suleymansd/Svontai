@@ -34,7 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAuthStore, useToolStore, useUIStore } from '@/lib/store'
-import { cn } from '@/lib/utils'
+import { cn, maskEmail } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { setupOnboardingApi, subscriptionApi } from '@/lib/api'
 import { getToolMenuItems } from '@/components/tools/registry'
@@ -188,8 +188,9 @@ export default function DashboardLayout({
             </p>
             {sidebarItems.map((item) => {
               // Check if feature is enabled
-              if (item.feature && usageStats?.features && !usageStats.features[item.feature]) {
-                return null
+              if (item.feature) {
+                const enabled = usageStats?.features?.[item.feature]
+                if (enabled !== true) return null
               }
 
               const isActive = pathname === item.href ||
@@ -314,7 +315,7 @@ export default function DashboardLayout({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{user?.full_name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                <p className="text-xs text-muted-foreground truncate">{maskEmail(user?.email || '')}</p>
               </div>
               <Button variant="ghost" size="icon" onClick={handleLogout} className="text-destructive hover:bg-destructive/10">
                 <LogOut className="w-5 h-5" />

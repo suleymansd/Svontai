@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant, get_current_user
@@ -25,10 +25,17 @@ router = APIRouter(prefix="/leads", tags=["Leads"])
 
 class LeadCreate(BaseModel):
     name: str
-    email: Optional[str] = None
+    email: EmailStr | None = None
     phone: Optional[str] = None
     notes: Optional[str] = None
     source: Optional[str] = "manual"
+
+    @field_validator("email", "phone", "notes", "source", mode="before")
+    @classmethod
+    def _empty_string_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class LeadUpdate(BaseModel):
@@ -117,15 +124,20 @@ async def create_lead(
     """
     # Get first bot of tenant (or create without bot_id)
     bot = db.query(Bot).filter(Bot.tenant_id == current_tenant.id).first()
-    
+
+    normalized_email = lead_data.email.strip() if isinstance(lead_data.email, str) else None
+    normalized_phone = lead_data.phone.strip() if isinstance(lead_data.phone, str) else None
+    normalized_notes = lead_data.notes.strip() if isinstance(lead_data.notes, str) else None
+    normalized_source = (lead_data.source or "manual").strip() if isinstance(lead_data.source, str) else "manual"
+
     lead = Lead(
         tenant_id=current_tenant.id,
         bot_id=bot.id if bot else None,
         name=lead_data.name,
-        email=lead_data.email,
-        phone=lead_data.phone,
-        notes=lead_data.notes,
-        source=lead_data.source or "manual",
+        email=normalized_email or None,
+        phone=normalized_phone or None,
+        notes=normalized_notes or None,
+        source=normalized_source or "manual",
         status="new"
     )
     

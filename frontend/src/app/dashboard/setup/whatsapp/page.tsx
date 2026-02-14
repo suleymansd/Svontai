@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
@@ -82,6 +82,8 @@ export default function WhatsAppSetupPage() {
   const queryClient = useQueryClient()
   const [isConnecting, setIsConnecting] = useState(false)
   const [pollInterval, setPollInterval] = useState<number | false>(false)
+  const popupRef = useRef<Window | null>(null)
+  const popupCheckRef = useRef<number | null>(null)
 
   // Fetch onboarding status
   const { data: status, isLoading, refetch } = useQuery<OnboardingStatus>({
@@ -110,38 +112,30 @@ export default function WhatsAppSetupPage() {
       )
 
       if (popup) {
+        popupRef.current = popup
         setIsConnecting(true)
 
-        // Listen for popup close or message
-        const checkPopup = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkPopup)
+        if (popupCheckRef.current) {
+          window.clearInterval(popupCheckRef.current)
+        }
+        popupCheckRef.current = window.setInterval(() => {
+          if (popupRef.current && popupRef.current.closed) {
+            popupRef.current = null
+            if (popupCheckRef.current) {
+              window.clearInterval(popupCheckRef.current)
+              popupCheckRef.current = null
+            }
             setIsConnecting(false)
             refetch()
           }
         }, 500)
-
-        // Listen for postMessage from popup
-        const handleMessage = (event: MessageEvent) => {
-          if (event.data?.type === 'WHATSAPP_CONNECTED') {
-            popup.close()
-            clearInterval(checkPopup)
-            setIsConnecting(false)
-            refetch()
-            toast({
-              title: 'Bağlantı Başarılı!',
-              description: 'WhatsApp hesabınız bağlandı.',
-            })
-          }
-        }
-        window.addEventListener('message', handleMessage)
-
-        return () => {
-          window.removeEventListener('message', handleMessage)
-        }
       } else {
-        // Popup blocked, redirect instead
-        window.location.href = data.oauth_url
+        toast({
+          title: 'Pop-up engellendi',
+          description: 'Tarayıcı pop-up engelini kapatın veya yeni sekmede devam edin.',
+          variant: 'destructive',
+        })
+        window.location.assign(data.oauth_url)
       }
     },
     onError: (error: any) => {
@@ -189,6 +183,50 @@ export default function WhatsAppSetupPage() {
         description: 'WhatsApp hesabınız başarıyla bağlandı.',
       })
       window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'WHATSAPP_CONNECTED') return
+
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.close()
+      }
+      popupRef.current = null
+      if (popupCheckRef.current) {
+        window.clearInterval(popupCheckRef.current)
+        popupCheckRef.current = null
+      }
+
+      setIsConnecting(false)
+      refetch()
+
+      if (event.data?.success) {
+        toast({
+          title: 'Bağlantı Başarılı!',
+          description: 'WhatsApp hesabınız bağlandı.',
+        })
+      } else {
+        toast({
+          title: 'Bağlantı Başarısız',
+          description: event.data?.error || 'Meta bağlantısı tamamlanamadı.',
+          variant: 'destructive',
+        })
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [refetch, toast])
+
+  useEffect(() => {
+    return () => {
+      if (popupCheckRef.current) {
+        window.clearInterval(popupCheckRef.current)
+        popupCheckRef.current = null
+      }
+      popupRef.current = null
     }
   }, [])
 
@@ -489,4 +527,3 @@ export default function WhatsAppSetupPage() {
     </div>
   )
 }
-

@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ToolCard } from '@/components/tools/ToolCard'
 import { ToolDropZone } from '@/components/tools/ToolDropZone'
-import { ToolDetailModal } from '@/components/tools/ToolDetailModal'
 import { ToolGuideOverlay } from '@/components/tools/ToolGuideOverlay'
 import { TOOL_CATALOG, createDefaultToolWorkspaceConfig, getToolCatalogItem } from '@/components/tools/catalog'
 import type { Tool } from '@/components/tools/types'
@@ -19,8 +18,6 @@ import { useToolStore } from '@/lib/store'
 export function ToolsPage() {
   const router = useRouter()
   const { installedToolIds, toolConfigs, installTool, setToolConfig } = useToolStore()
-  const [selectedToolId, setSelectedToolId] = useState<string | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
 
   const tools = useMemo<Tool[]>(
@@ -39,11 +36,6 @@ export function ToolsPage() {
         }
       }),
     [installedToolIds, toolConfigs]
-  )
-
-  const selectedTool = useMemo(
-    () => tools.find((tool) => tool.id === selectedToolId) ?? null,
-    [tools, selectedToolId]
   )
 
   const addedTools = useMemo(() => tools.filter((tool) => tool.status === 'added'), [tools])
@@ -69,37 +61,7 @@ export function ToolsPage() {
   }
 
   const handleCardClick = (tool: Tool) => {
-    setSelectedToolId(tool.id)
-    setModalOpen(true)
-    setGuideOpen(true)
-  }
-
-  const handleModalChange = (open: boolean) => {
-    setModalOpen(open)
-    if (!open) setGuideOpen(false)
-  }
-
-  const handleAddToWorkflow = (toolId: string) => {
-    activateTool(toolId)
-    setModalOpen(false)
-    setGuideOpen(false)
-  }
-
-  const handleSaveTool = (toolId: string, updates: Partial<Tool>) => {
-    const catalogTool = getToolCatalogItem(toolId)
-    if (!catalogTool) return
-
-    const currentConfig = toolConfigs[toolId] ?? createDefaultToolWorkspaceConfig(catalogTool)
-    setToolConfig(toolId, {
-      ...currentConfig,
-      customization: {
-        ...currentConfig.customization,
-        name: updates.name ?? currentConfig.customization.name,
-        category: updates.category ?? currentConfig.customization.category,
-        description: updates.description ?? currentConfig.customization.description,
-        tags: updates.tags ?? currentConfig.customization.tags,
-      },
-    })
+    activateTool(tool.id)
   }
 
   return (
@@ -150,13 +112,6 @@ export function ToolsPage() {
           </div>
         </div>
 
-        <ToolDetailModal
-          tool={selectedTool}
-          open={modalOpen}
-          onOpenChange={handleModalChange}
-          onAddToWorkflow={handleAddToWorkflow}
-          onSave={handleSaveTool}
-        />
       </div>
     </ContentContainer>
   )

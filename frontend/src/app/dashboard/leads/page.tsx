@@ -53,13 +53,21 @@ export default function LeadsPage() {
     source: 'manual',
   })
 
+  type LeadCreatePayload = {
+    name: string
+    email?: string
+    phone?: string
+    notes?: string
+    source?: string
+  }
+
   const { data: leads, isLoading } = useQuery({
     queryKey: ['leads'],
     queryFn: () => leadApi.list({ limit: 100 }).then((res) => res.data),
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => leadApi.create(data),
+    mutationFn: (data: LeadCreatePayload) => leadApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
       setIsCreateOpen(false)
@@ -69,10 +77,14 @@ export default function LeadsPage() {
         description: 'Yeni lead başarıyla oluşturuldu.',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const detail = error.response?.data?.detail
+      const description = Array.isArray(detail)
+        ? 'Form alanlarını kontrol edin.'
+        : detail || 'Lead eklenirken bir hata oluştu.'
       toast({
         title: 'Hata',
-        description: 'Lead eklenirken bir hata oluştu.',
+        description,
         variant: 'destructive',
       })
     },
@@ -91,8 +103,21 @@ export default function LeadsPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name) return
-    createMutation.mutate(formData)
+    if (!formData.name.trim()) {
+      toast({
+        title: 'Eksik bilgi',
+        description: 'İsim alanı zorunludur.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    createMutation.mutate({
+      ...formData,
+      email: formData.email.trim() || undefined,
+      phone: formData.phone.trim() || undefined,
+      notes: formData.notes.trim() || undefined,
+    })
   }
 
   const handleExport = () => {
@@ -236,7 +261,7 @@ export default function LeadsPage() {
           <KPIStat label="Toplam Lead" value={totalLeads} icon={<Users className="h-5 w-5" />} />
           <KPIStat label="Yeni" value={newLeads} icon={<Users className="h-5 w-5" />} />
           <KPIStat label="İletişim Kuruldu" value={contactedLeads} icon={<Users className="h-5 w-5" />} />
-          <KPIStat label="Ortalama Yanıt" value="2.5h" icon={<Users className="h-5 w-5" />} />
+          <KPIStat label="Ortalama Yanıt" value={totalLeads === 0 ? '—' : '2.5h'} icon={<Users className="h-5 w-5" />} />
         </div>
 
         <FilterBar
@@ -320,7 +345,7 @@ export default function LeadsPage() {
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
                 İptal
               </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
+              <Button type="submit" disabled={createMutation.isPending || !formData.name.trim()}>
                 {createMutation.isPending ? 'Kaydediliyor...' : 'Lead Ekle'}
               </Button>
             </DialogFooter>

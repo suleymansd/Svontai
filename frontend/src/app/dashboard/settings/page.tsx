@@ -54,7 +54,6 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile')
   const [saved, setSaved] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
-  const [copiedKey, setCopiedKey] = useState(false)
   const [testingWorkflow, setTestingWorkflow] = useState(false)
 
   const [profileData, setProfileData] = useState({
@@ -217,14 +216,10 @@ export default function SettingsPage() {
   }
 
   const copyApiKey = () => {
-    // In a real app, this would copy the actual API key
-    navigator.clipboard.writeText('sk_live_xxxxxxxxxxxxxxxxxxxxx')
-    setCopiedKey(true)
     toast({
-      title: 'Kopyalandı',
-      description: 'API anahtarı panoya kopyalandı.',
+      title: 'Yakında',
+      description: 'API anahtarı yönetimi yakında aktif olacak.',
     })
-    setTimeout(() => setCopiedKey(false), 2000)
   }
 
   return (
@@ -694,16 +689,12 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">API Anahtarı</span>
                       <Button variant="ghost" size="sm" onClick={copyApiKey}>
-                        {copiedKey ? (
-                          <Check className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                        <span className="ml-2">{copiedKey ? 'Kopyalandı' : 'Kopyala'}</span>
+                        <Copy className="w-4 h-4" />
+                        <span className="ml-2">Kopyala</span>
                       </Button>
                     </div>
                     <code className="text-sm text-muted-foreground">
-                      sk_live_•••••••••••••••••••••••••••
+                      •••••••••••••••••••••••••••••••••
                     </code>
                   </div>
 

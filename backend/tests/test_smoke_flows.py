@@ -79,6 +79,14 @@ def test_smoke_register_verify_login_and_core_resources(client):
     )
     assert knowledge_resp.status_code == 201, knowledge_resp.text
 
+    lead_resp = client.post(
+        "/leads",
+        json={"name": "Lead 1", "email": "", "phone": "", "notes": "", "source": "manual"},
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert lead_resp.status_code == 200, lead_resp.text
+    assert lead_resp.json().get("email") is None
+
     note_resp = client.post(
         "/notes",
         json={"title": "Not 1", "content": "Deneme içerik", "color": "slate", "pinned": True},
