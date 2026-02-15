@@ -152,23 +152,29 @@ class TestOAuthURLGeneration:
         
         service = MetaAPIService()
         old_config_id = getattr(settings, "META_CONFIG_ID", "")
+        old_backend_url = getattr(settings, "BACKEND_URL", "")
+        old_webhook_public_url = getattr(settings, "WEBHOOK_PUBLIC_URL", "")
         try:
-            settings.META_CONFIG_ID = "test_config_id"
+            settings.META_CONFIG_ID = "123456"
+            settings.BACKEND_URL = "https://svontai.test"
+            settings.WEBHOOK_PUBLIC_URL = "https://svontai.test"
             service.app_id = "123456789"
             service.app_secret = "test_secret"
-            service.redirect_uri = "https://svontai.test/callback"
+            service.redirect_uri = "https://svontai.test/api/onboarding/whatsapp/callback"
 
             url = service.get_oauth_url("test_state")
 
             assert "client_id=123456789" in url
-            assert "redirect_uri=https%3A%2F%2Fsvontai.test%2Fcallback" in url
+            assert "redirect_uri=https%3A%2F%2Fsvontai.test%2Fapi%2Fonboarding%2Fwhatsapp%2Fcallback" in url
             assert "state=test_state" in url
             assert "response_type=code" in url
-            assert "config_id=test_config_id" in url
+            assert "config_id=123456" in url
             assert "whatsapp_business_management" in url
             assert "whatsapp_business_messaging" in url
         finally:
             settings.META_CONFIG_ID = old_config_id
+            settings.BACKEND_URL = old_backend_url
+            settings.WEBHOOK_PUBLIC_URL = old_webhook_public_url
 
 
 class TestOnboardingSteps:
@@ -214,11 +220,15 @@ class TestMetaAPIIntegration:
         
         service = MetaAPIService()
         old_config_id = getattr(settings, "META_CONFIG_ID", "")
+        old_backend_url = getattr(settings, "BACKEND_URL", "")
+        old_webhook_public_url = getattr(settings, "WEBHOOK_PUBLIC_URL", "")
         try:
-            settings.META_CONFIG_ID = "test_config_id"
+            settings.META_CONFIG_ID = "123456"
+            settings.BACKEND_URL = "https://svontai.test"
+            settings.WEBHOOK_PUBLIC_URL = "https://svontai.test"
             service.app_id = "123456789"
             service.app_secret = "test_secret"
-            service.redirect_uri = "https://svontai.test/callback"
+            service.redirect_uri = "https://svontai.test/api/onboarding/whatsapp/callback"
         
             with patch('httpx.AsyncClient') as mock_client:
                 mock_response = Mock()
@@ -237,6 +247,8 @@ class TestMetaAPIIntegration:
                 assert result["access_token"] == "test_token"
         finally:
             settings.META_CONFIG_ID = old_config_id
+            settings.BACKEND_URL = old_backend_url
+            settings.WEBHOOK_PUBLIC_URL = old_webhook_public_url
     
     @pytest.mark.asyncio
     async def test_get_phone_numbers_mock(self):

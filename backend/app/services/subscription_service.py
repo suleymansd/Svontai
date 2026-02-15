@@ -177,9 +177,8 @@ class SubscriptionService:
     def check_feature(self, tenant_id: uuid.UUID, feature_key: str) -> bool:
         """Check if a feature is enabled for tenant's plan."""
         subscription = self.get_subscription(tenant_id)
-        
         if not subscription:
-            return False
+            subscription = self.create_subscription(tenant_id, "free")
         
         plan = subscription.plan
         return plan.feature_flags.get(feature_key, False)
@@ -187,9 +186,8 @@ class SubscriptionService:
     def get_usage_stats(self, tenant_id: uuid.UUID) -> dict:
         """Get current usage statistics for a tenant."""
         subscription = self.get_subscription(tenant_id)
-        
         if not subscription:
-            return {}
+            subscription = self.create_subscription(tenant_id, "free")
         
         plan = subscription.plan
         

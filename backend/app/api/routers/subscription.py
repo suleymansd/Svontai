@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.dependencies.auth import get_current_user, get_current_tenant
 from app.dependencies.permissions import require_permissions
 from app.models.user import User

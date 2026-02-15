@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   MessageSquare,
   Users,
-  TrendingUp,
   Bot,
   ArrowUpRight,
   ArrowDownRight,
@@ -12,7 +11,6 @@ import {
   BarChart3,
   PieChart,
   Calendar,
-  Loader2,
   Lock
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -24,6 +22,7 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { EmptyState } from '@/components/shared/empty-state'
 
 interface DashboardStats {
   today: {
@@ -58,6 +57,23 @@ interface ChartDataPoint {
   ai_responses: number
   conversations: number
   leads: number
+}
+
+function sumKey(data: ChartDataPoint[], key: keyof ChartDataPoint): number {
+  return data.reduce((sum, item) => sum + (item[key] as number), 0)
+}
+
+function percentChange(current: number, previous: number): number | undefined {
+  if (!previous) return undefined
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+function changeLast7VsPrev7(data: ChartDataPoint[], key: keyof ChartDataPoint): number | undefined {
+  if (!data || data.length < 14) return undefined
+  const slice = data.slice(-14)
+  const prev = sumKey(slice.slice(0, 7), key)
+  const curr = sumKey(slice.slice(7), key)
+  return percentChange(curr, prev)
 }
 
 function StatCard({
@@ -139,6 +155,15 @@ function MiniChart({ data, dataKey, color }: { data: ChartDataPoint[], dataKey: 
 }
 
 export default function AnalyticsPage() {
+  const { data: usageStats, isLoading: usageLoading } = useQuery({
+    queryKey: ['usage-stats'],
+    queryFn: () => subscriptionApi.getUsageStats().then(res => res.data),
+  })
+
+  const analyticsEnabled = usageStats?.features?.analytics === true
+  const analyticsKnown = usageStats?.features?.analytics !== undefined
+  const analyticsLocked = analyticsKnown && !analyticsEnabled
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: () => analyticsApi.getDashboardStats().then(res => res.data),
@@ -147,53 +172,84 @@ export default function AnalyticsPage() {
   const { data: chartData, isLoading: chartLoading } = useQuery<ChartDataPoint[]>({
     queryKey: ['chart-data'],
     queryFn: () => analyticsApi.getChartData(30).then(res => res.data),
+    enabled: analyticsEnabled,
   })
 
-  const { data: usageStats } = useQuery({
-    queryKey: ['usage-stats'],
-    queryFn: () => subscriptionApi.getUsageStats().then(res => res.data),
-  })
+  const isLoading = statsLoading || (analyticsEnabled && chartLoading) || usageLoading
+  const hasData = Boolean(
+    stats
+      && (
+        stats.totals.conversations > 0
+        || stats.totals.leads > 0
+        || stats.monthly.messages_sent > 0
+        || stats.monthly.messages_received > 0
+        || stats.monthly.conversations_started > 0
+        || stats.monthly.leads_captured > 0
+        || stats.today.ai_responses > 0
+      )
+  )
 
-  const hasAnalyticsFeature = usageStats?.features?.analytics !== false
+  const totalMonthlyMessages = (stats?.monthly.messages_sent || 0) + (stats?.monthly.messages_received || 0)
+  const todayTotalMessages = (stats?.today.messages_sent || 0) + (stats?.today.messages_received || 0)
 
-  if (!hasAnalyticsFeature) {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="border-amber-200 dark:border-amber-800">
-          <CardContent className="p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <Lock className="w-10 h-10 text-amber-600" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Analitik Özellikleri</h2>
-            <p className="text-muted-foreground mb-6">
-              Detaylı analitikler ve grafikler için planınızı yükseltin.
-            </p>
-            <Link href="/dashboard/billing">
-              <Button className="bg-gradient-to-r from-amber-600 to-orange-600">
-                Planları Görüntüle
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  const isLoading = statsLoading || chartLoading
+  const messagesChange = chartData ? changeLast7VsPrev7(chartData, 'messages_sent') : undefined
+  const leadsChange = chartData ? changeLast7VsPrev7(chartData, 'leads') : undefined
+  const conversationsChange = chartData ? changeLast7VsPrev7(chartData, 'conversations') : undefined
+  const aiResponses30d = chartData ? sumKey(chartData, 'ai_responses') : undefined
 
   return (
     <ContentContainer>
       <div className="space-y-8">
         <PageHeader
           title="Analitikler"
-          description="İşletmenizin performansını detaylı inceleyin."
+          description={analyticsLocked ? "Temel metrikleri görüntüleyin (detaylı grafikler ücretli planda)." : "İşletmenizin performansını detaylı inceleyin."}
           actions={(
-            <Badge variant="outline" className="gap-1">
-              <Calendar className="w-3 h-3" />
-              Son 30 Gün
-            </Badge>
+            analyticsLocked ? (
+              <Badge variant="outline" className="gap-1">
+                <Lock className="w-3 h-3" />
+                Temel Analitik
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1">
+                <Calendar className="w-3 h-3" />
+                Son 30 Gün
+              </Badge>
+            )
           )}
         />
+
+        {!analyticsEnabled && analyticsKnown && (
+          <Card className="border-amber-200 dark:border-amber-800">
+            <CardContent className="p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                  <Lock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-semibold">Detaylı analitikler kilitli</p>
+                  <p className="text-sm text-muted-foreground">Grafikler ve karşılaştırmalar için plan yükseltin.</p>
+                </div>
+              </div>
+              <Link href="/dashboard/billing">
+                <Button className="bg-gradient-to-r from-amber-600 to-orange-600">Planları Görüntüle</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isLoading && !hasData && (
+          <EmptyState
+            icon={<BarChart3 className="h-6 w-6 text-primary" />}
+            title="Henüz analitik verisi yok"
+            description="Botunuzdan mesaj geldikçe, konuşmalar başladıkça ve lead oluştukça burada raporlar oluşur."
+            action={(
+              <div className="flex flex-wrap justify-center gap-2">
+                <Link href="/dashboard/bots"><Button>Botlara Git</Button></Link>
+                <Link href="/dashboard/leads"><Button variant="outline">Leadler</Button></Link>
+              </div>
+            )}
+          />
+        )}
 
         {/* Quick Stats */}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -212,34 +268,32 @@ export default function AnalyticsPage() {
           ) : (
             <>
               <StatCard
-                title="Toplam Mesaj"
-                value={stats?.monthly.messages_sent || 0}
-                change={12}
-                changeLabel="bu ay"
+                title="Bu Ay Mesaj"
+                value={totalMonthlyMessages}
+                change={analyticsEnabled ? messagesChange : undefined}
+                changeLabel={analyticsEnabled ? "son 7 gün" : undefined}
                 icon={MessageSquare}
                 color="bg-gradient-to-br from-blue-500 to-cyan-500"
               />
               <StatCard
-                title="Konuşma"
+                title="Toplam Konuşma"
                 value={stats?.totals.conversations || 0}
-                change={8}
-                changeLabel="bu ay"
+                change={analyticsEnabled ? conversationsChange : undefined}
+                changeLabel={analyticsEnabled ? "son 7 gün" : undefined}
                 icon={Activity}
                 color="bg-gradient-to-br from-violet-500 to-purple-500"
               />
               <StatCard
-                title="Lead"
+                title="Toplam Lead"
                 value={stats?.totals.leads || 0}
-                change={15}
-                changeLabel="bu ay"
+                change={analyticsEnabled ? leadsChange : undefined}
+                changeLabel={analyticsEnabled ? "son 7 gün" : undefined}
                 icon={Users}
                 color="bg-gradient-to-br from-green-500 to-emerald-500"
               />
               <StatCard
-                title="AI Yanıt"
-                value={stats?.monthly.messages_sent || 0}
-                change={10}
-                changeLabel="bu ay"
+                title={analyticsEnabled ? "Son 30 Gün AI Yanıt" : "Bugün AI Yanıt"}
+                value={analyticsEnabled ? (aiResponses30d || 0) : (stats?.today.ai_responses || 0)}
                 icon={Bot}
                 color="bg-gradient-to-br from-orange-500 to-amber-500"
               />
@@ -259,19 +313,20 @@ export default function AnalyticsPage() {
               <CardDescription>Son 14 günlük mesaj trafiği</CardDescription>
             </CardHeader>
             <CardContent>
-              {chartLoading ? (
+              {analyticsLocked && (
+                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Grafikler ücretli planda aktif.
+                </div>
+              )}
+              {analyticsEnabled && (chartLoading ? (
                 <Skeleton className="h-16 w-full" />
               ) : (
-                <MiniChart
-                  data={chartData || []}
-                  dataKey="messages_sent"
-                  color="bg-blue-500"
-                />
-              )}
+                <MiniChart data={chartData || []} dataKey="messages_sent" color="bg-blue-500" />
+              ))}
               <div className="flex items-center justify-between mt-4 text-sm">
                 <span className="text-muted-foreground">Gönderilen Mesajlar</span>
                 <span className="font-medium">
-                  {chartData?.reduce((sum, d) => sum + d.messages_sent, 0) || 0} mesaj
+                  {analyticsEnabled ? (chartData?.reduce((sum, d) => sum + d.messages_sent, 0) || 0) : (stats?.monthly.messages_sent || 0)} mesaj
                 </span>
               </div>
             </CardContent>
@@ -287,19 +342,20 @@ export default function AnalyticsPage() {
               <CardDescription>Son 14 günlük lead verileri</CardDescription>
             </CardHeader>
             <CardContent>
-              {chartLoading ? (
+              {analyticsLocked && (
+                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Lead grafikleri ücretli planda aktif.
+                </div>
+              )}
+              {analyticsEnabled && (chartLoading ? (
                 <Skeleton className="h-16 w-full" />
               ) : (
-                <MiniChart
-                  data={chartData || []}
-                  dataKey="leads"
-                  color="bg-green-500"
-                />
-              )}
+                <MiniChart data={chartData || []} dataKey="leads" color="bg-green-500" />
+              ))}
               <div className="flex items-center justify-between mt-4 text-sm">
                 <span className="text-muted-foreground">Yakalanan Lead'ler</span>
                 <span className="font-medium">
-                  {chartData?.reduce((sum, d) => sum + d.leads, 0) || 0} lead
+                  {analyticsEnabled ? (chartData?.reduce((sum, d) => sum + d.leads, 0) || 0) : (stats?.monthly.leads_captured || 0)} lead
                 </span>
               </div>
             </CardContent>
@@ -370,6 +426,17 @@ export default function AnalyticsPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     {usageStats.messages_remaining} mesaj kaldı
                   </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4">
+                    <p className="text-sm text-muted-foreground">Bugün toplam mesaj</p>
+                    <p className="text-xl font-semibold">{todayTotalMessages}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4">
+                    <p className="text-sm text-muted-foreground">Bu ay toplam mesaj</p>
+                    <p className="text-xl font-semibold">{totalMonthlyMessages}</p>
+                  </div>
                 </div>
               </div>
             </CardContent>

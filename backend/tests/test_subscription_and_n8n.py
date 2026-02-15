@@ -34,6 +34,7 @@ def test_check_feature_returns_false_without_subscription():
     db.query.return_value = query
 
     service = SubscriptionService(db)
+    service.create_subscription = MagicMock(return_value=SimpleNamespace(plan=SimpleNamespace(feature_flags={})))
     assert service.check_feature(tenant_id, "operator_takeover") is False
 
 

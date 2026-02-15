@@ -38,7 +38,8 @@ from app.api.routers import (
     tickets_router,
     appointments_router,
     notes_router,
-    payments_router
+    payments_router,
+    api_keys_router
 )
 
 # Configure logging
@@ -183,6 +184,7 @@ app.include_router(tickets_router)
 app.include_router(appointments_router)
 app.include_router(notes_router)
 app.include_router(payments_router)
+app.include_router(api_keys_router)
 
 
 @app.get("/")

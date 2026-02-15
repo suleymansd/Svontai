@@ -28,6 +28,7 @@ from app.models.password_reset import PasswordResetCode
 from app.models.email_verification import EmailVerificationCode
 from app.models.appointment import Appointment
 from app.models.note import WorkspaceNote
+from app.models.api_key import TenantApiKey
 
 __all__ = [
     # Core models
@@ -90,5 +91,6 @@ __all__ = [
     "PasswordResetCode",
     "EmailVerificationCode",
     "Appointment",
-    "WorkspaceNote"
+    "WorkspaceNote",
+    "TenantApiKey"
 ]

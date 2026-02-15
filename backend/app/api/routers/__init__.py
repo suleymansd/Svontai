@@ -25,6 +25,7 @@ from app.api.routers.tickets import router as tickets_router
 from app.api.routers.appointments import router as appointments_router
 from app.api.routers.notes import router as notes_router
 from app.api.routers.payments import router as payments_router
+from app.api.routers.api_keys import router as api_keys_router
 
 __all__ = [
     "auth_router",
@@ -52,5 +53,6 @@ __all__ = [
     "tickets_router",
     "appointments_router",
     "notes_router",
-    "payments_router"
+    "payments_router",
+    "api_keys_router"
 ]

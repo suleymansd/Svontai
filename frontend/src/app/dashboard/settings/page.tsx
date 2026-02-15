@@ -31,12 +31,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuthStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
-import { authApi, automationApi } from '@/lib/api'
+import { apiKeysApi, authApi, automationApi, subscriptionApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import Link from 'next/link'
 
 const tabs = [
   { id: 'profile', label: 'Profil', icon: User },
@@ -55,6 +57,11 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [testingWorkflow, setTestingWorkflow] = useState(false)
+  const [isCreateKeyOpen, setIsCreateKeyOpen] = useState(false)
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null)
+  const [createKeyForm, setCreateKeyForm] = useState({ name: 'Default', current_password: '' })
+  const [revokeKeyId, setRevokeKeyId] = useState<string | null>(null)
+  const [revokePassword, setRevokePassword] = useState('')
 
   const [profileData, setProfileData] = useState({
     full_name: user?.full_name || '',
@@ -97,6 +104,20 @@ export default function SettingsPage() {
     queryFn: () => automationApi.getStatus().then(res => res.data),
     enabled: activeTab === 'automation',
     refetchInterval: 30000
+  })
+
+  const { data: usageStats, isLoading: usageLoading } = useQuery({
+    queryKey: ['usage-stats'],
+    queryFn: () => subscriptionApi.getUsageStats().then(res => res.data),
+    enabled: activeTab === 'api',
+  })
+
+  const apiAccessEnabled = usageStats?.features?.api_access === true
+
+  const { data: apiKeys, isLoading: apiKeysLoading } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => apiKeysApi.list({ include_revoked: true }).then(res => res.data),
+    enabled: activeTab === 'api' && apiAccessEnabled,
   })
 
   // Update automation data when settings are fetched
@@ -160,6 +181,42 @@ export default function SettingsPage() {
     }
   })
 
+  const createKeyMutation = useMutation({
+    mutationFn: (payload: { name: string; current_password: string }) => apiKeysApi.create(payload),
+    onSuccess: (response) => {
+      const secret = response.data?.secret
+      setCreatedSecret(secret || null)
+      setCreateKeyForm({ name: 'Default', current_password: '' })
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      toast({ title: 'API anahtarı oluşturuldu', description: 'Anahtar sadece bir kez gösterilecektir.' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || 'API anahtarı oluşturulamadı',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const revokeKeyMutation = useMutation({
+    mutationFn: ({ id, current_password }: { id: string; current_password: string }) =>
+      apiKeysApi.revoke(id, { current_password }),
+    onSuccess: () => {
+      setRevokeKeyId(null)
+      setRevokePassword('')
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      toast({ title: 'API anahtarı iptal edildi' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || 'API anahtarı iptal edilemedi',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handleSaveAutomation = () => {
     updateAutomationMutation.mutate(automationData)
   }
@@ -215,11 +272,13 @@ export default function SettingsPage() {
     setSecurityData({ current_password: '', new_password: '', confirm_password: '' })
   }
 
-  const copyApiKey = () => {
-    toast({
-      title: 'Yakında',
-      description: 'API anahtarı yönetimi yakında aktif olacak.',
-    })
+  const copyValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast({ title: 'Kopyalandı', description: label })
+    } catch {
+      toast({ title: 'Hata', description: 'Kopyalama başarısız', variant: 'destructive' })
+    }
   }
 
   return (
@@ -685,18 +744,64 @@ export default function SettingsPage() {
                   <CardDescription>Entegrasyonlar için API anahtarlarınızı yönetin</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">API Anahtarı</span>
-                      <Button variant="ghost" size="sm" onClick={copyApiKey}>
-                        <Copy className="w-4 h-4" />
-                        <span className="ml-2">Kopyala</span>
-                      </Button>
+                  {!apiAccessEnabled && !usageLoading && usageStats && (
+                    <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-amber-900 dark:text-amber-100">API erişimi kapalı</p>
+                          <p className="text-sm text-amber-800 dark:text-amber-200">API anahtarları için planınızı yükseltin (API Access).</p>
+                        </div>
+                      </div>
+                      <Link href="/dashboard/billing">
+                        <Button className="bg-gradient-to-r from-amber-600 to-orange-600">Planları Gör</Button>
+                      </Link>
                     </div>
-                    <code className="text-sm text-muted-foreground">
-                      •••••••••••••••••••••••••••••••••
-                    </code>
-                  </div>
+                  )}
+
+                  {apiAccessEnabled && (
+                    <div className="space-y-3">
+                      {apiKeysLoading ? (
+                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 text-sm text-muted-foreground">
+                          Yükleniyor...
+                        </div>
+                      ) : (
+                        (apiKeys?.items || []).map((key: any) => (
+                          <div key={key.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{key.name}</span>
+                                {key.revoked_at ? (
+                                  <Badge variant="outline">İptal</Badge>
+                                ) : (
+                                  <Badge variant="success">Aktif</Badge>
+                                )}
+                              </div>
+                              <code className="text-sm text-muted-foreground">•••• •••• •••• {key.last4}</code>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={Boolean(key.revoked_at)}
+                                onClick={() => {
+                                  setRevokeKeyId(key.id)
+                                  setRevokePassword('')
+                                }}
+                              >
+                                İptal Et
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {!apiKeysLoading && (apiKeys?.items || []).length === 0 && (
+                        <div className="p-4 rounded-xl border border-dashed text-sm text-muted-foreground">
+                          Henüz API anahtarı yok.
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="p-4 rounded-xl border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
@@ -707,16 +812,111 @@ export default function SettingsPage() {
 
                   <Button
                     variant="outline"
-                    onClick={() => toast({
-                      title: 'Yeni anahtar',
-                      description: 'Bu özellik yakında aktif olacak.',
-                    })}
+                    disabled={!apiAccessEnabled}
+                    onClick={() => {
+                      setIsCreateKeyOpen(true)
+                      setCreatedSecret(null)
+                      setCreateKeyForm({ name: 'Default', current_password: '' })
+                    }}
                   >
                     Yeni Anahtar Oluştur
                   </Button>
                 </CardContent>
               </Card>
             )}
+
+            <Dialog open={isCreateKeyOpen} onOpenChange={(open) => {
+              setIsCreateKeyOpen(open)
+              if (!open) {
+                setCreatedSecret(null)
+                setCreateKeyForm({ name: 'Default', current_password: '' })
+              }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Yeni API Anahtarı</DialogTitle>
+                  <DialogDescription>Güvenlik için oluşturma işleminde şifrenizi doğruluyoruz.</DialogDescription>
+                </DialogHeader>
+
+                {createdSecret ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border p-4">
+                      <p className="text-sm font-medium mb-2">Bu anahtar sadece bir kez gösterilir</p>
+                      <code className="block break-all text-sm text-muted-foreground">{createdSecret}</code>
+                    </div>
+                    <Button onClick={() => copyValue(createdSecret, 'API anahtarı kopyalandı')}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Kopyala
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Anahtar adı</Label>
+                      <Input value={createKeyForm.name} onChange={(e) => setCreateKeyForm({ ...createKeyForm, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Şifreniz</Label>
+                      <Input type="password" value={createKeyForm.current_password} onChange={(e) => setCreateKeyForm({ ...createKeyForm, current_password: e.target.value })} />
+                    </div>
+                  </div>
+                )}
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsCreateKeyOpen(false)}>Kapat</Button>
+                  {!createdSecret && (
+                    <Button
+                      onClick={() => createKeyMutation.mutate({ name: createKeyForm.name, current_password: createKeyForm.current_password })}
+                      disabled={createKeyMutation.isPending || !createKeyForm.name.trim() || !createKeyForm.current_password}
+                    >
+                      {createKeyMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Oluşturuluyor...
+                        </>
+                      ) : (
+                        'Oluştur'
+                      )}
+                    </Button>
+                  )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(revokeKeyId)} onOpenChange={(open) => {
+              if (!open) {
+                setRevokeKeyId(null)
+                setRevokePassword('')
+              }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>API Anahtarını İptal Et</DialogTitle>
+                  <DialogDescription>İşlemi onaylamak için şifrenizi girin.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label>Şifreniz</Label>
+                  <Input type="password" value={revokePassword} onChange={(e) => setRevokePassword(e.target.value)} />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setRevokeKeyId(null)}>Vazgeç</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => revokeKeyId && revokeKeyMutation.mutate({ id: revokeKeyId, current_password: revokePassword })}
+                    disabled={revokeKeyMutation.isPending || !revokeKeyId || !revokePassword}
+                  >
+                    {revokeKeyMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        İptal Ediliyor...
+                      </>
+                    ) : (
+                      'İptal Et'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Save Button */}
             <div className="flex justify-end">

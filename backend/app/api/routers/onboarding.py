@@ -18,7 +18,8 @@ from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.services.onboarding_service import OnboardingService
-from app.services.meta_api import MetaAPIError
+from app.services.meta_api import MetaAPIError, meta_api_service
+from app.services.system_event_service import SystemEventService
 
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
@@ -82,6 +83,20 @@ class WhatsAppAccountResponse(BaseModel):
         from_attributes = True
 
 
+class WhatsAppDiagnosticsResponse(BaseModel):
+    environment: str
+    backend_url: str
+    webhook_public_url: str
+    meta_app_id_set: bool
+    meta_app_secret_set: bool
+    meta_config_id_set: bool
+    meta_redirect_uri: str
+    expected_redirect_uri: str
+    issues: list[str]
+    hints: list[str]
+    oauth_url_preview: str
+
+
 @router.post("/whatsapp/start", response_model=OnboardingStartResponse)
 async def start_whatsapp_onboarding(
     current_user: User = Depends(get_current_user),
@@ -104,6 +119,15 @@ async def start_whatsapp_onboarding(
         detail = "Meta yapılandırması eksik veya geçersiz."
         if error_messages:
             detail = f"{detail} " + " ".join(error_messages)
+        SystemEventService(db).log(
+            tenant_id=str(current_tenant.id),
+            source="meta",
+            level="warn",
+            code="META_ONBOARDING_CONFIG_INVALID",
+            message=detail,
+            meta_json={"details": e.details},
+            correlation_id=None
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=detail
@@ -113,6 +137,17 @@ async def start_whatsapp_onboarding(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Onboarding başlatılamadı: {str(e)}"
         )
+
+
+@router.get("/whatsapp/diagnostics", response_model=WhatsAppDiagnosticsResponse)
+async def whatsapp_diagnostics(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
+) -> WhatsAppDiagnosticsResponse:
+    diagnostics = meta_api_service.get_onboarding_diagnostics()
+    return WhatsAppDiagnosticsResponse(**diagnostics)
 
 
 @router.get("/whatsapp/callback")

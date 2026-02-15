@@ -394,6 +394,13 @@ export const notesApi = {
   delete: (id: string) => api.delete(`/notes/${id}`),
 }
 
+// Tenant API Keys
+export const apiKeysApi = {
+  list: (params?: { include_revoked?: boolean }) => api.get('/api-keys', { params }),
+  create: (data: { name: string; current_password: string }) => api.post('/api-keys', data),
+  revoke: (id: string, data: { current_password: string }) => api.delete(`/api-keys/${id}`, { data }),
+}
+
 // Automation API (n8n Integration)
 export const automationApi = {
   // Settings

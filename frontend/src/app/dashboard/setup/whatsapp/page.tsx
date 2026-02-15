@@ -24,6 +24,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -57,6 +58,20 @@ interface StartResponse {
   webhook_url: string
 }
 
+interface WhatsAppDiagnostics {
+  environment: string
+  backend_url: string
+  webhook_public_url: string
+  meta_app_id_set: boolean
+  meta_app_secret_set: boolean
+  meta_config_id_set: boolean
+  meta_redirect_uri: string
+  expected_redirect_uri: string
+  issues: string[]
+  hints: string[]
+  oauth_url_preview: string
+}
+
 // Step icons
 const stepIcons: Record<string, React.ElementType> = {
   start_setup: Zap,
@@ -82,6 +97,7 @@ export default function WhatsAppSetupPage() {
   const queryClient = useQueryClient()
   const [isConnecting, setIsConnecting] = useState(false)
   const [pollInterval, setPollInterval] = useState<number | false>(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const popupRef = useRef<Window | null>(null)
   const popupCheckRef = useRef<number | null>(null)
 
@@ -165,6 +181,17 @@ export default function WhatsAppSetupPage() {
     onSuccess: () => {
       refetch()
     }
+  })
+
+  const diagnosticsMutation = useMutation({
+    mutationFn: () => api.get('/api/onboarding/whatsapp/diagnostics').then(res => res.data as WhatsAppDiagnostics),
+    onError: (error: any) => {
+      toast({
+        title: 'Tanılama alınamadı',
+        description: error.response?.data?.detail || 'Lütfen tekrar deneyin.',
+        variant: 'destructive',
+      })
+    },
   })
 
   // Stop polling when complete
@@ -257,13 +284,80 @@ export default function WhatsAppSetupPage() {
             </p>
           </div>
         </div>
-        <Link href="/dashboard/help/whatsapp-setup">
-          <Button variant="outline" size="sm">
-            <HelpCircle className="w-4 h-4 mr-2" />
-            Yardım
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDiagnosticsOpen(true)
+              diagnosticsMutation.mutate()
+            }}
+          >
+            <AlertCircle className="w-4 h-4 mr-2" />
+            Tanılama
           </Button>
-        </Link>
+          <Link href="/dashboard/help/whatsapp-setup">
+            <Button variant="outline" size="sm">
+              <HelpCircle className="w-4 h-4 mr-2" />
+              Yardım
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      <Dialog open={diagnosticsOpen} onOpenChange={setDiagnosticsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Meta WhatsApp Tanılama</DialogTitle>
+            <DialogDescription>“Geçersiz sayfa” hatasında ilk kontrol listesi.</DialogDescription>
+          </DialogHeader>
+
+          {diagnosticsMutation.isPending ? (
+            <div className="text-sm text-muted-foreground">Yükleniyor...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Environment</span>
+                  <span className="font-medium">{diagnosticsMutation.data?.environment}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">META_REDIRECT_URI</span>
+                  <span className="font-mono text-xs break-all">{diagnosticsMutation.data?.meta_redirect_uri}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Beklenen callback</span>
+                  <span className="font-mono text-xs break-all">{diagnosticsMutation.data?.expected_redirect_uri}</span>
+                </div>
+              </div>
+
+              {(diagnosticsMutation.data?.issues || []).length > 0 && (
+                <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                  <p className="font-medium text-red-800 dark:text-red-200 mb-2">Sorunlar</p>
+                  <ul className="list-disc pl-5 text-sm text-red-800 dark:text-red-200 space-y-1">
+                    {(diagnosticsMutation.data?.issues || []).map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+                <p className="font-medium text-amber-900 dark:text-amber-100 mb-2">İpuçları</p>
+                <ul className="list-disc pl-5 text-sm text-amber-800 dark:text-amber-200 space-y-1">
+                  {(diagnosticsMutation.data?.hints || []).map((hint) => (
+                    <li key={hint}>{hint}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDiagnosticsOpen(false)}>Kapat</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Card */}
       {status?.whatsapp_connected && (

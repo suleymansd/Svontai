@@ -74,9 +74,20 @@ class MetaAPIService:
         parsed = urlparse(redirect_uri)
         if self._is_placeholder(redirect_uri) or not parsed.scheme or not parsed.netloc:
             errors.append("META_REDIRECT_URI geçerli bir URL olmalıdır.")
+        else:
+            expected_base = (settings.WEBHOOK_PUBLIC_URL or settings.BACKEND_URL or "").strip()
+            expected_base_parsed = urlparse(expected_base)
+            if settings.ENVIRONMENT == "prod" and parsed.scheme != "https":
+                errors.append("Üretimde META_REDIRECT_URI https olmalıdır.")
+            if expected_base_parsed.netloc and parsed.netloc and expected_base_parsed.netloc != parsed.netloc:
+                errors.append("META_REDIRECT_URI domain'i BACKEND_URL / WEBHOOK_PUBLIC_URL ile aynı olmalıdır.")
+            if not redirect_uri.endswith("/api/onboarding/whatsapp/callback"):
+                errors.append("META_REDIRECT_URI '/api/onboarding/whatsapp/callback' ile bitmelidir.")
 
         if self._is_placeholder(config_id):
             errors.append("META_CONFIG_ID eksik veya örnek değer olarak bırakılmış.")
+        elif not config_id.isdigit():
+            errors.append("META_CONFIG_ID sayısal bir Config ID olmalıdır.")
 
         if errors:
             raise MetaAPIError(
@@ -84,6 +95,61 @@ class MetaAPIService:
                 error_code="META_CONFIG_INVALID",
                 details={"errors": errors}
             )
+
+    def get_onboarding_diagnostics(self) -> dict:
+        app_id = (self.app_id or "").strip()
+        app_secret = (self.app_secret or "").strip()
+        redirect_uri = (self.redirect_uri or "").strip()
+        config_id = (getattr(settings, 'META_CONFIG_ID', '') or "").strip()
+
+        base = (settings.WEBHOOK_PUBLIC_URL or settings.BACKEND_URL or "").strip()
+        expected_redirect = f"{base.rstrip('/')}/api/onboarding/whatsapp/callback" if base else ""
+        parsed = urlparse(redirect_uri)
+        expected_parsed = urlparse(expected_redirect)
+
+        issues: list[str] = []
+        hints: list[str] = []
+
+        if not app_id:
+            issues.append("META_APP_ID eksik")
+        if not app_secret:
+            issues.append("META_APP_SECRET eksik")
+        if not config_id:
+            issues.append("META_CONFIG_ID eksik")
+        if not redirect_uri:
+            issues.append("META_REDIRECT_URI eksik")
+
+        if redirect_uri and parsed.scheme != "https" and settings.ENVIRONMENT == "prod":
+            issues.append("Üretimde META_REDIRECT_URI https olmalı")
+
+        if redirect_uri and expected_parsed.netloc and parsed.netloc and expected_parsed.netloc != parsed.netloc:
+            issues.append("META_REDIRECT_URI domain BACKEND_URL/WEBHOOK_PUBLIC_URL ile aynı değil")
+
+        if redirect_uri and expected_redirect and redirect_uri != expected_redirect:
+            hints.append("META_REDIRECT_URI ile beklenen callback URL aynı olmalı (Meta panelde de aynısını tanımlayın).")
+
+        hints.append("Meta Embedded Signup Config ID (META_CONFIG_ID) doğru app'e ait olmalı; 'Geçersiz sayfa' hatasında ilk kontrol burasıdır.")
+        hints.append("Meta App 'App Domains' ve 'Valid OAuth Redirect URIs' listesinde BACKEND_URL domain'i bulunmalı.")
+
+        oauth_url = ""
+        try:
+            oauth_url = self.get_oauth_url("diagnostic")
+        except Exception:
+            oauth_url = ""
+
+        return {
+            "environment": settings.ENVIRONMENT,
+            "backend_url": settings.BACKEND_URL,
+            "webhook_public_url": settings.WEBHOOK_PUBLIC_URL,
+            "meta_app_id_set": bool(app_id),
+            "meta_app_secret_set": bool(app_secret),
+            "meta_config_id_set": bool(config_id),
+            "meta_redirect_uri": redirect_uri,
+            "expected_redirect_uri": expected_redirect,
+            "issues": issues,
+            "hints": hints,
+            "oauth_url_preview": oauth_url,
+        }
     
     def generate_verify_token(self) -> str:
         """
