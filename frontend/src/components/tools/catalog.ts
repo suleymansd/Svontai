@@ -18,6 +18,10 @@ export interface ToolCatalogItem {
   icon: string
   tags: string[]
   menuIcon: ComponentType<{ className?: string }>
+  accent: {
+    from: string
+    to: string
+  }
 }
 
 export const TOOL_CATALOG: ToolCatalogItem[] = [
@@ -29,6 +33,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'WA',
     tags: ['WhatsApp', 'CRM'],
     menuIcon: Contact,
+    accent: { from: 'from-emerald-500', to: 'to-teal-500' },
   },
   {
     id: 'tool-ai-reply',
@@ -38,6 +43,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'AI',
     tags: ['AI', 'Support'],
     menuIcon: Brain,
+    accent: { from: 'from-violet-500', to: 'to-fuchsia-500' },
   },
   {
     id: 'tool-appointment',
@@ -47,6 +53,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'RP',
     tags: ['Takvim', 'CRM'],
     menuIcon: CalendarCheck,
+    accent: { from: 'from-sky-500', to: 'to-indigo-500' },
   },
   {
     id: 'tool-lead-collector',
@@ -56,6 +63,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'LT',
     tags: ['Lead', 'Form'],
     menuIcon: Bot,
+    accent: { from: 'from-amber-500', to: 'to-orange-500' },
   },
   {
     id: 'tool-billing',
@@ -65,6 +73,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'ÖH',
     tags: ['Finans', 'Otomasyon'],
     menuIcon: CreditCard,
+    accent: { from: 'from-blue-500', to: 'to-cyan-500' },
   },
   {
     id: 'tool-feedback',
@@ -74,6 +83,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'MO',
     tags: ['CSAT', 'Support'],
     menuIcon: Smile,
+    accent: { from: 'from-rose-500', to: 'to-pink-500' },
   },
   {
     id: 'tool-note',
@@ -83,6 +93,7 @@ export const TOOL_CATALOG: ToolCatalogItem[] = [
     icon: 'NT',
     tags: ['Not', 'İç Operasyon'],
     menuIcon: NotebookPen,
+    accent: { from: 'from-slate-600', to: 'to-zinc-500' },
   },
 ]
 

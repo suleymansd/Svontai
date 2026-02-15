@@ -39,6 +39,8 @@ import { useQuery } from '@tanstack/react-query'
 import { setupOnboardingApi, subscriptionApi } from '@/lib/api'
 import { getToolMenuItems } from '@/components/tools/registry'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { ToolIcon3D } from '@/components/tools/ToolIcon3D'
 
 const sidebarItems = [
   { name: 'Genel Bakış', href: '/dashboard', icon: LayoutDashboard },
@@ -201,13 +203,23 @@ export default function DashboardLayout({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                    'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                     isActive
                       ? 'nav-active-glow text-primary'
                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <Icon3DBadge
+                    icon={item.icon}
+                    size="sm"
+                    active
+                    from={isActive ? 'from-primary' : 'from-slate-200 dark:from-slate-800'}
+                    to={isActive ? 'to-violet-500' : 'to-slate-50 dark:to-slate-700'}
+                    className={cn(
+                      'shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition-transform duration-200 group-hover:-translate-y-0.5',
+                      isActive && 'ring-2 ring-primary/25'
+                    )}
+                  />
                   <span>{item.name}</span>
                 </Link>
               )
@@ -249,13 +261,21 @@ export default function DashboardLayout({
                       key={item.id}
                       href={item.href}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                        'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                         isActive
                           ? 'nav-active-glow text-primary'
                           : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                       )}
                     >
-                      <item.icon className="w-5 h-5" />
+                      <ToolIcon3D
+                        toolId={item.id}
+                        size="sm"
+                        active
+                        className={cn(
+                          'shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition-transform duration-200 group-hover:-translate-y-0.5',
+                          isActive && 'ring-2 ring-primary/25'
+                        )}
+                      />
                       <span>{item.name}</span>
                     </Link>
                   )

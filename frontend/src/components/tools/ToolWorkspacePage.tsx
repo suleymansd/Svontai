@@ -21,6 +21,7 @@ import { notesApi } from '@/lib/api'
 import { useToolStore } from '@/lib/store'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
+import { ToolIcon3D } from '@/components/tools/ToolIcon3D'
 
 interface WorkspaceNote {
   id: string
@@ -187,6 +188,7 @@ export default function ToolWorkspacePage() {
         <PageHeader
           title={`${draft.customization.name || catalogTool.name} Yönetimi`}
           description="Tool entegrasyonu, özelleştirme ve iç operasyon ayarlarını buradan yönetin."
+          icon={<ToolIcon3D toolId={toolId} size="md" active />}
           actions={(
             <>
               <Link href="/dashboard/tools">
@@ -543,4 +545,3 @@ export default function ToolWorkspacePage() {
     </ContentContainer>
   )
 }
-

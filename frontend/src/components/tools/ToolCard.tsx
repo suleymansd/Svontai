@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Tool } from './types'
+import { ToolIcon3D } from './ToolIcon3D'
 
 interface ToolCardProps {
   tool: Tool
@@ -36,14 +37,15 @@ export function ToolCard({ tool, onClick, onDragStart }: ToolCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className={cn(
-            'flex h-12 w-12 items-center justify-center rounded-xl text-lg font-semibold transition-all duration-300',
-            tool.status === 'added'
-              ? 'bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-lg shadow-blue-500/25 animate-breathe'
-              : 'bg-primary/10 text-primary group-hover:bg-gradient-to-br group-hover:from-blue-500 group-hover:to-violet-600 group-hover:text-white group-hover:shadow-lg'
-          )}>
-            {tool.icon}
-          </div>
+          <ToolIcon3D
+            toolId={tool.id}
+            size="md"
+            active
+            className={cn(
+              'transition-all duration-300',
+              tool.status === 'added' && 'ring-2 ring-primary/25'
+            )}
+          />
           <div>
             <p className="text-sm font-semibold text-foreground">{tool.name}</p>
             <p className="text-xs text-muted-foreground">{tool.description}</p>

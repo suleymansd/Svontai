@@ -6,6 +6,7 @@ import { CheckCircle2, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { Tool } from './types'
+import { ToolIcon3D } from './ToolIcon3D'
 
 interface ToolDropZoneProps {
   tools: Tool[]
@@ -72,7 +73,10 @@ export function ToolDropZone({ tools, onDropTool }: ToolDropZoneProps) {
               )}
             >
               <div className="flex items-center justify-between">
-                <span>{tool.name}</span>
+                <div className="flex items-center gap-2">
+                  <ToolIcon3D toolId={tool.id} size="sm" active className="shadow-[0_10px_18px_rgba(0,0,0,0.18)]" />
+                  <span>{tool.name}</span>
+                </div>
                 {lastDropped === tool.id && (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 )}

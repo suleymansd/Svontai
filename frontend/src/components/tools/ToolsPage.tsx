@@ -3,9 +3,10 @@
 import type { DragEvent } from 'react'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { LayoutGrid, PlayCircle } from 'lucide-react'
+import { Boxes, LayoutGrid, PlayCircle } from 'lucide-react'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ToolCard } from '@/components/tools/ToolCard'
@@ -73,6 +74,7 @@ export function ToolsPage() {
           <PageHeader
             title="Tool Kataloğu"
             description="SvontAI iş akışınıza ekleyebileceğiniz tool’ları yönetin."
+            icon={<Icon3DBadge icon={Boxes} size="md" from="from-primary" to="to-violet-500" />}
             actions={(
               <Button variant="outline" onClick={() => setGuideOpen(true)}>
                 <PlayCircle className="mr-2 h-4 w-4" />
