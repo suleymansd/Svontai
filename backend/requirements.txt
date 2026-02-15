@@ -19,6 +19,9 @@ openai>=1.9.0
 # HTTP Client
 httpx>=0.26.0
 
+# Payments
+stripe>=8.5.0
+
 # Security & Encryption
 cryptography>=42.0.0
 

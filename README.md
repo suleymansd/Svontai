@@ -229,6 +229,16 @@ RESEND_API_KEY=re_...
 SMTP_FROM_EMAIL=no-reply@<your-domain>
 SMTP_FROM_NAME=SvontAI
 
+# Payments (Stripe - optional, enable when ready)
+PAYMENTS_ENABLED=true
+PAYMENTS_PROVIDER=stripe
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+# JSON mapping: plan -> interval -> price_id
+STRIPE_PRICE_IDS='{"starter":{"monthly":"price_...","yearly":"price_..."},"pro":{"monthly":"price_...","yearly":"price_..."},"business":{"monthly":"price_...","yearly":"price_..."}}'
+STRIPE_SUCCESS_URL=https://<your-vercel-domain>/dashboard/billing?payment=success
+STRIPE_CANCEL_URL=https://<your-vercel-domain>/dashboard/billing?payment=cancel
+
 # Optional: OpenAI
 OPENAI_API_KEY=sk-...
 

@@ -185,6 +185,12 @@ async def upgrade_subscription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Plan bulunamadı"
         )
+
+    if (float(plan.price_monthly) > 0 or float(plan.price_yearly) > 0) and not settings.ALLOW_UNPAID_PLAN_UPGRADES:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Bu plan için ödeme gerekli. Lütfen ödeme sayfasından checkout başlatın."
+        )
     
     # For demo/development: Direct upgrade
     # TODO: Integrate with payment provider

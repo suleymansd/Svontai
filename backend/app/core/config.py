@@ -93,6 +93,26 @@ class Settings(BaseSettings):
     PASSWORD_RESET_MAX_ATTEMPTS: int = 5
     EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 15
     EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
+
+    # Appointment reminders (background loop)
+    APPOINTMENT_REMINDER_ENABLED: bool = True
+    APPOINTMENT_REMINDER_INTERVAL_SECONDS: int = 60
+
+    # Payments
+    PAYMENTS_ENABLED: bool = False
+    PAYMENTS_PROVIDER: Literal["stripe"] = "stripe"
+
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_SUCCESS_URL: str = ""
+    STRIPE_CANCEL_URL: str = ""
+    # Example:
+    # STRIPE_PRICE_IDS='{"starter":{"monthly":"price_...","yearly":"price_..."}}'
+    STRIPE_PRICE_IDS: dict[str, dict[str, str]] = {}
+
+    # Security: allow upgrading to paid plans without payment (dev/demo only)
+    ALLOW_UNPAID_PLAN_UPGRADES: bool = True
     
     # Environment
     ENVIRONMENT: Literal["dev", "prod"] = "dev"
@@ -155,6 +175,12 @@ class Settings(BaseSettings):
             raw_url = raw_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
 
         self.DATABASE_URL = raw_url or "sqlite:///./smartwa.db"
+        return self
+
+    @model_validator(mode="after")
+    def validate_prod_payment_settings(self) -> "Settings":
+        if self.ENVIRONMENT == "prod":
+            self.ALLOW_UNPAID_PLAN_UPGRADES = False
         return self
 
     @model_validator(mode='after')

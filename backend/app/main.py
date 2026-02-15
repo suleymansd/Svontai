@@ -4,7 +4,8 @@ Main FastAPI application entry point.
 """
 
 import logging
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +37,8 @@ from app.api.routers import (
     incidents_router,
     tickets_router,
     appointments_router,
-    notes_router
+    notes_router,
+    payments_router
 )
 
 # Configure logging
@@ -46,6 +48,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def _appointment_reminder_loop() -> None:
+    from app.db.session import SessionLocal
+    from app.services.appointment_reminder_service import AppointmentReminderService
+
+    while True:
+        try:
+            def _dispatch() -> None:
+                db = SessionLocal()
+                try:
+                    AppointmentReminderService(db).dispatch_due_reminders()
+                finally:
+                    db.close()
+
+            await asyncio.to_thread(_dispatch)
+        except Exception as exc:
+            logger.warning("Appointment reminder loop error: %s", exc)
+
+        await asyncio.sleep(settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,6 +74,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("SvontAi API starting up...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+    reminder_task: asyncio.Task | None = None
+    if settings.APPOINTMENT_REMINDER_ENABLED and settings.EMAIL_ENABLED:
+        reminder_task = asyncio.create_task(_appointment_reminder_loop())
     
     # Initialize default plans if needed
     from app.db.session import SessionLocal
@@ -72,6 +97,10 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
+    if reminder_task:
+        reminder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reminder_task
     logger.info("SvontAi API shutting down...")
 
 
@@ -153,6 +182,7 @@ app.include_router(incidents_router)
 app.include_router(tickets_router)
 app.include_router(appointments_router)
 app.include_router(notes_router)
+app.include_router(payments_router)
 
 
 @app.get("/")

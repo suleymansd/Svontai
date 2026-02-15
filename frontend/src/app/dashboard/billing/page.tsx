@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Check,
   Sparkles,
@@ -15,11 +16,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { subscriptionApi } from '@/lib/api'
+import { paymentsApi, subscriptionApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface Plan {
   id: string
@@ -79,6 +81,25 @@ const featureLabels: Record<string, string> = {
 export default function BillingPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    const payment = url.searchParams.get('payment')
+    if (!payment) return
+    url.searchParams.delete('payment')
+    window.history.replaceState({}, '', url.toString())
+
+    if (payment === 'success') {
+      toast({ title: 'Ödeme başarılı', description: 'Planınız güncellendi.' })
+      queryClient.invalidateQueries({ queryKey: ['subscription'] })
+      return
+    }
+    if (payment === 'cancel') {
+      toast({ title: 'Ödeme iptal edildi', description: 'İsterseniz tekrar deneyebilirsiniz.', variant: 'destructive' })
+    }
+  }, [queryClient, toast])
 
   const { data: plans, isLoading: plansLoading } = useQuery<Plan[]>({
     queryKey: ['plans'],
@@ -91,12 +112,22 @@ export default function BillingPage() {
   })
 
   const upgradeMutation = useMutation({
-    mutationFn: (planName: string) => subscriptionApi.upgrade(planName),
+    mutationFn: async (input: { planName: string; requiresPayment: boolean }) => {
+      if (input.requiresPayment) {
+        const response = await paymentsApi.createCheckout({ plan_name: input.planName, interval: billingInterval })
+        const checkoutUrl = response.data?.checkout_url
+        if (checkoutUrl && typeof window !== 'undefined') {
+          window.location.href = checkoutUrl
+        }
+        return response
+      }
+      return subscriptionApi.upgrade(input.planName)
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['subscription'] })
       toast({
         title: 'Başarılı!',
-        description: data.data.message,
+        description: data.data?.message || 'İşlem başlatıldı',
       })
     },
     onError: (error: any) => {
@@ -112,6 +143,11 @@ export default function BillingPage() {
 
   const currentPlanIndex = plans?.findIndex(p => p.name === subscription?.plan_name) ?? -1
 
+  const intervalLabel = billingInterval === 'monthly' ? 'ay' : 'yıl'
+  const getPlanPrice = (plan: Plan) => (
+    billingInterval === 'monthly' ? plan.price_monthly : plan.price_yearly
+  )
+
   return (
     <ContentContainer>
       <div className="space-y-8">
@@ -119,6 +155,15 @@ export default function BillingPage() {
           title="Abonelik & Faturalandırma"
           description="Planınızı yönetin ve özelliklerinizi genişletin."
         />
+
+        <div className="flex justify-end">
+          <Tabs value={billingInterval} onValueChange={(value) => setBillingInterval(value as any)}>
+            <TabsList>
+              <TabsTrigger value="monthly">Aylık</TabsTrigger>
+              <TabsTrigger value="yearly">Yıllık</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
         {/* Current Plan Status */}
         {subscription && (
@@ -211,10 +256,10 @@ export default function BillingPage() {
                     {/* Price */}
                     <div>
                       <span className="text-3xl font-bold">
-                        {plan.price_monthly === 0 ? 'Ücretsiz' : `₺${plan.price_monthly}`}
+                        {getPlanPrice(plan) === 0 ? 'Ücretsiz' : `₺${getPlanPrice(plan)}`}
                       </span>
-                      {plan.price_monthly > 0 && (
-                        <span className="text-muted-foreground">/ay</span>
+                      {getPlanPrice(plan) > 0 && (
+                        <span className="text-muted-foreground">/{intervalLabel}</span>
                       )}
                     </div>
 
@@ -263,7 +308,10 @@ export default function BillingPage() {
                       )}
                       variant={isCurrentPlan ? 'secondary' : isDowngrade ? 'outline' : 'default'}
                       disabled={isCurrentPlan || upgradeMutation.isPending}
-                      onClick={() => upgradeMutation.mutate(plan.name)}
+                      onClick={() => upgradeMutation.mutate({
+                        planName: plan.name,
+                        requiresPayment: isUpgrade && getPlanPrice(plan) > 0,
+                      })}
                     >
                       {upgradeMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -290,8 +338,7 @@ export default function BillingPage() {
               <div>
                 <h4 className="font-semibold text-amber-900 dark:text-amber-100">Ödeme Entegrasyonu</h4>
                 <p className="text-sm text-amber-700 dark:text-amber-200 mt-1">
-                  Ödeme sistemi yakında aktif olacaktır. Şu anda deneme amaçlı tüm planları ücretsiz kullanabilirsiniz.
-                  Gerçek ödeme için Stripe, Iyzico veya PayTR entegrasyonu eklenecektir.
+                  Ücretli planlar için Stripe checkout altyapısı hazır. Ödeme anahtarları/price id’ler eklendiğinde ödeme ekranı otomatik açılacak.
                 </p>
               </div>
             </div>

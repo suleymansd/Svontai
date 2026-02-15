@@ -310,6 +310,12 @@ export const subscriptionApi = {
   checkFeature: (featureKey: string) => api.get(`/subscription/check-feature/${featureKey}`),
 }
 
+// Payments API
+export const paymentsApi = {
+  createCheckout: (data: { plan_name: string; interval?: 'monthly' | 'yearly' }) =>
+    api.post('/payments/checkout', data),
+}
+
 // Tenant Onboarding API (Setup Wizard)
 export const setupOnboardingApi = {
   getStatus: () => api.get('/onboarding/setup/status'),
