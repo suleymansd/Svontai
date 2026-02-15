@@ -32,7 +32,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://svontai:svontai_secret@svontai-db:5432/svontai
+      - DATABASE_URL=postgresql+psycopg://svontai:svontai_secret@svontai-db:5432/svontai
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-in-production}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - META_APP_ID=${META_APP_ID}
@@ -62,6 +62,28 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # ===========================================
+  # SvontAI Frontend (Next.js)
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: svontai-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    networks:
+      - svontai-network
 
   # ===========================================
   # SvontAI Database (PostgreSQL)
@@ -239,3 +261,4 @@ volumes:
   n8n-db-data:
   n8n-data:
   redis-data:
+  frontend-node-modules:
