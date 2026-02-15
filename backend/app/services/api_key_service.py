@@ -34,6 +34,5 @@ class ApiKeyService:
         keeps verification simple and avoids storing per-key salts.
         """
         normalized = (secret or "").strip()
-        salt = (settings.JWT_SECRET_KEY or "").strip()
+        salt = (settings.API_KEY_HASH_SECRET or "").strip() or (settings.JWT_SECRET_KEY or "").strip()
         return hashlib.sha256(f"{normalized}:{salt}".encode()).hexdigest()
-

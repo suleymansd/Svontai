@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+
+    # API key hashing (separate secret recommended; falls back to JWT_SECRET_KEY)
+    API_KEY_HASH_SECRET: str = ""
     
     # OpenAI
     OPENAI_API_KEY: str = ""
