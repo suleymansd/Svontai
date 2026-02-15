@@ -42,7 +42,7 @@ import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tena
 
 const sidebarItems = [
   { name: 'Genel Bakış', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Tool Kataloğu', href: '/panel/tools', icon: Boxes },
+  { name: 'Tool Kataloğu', href: '/dashboard/tools', icon: Boxes },
   { name: 'Botlarım', href: '/dashboard/bots', icon: Bot },
   { name: 'Konuşmalar', href: '/dashboard/conversations', icon: MessagesSquare },
   { name: 'Leadler', href: '/dashboard/leads', icon: Users },

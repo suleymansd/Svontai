@@ -53,7 +53,7 @@ export function ToolsPage() {
       setToolConfig(toolId, createDefaultToolWorkspaceConfig(catalogTool))
     }
     installTool(toolId)
-    router.push(`/panel/tools/${toolId}`)
+    router.push(`/dashboard/tools/${toolId}`)
   }
 
   const handleDropTool = (toolId: string) => {

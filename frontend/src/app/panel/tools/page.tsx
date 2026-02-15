@@ -1,5 +1,5 @@
-import { ToolsPage } from '@/components/tools/ToolsPage'
+import { redirect } from 'next/navigation'
 
 export default function ToolsPanelPage() {
-  return <ToolsPage />
+  redirect('/dashboard/tools')
 }

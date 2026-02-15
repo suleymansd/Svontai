@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 interface Ticket {
   id: string
@@ -57,7 +58,7 @@ export default function TicketsPage() {
     onError: (error: any) => {
       toast({
         title: 'Hata',
-        description: error.response?.data?.detail || 'Ticket oluşturulamadı',
+        description: getApiErrorMessage(error, 'Ticket oluşturulamadı'),
         variant: 'destructive',
       })
     },
@@ -104,7 +105,7 @@ export default function TicketsPage() {
           title="Destek Talepleri"
           description="Ticket'larınızı yönetin ve destek ekibiyle iletişimde kalın."
           actions={(
-            <Button onClick={() => setIsCreateOpen(true)}>
+            <Button type="button" onClick={() => setIsCreateOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Ticket Oluştur
             </Button>
@@ -143,7 +144,7 @@ export default function TicketsPage() {
               title="Ticket yok"
               description="Yeni bir destek talebi oluşturabilirsiniz."
               action={(
-                <Button onClick={() => setIsCreateOpen(true)}>Ticket Oluştur</Button>
+                <Button type="button" onClick={() => setIsCreateOpen(true)}>Ticket Oluştur</Button>
               )}
             />
           )}
@@ -181,8 +182,14 @@ export default function TicketsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>İptal</Button>
-            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>Gönder</Button>
+            <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>İptal</Button>
+            <Button
+              type="button"
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending || !form.subject.trim() || !form.message.trim()}
+            >
+              Gönder
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

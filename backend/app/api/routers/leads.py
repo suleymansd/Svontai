@@ -8,7 +8,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from pydantic import BaseModel, EmailStr, field_validator
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant, get_current_user
@@ -18,17 +19,18 @@ from app.models.bot import Bot
 from app.models.lead import Lead
 from app.schemas.lead import LeadResponse, LeadWithBotName
 from app.services.audit_log_service import AuditLogService
+from app.services.subscription_service import SubscriptionService
 from app.models.user import User
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
 
 class LeadCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=2, max_length=255)
     email: EmailStr | None = None
-    phone: Optional[str] = None
-    notes: Optional[str] = None
-    source: Optional[str] = "manual"
+    phone: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    source: Optional[str] = Field(default="manual", max_length=50)
 
     @field_validator("email", "phone", "notes", "source", mode="before")
     @classmethod
@@ -122,18 +124,27 @@ async def create_lead(
     Returns:
         The created lead.
     """
+    # Plan gate: automated lead sources require lead automation feature.
+    source_value = (lead_data.source or "manual").strip().lower() if isinstance(lead_data.source, str) else "manual"
+    if source_value != "manual":
+        if not SubscriptionService(db).check_feature(current_tenant.id, "lead_automation"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bu kaynak için lead otomasyonu planınızda aktif değil (Lead Automation)."
+            )
+
     # Get first bot of tenant (or create without bot_id)
     bot = db.query(Bot).filter(Bot.tenant_id == current_tenant.id).first()
 
     normalized_email = lead_data.email.strip() if isinstance(lead_data.email, str) else None
     normalized_phone = lead_data.phone.strip() if isinstance(lead_data.phone, str) else None
     normalized_notes = lead_data.notes.strip() if isinstance(lead_data.notes, str) else None
-    normalized_source = (lead_data.source or "manual").strip() if isinstance(lead_data.source, str) else "manual"
+    normalized_source = source_value or "manual"
 
     lead = Lead(
         tenant_id=current_tenant.id,
         bot_id=bot.id if bot else None,
-        name=lead_data.name,
+        name=lead_data.name.strip(),
         email=normalized_email or None,
         phone=normalized_phone or None,
         notes=normalized_notes or None,
@@ -142,8 +153,15 @@ async def create_lead(
     )
     
     db.add(lead)
-    db.commit()
-    db.refresh(lead)
+    try:
+        db.commit()
+        db.refresh(lead)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lead kaydedilemedi. Lütfen e-posta/telefon formatını kontrol edin ve tekrar deneyin."
+        )
 
     AuditLogService(db).log(
         action="lead.create",

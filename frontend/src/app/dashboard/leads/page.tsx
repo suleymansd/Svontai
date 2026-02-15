@@ -39,6 +39,7 @@ import { KPIStat } from '@/components/shared/kpi-stat'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { DataTable, DataColumn } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 export default function LeadsPage() {
   const { toast } = useToast()
@@ -78,13 +79,9 @@ export default function LeadsPage() {
       })
     },
     onError: (error: any) => {
-      const detail = error.response?.data?.detail
-      const description = Array.isArray(detail)
-        ? 'Form alanlarını kontrol edin.'
-        : detail || 'Lead eklenirken bir hata oluştu.'
       toast({
         title: 'Hata',
-        description,
+        description: getApiErrorMessage(error, 'Lead eklenirken bir hata oluştu.'),
         variant: 'destructive',
       })
     },

@@ -24,7 +24,7 @@ export function getToolMenuItems(
       return {
         id: toolId,
         name: customizedName || catalogItem.name,
-        href: `/panel/tools/${toolId}`,
+        href: `/dashboard/tools/${toolId}`,
         icon: catalogItem.menuIcon ?? Boxes,
       }
     })
