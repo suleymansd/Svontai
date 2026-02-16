@@ -323,8 +323,46 @@ async def process_template_status_event(waba_id: str, value: dict, db: Session):
         f"Template status update: name={message_template_name}, "
         f"event={event}"
     )
-    
-    # TODO: Update template status in database if you track templates
+
+    if not waba_id:
+        return
+
+    account = db.query(WhatsAppAccount).filter(
+        WhatsAppAccount.waba_id == waba_id
+    ).first()
+    if not account:
+        logger.warning("Template status update ignored, account not found for waba_id=%s", waba_id)
+        return
+
+    from app.models.real_estate import RealEstateTemplateRegistry
+
+    query = db.query(RealEstateTemplateRegistry).filter(
+        RealEstateTemplateRegistry.tenant_id == account.tenant_id
+    )
+    if message_template_id:
+        query = query.filter(
+            (RealEstateTemplateRegistry.meta_template_id == message_template_id)
+            | (RealEstateTemplateRegistry.name == message_template_name)
+        )
+    elif message_template_name:
+        query = query.filter(RealEstateTemplateRegistry.name == message_template_name)
+    else:
+        return
+
+    rows = query.all()
+    if not rows:
+        logger.info("Template status update: no matching template registry rows")
+        return
+
+    normalized_event = (event or "").strip().lower()
+    for row in rows:
+        row.status = normalized_event or row.status
+        if normalized_event in {"approved", "active"}:
+            row.is_approved = True
+        elif normalized_event in {"rejected", "paused", "disabled"}:
+            row.is_approved = False
+
+    db.commit()
 
 
 async def handle_incoming_message(

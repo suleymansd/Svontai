@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -218,3 +220,100 @@ def test_simple_pdf_service_returns_valid_header():
         footer="Footer",
     )
     assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_pdf_limit_is_enforced():
+    db = _build_session()
+    service = RealEstateService(db)
+
+    owner = User(
+        email="owner3@test.com",
+        password_hash="hash",
+        full_name="Owner3",
+        is_admin=False,
+        is_active=True,
+    )
+    db.add(owner)
+    db.flush()
+
+    tenant = Tenant(name="Acme Homes 3", owner_id=owner.id, settings={})
+    db.add(tenant)
+    db.flush()
+
+    listing = RealEstateListing(
+        tenant_id=tenant.id,
+        created_by=owner.id,
+        title="Test Listing",
+        sale_rent="sale",
+        property_type="daire",
+        location_text="Ankara Çankaya",
+        price=4_100_000,
+        currency="TRY",
+        rooms="2+1",
+        m2=120,
+        features={},
+        media=[],
+        url="https://example.com/listing-limit",
+        is_active=True,
+    )
+    db.add(listing)
+    db.commit()
+
+    service.upsert_settings(tenant.id, {"enabled": True, "pdf_limit_monthly": 1})
+    _, pdf1, _ = service.generate_listing_summary_pdf(tenant.id, [listing.id])
+    assert pdf1.startswith(b"%PDF-")
+
+    try:
+        service.generate_listing_summary_pdf(tenant.id, [listing.id])
+        assert False, "Expected pdf_limit_reached"
+    except ValueError as exc:
+        assert str(exc) == "pdf_limit_reached"
+
+    db.close()
+
+
+def test_available_slots_manual_availability():
+    db = _build_session()
+    service = RealEstateService(db)
+
+    owner = User(
+        email="owner4@test.com",
+        password_hash="hash",
+        full_name="Owner4",
+        is_admin=False,
+        is_active=True,
+    )
+    db.add(owner)
+    db.flush()
+
+    tenant = Tenant(name="Acme Homes 4", owner_id=owner.id, settings={})
+    db.add(tenant)
+    db.flush()
+
+    service.upsert_settings(
+        tenant.id,
+        {
+            "enabled": True,
+            "manual_availability": [
+                {"weekday": 0, "start": "10:00", "end": "12:00"}
+            ],
+            "google_calendar_enabled": False,
+        },
+    )
+
+    start_at = datetime(2026, 2, 16, 9, 0, 0)  # Monday
+    end_at = datetime(2026, 2, 16, 18, 0, 0)
+    slots = service.get_available_slots(
+        tenant_id=tenant.id,
+        agent_id=owner.id,
+        start_at=start_at,
+        end_at=end_at,
+        duration_minutes=60,
+        step_minutes=60,
+    )
+
+    assert any(slot["start_at"].startswith("2026-02-16T10:00") for slot in slots)
+    assert any(slot["start_at"].startswith("2026-02-16T11:00") for slot in slots)
+    assert not any(slot["start_at"].startswith("2026-02-16T09:00") for slot in slots)
+
+    db.close()

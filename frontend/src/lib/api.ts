@@ -505,6 +505,13 @@ export const realEstateApi = {
     meeting_mode?: string
     notes?: string
   }) => api.post('/real-estate/appointments/book', data),
+  getAvailableSlots: (params: {
+    agent_id: string
+    start_at: string
+    end_at: string
+    duration_minutes?: number
+    step_minutes?: number
+  }) => api.get('/real-estate/appointments/available-slots', { params }),
   runFollowups: () => api.post('/real-estate/followups/run'),
   getWeeklyAnalytics: () => api.get('/real-estate/analytics/weekly'),
   listAgents: () => api.get('/real-estate/agents'),
@@ -532,6 +539,8 @@ export const realEstateApi = {
   }) => api.post('/real-estate/pdf/download', data, { responseType: 'blob' }),
   sendSellerServiceReport: (leadId: string) => api.post(`/real-estate/leads/${leadId}/seller-service-report`),
   sendWeeklyReportNow: () => api.post('/real-estate/reports/weekly/send'),
+  downloadWeeklyReport: (week_start: string) =>
+    api.get('/real-estate/reports/weekly/download', { params: { week_start }, responseType: 'blob' }),
 }
 
 // Automation API (n8n Integration)

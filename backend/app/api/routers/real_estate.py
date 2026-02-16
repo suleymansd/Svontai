@@ -225,6 +225,11 @@ class ListingSummaryPdfResponse(BaseModel):
     summary: dict
 
 
+class AvailableSlotResponse(BaseModel):
+    start_at: str
+    end_at: str
+
+
 def _settings_to_response(settings: RealEstatePackSettings) -> RealEstateSettingsResponse:
     return RealEstateSettingsResponse(
         enabled=settings.enabled,
@@ -669,6 +674,31 @@ async def book_real_estate_appointment(
     }
 
 
+@router.get("/appointments/available-slots", response_model=list[AvailableSlotResponse])
+async def get_available_appointment_slots(
+    agent_id: UUID,
+    start_at: datetime = Query(...),
+    end_at: datetime = Query(...),
+    duration_minutes: int = Query(default=60, ge=15, le=180),
+    step_minutes: int = Query(default=30, ge=15, le=120),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
+) -> list[AvailableSlotResponse]:
+    if end_at <= start_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_at start_at değerinden büyük olmalı")
+
+    slots = RealEstateService(db).get_available_slots(
+        tenant_id=current_tenant.id,
+        agent_id=agent_id,
+        start_at=start_at,
+        end_at=end_at,
+        duration_minutes=duration_minutes,
+        step_minutes=step_minutes,
+    )
+    return [AvailableSlotResponse(**item) for item in slots]
+
+
 @router.post("/followups/run", response_model=FollowupRunResponse)
 async def run_followups(
     current_tenant: Tenant = Depends(get_current_tenant),
@@ -804,11 +834,16 @@ async def generate_listing_summary_pdf(
     _: None = Depends(require_permissions(["tools:read"]))
 ) -> ListingSummaryPdfResponse:
     service = RealEstateService(db)
-    summary, pdf_bytes, filename = service.generate_listing_summary_pdf(
-        current_tenant.id,
-        payload.listing_ids,
-        lead_id=payload.lead_id,
-    )
+    try:
+        summary, pdf_bytes, filename = service.generate_listing_summary_pdf(
+            current_tenant.id,
+            payload.listing_ids,
+            lead_id=payload.lead_id,
+        )
+    except ValueError as exc:
+        if str(exc) == "pdf_limit_reached":
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Aylık PDF limitine ulaşıldı.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     media_id = None
     whatsapp_sent = False
@@ -840,11 +875,16 @@ async def download_listing_summary_pdf(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"]))
 ) -> Response:
-    summary, pdf_bytes, filename = RealEstateService(db).generate_listing_summary_pdf(
-        current_tenant.id,
-        payload.listing_ids,
-        lead_id=payload.lead_id,
-    )
+    try:
+        summary, pdf_bytes, filename = RealEstateService(db).generate_listing_summary_pdf(
+            current_tenant.id,
+            payload.listing_ids,
+            lead_id=payload.lead_id,
+        )
+    except ValueError as exc:
+        if str(exc) == "pdf_limit_reached":
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Aylık PDF limitine ulaşıldı.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     _ = summary
     return Response(
         content=pdf_bytes,
@@ -881,3 +921,24 @@ async def send_weekly_report_now(
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ) -> dict[str, Any]:
     return RealEstateService(db).dispatch_weekly_report_if_due(current_tenant.id, force=True)
+
+
+@router.get("/reports/weekly/download")
+async def download_weekly_report_pdf(
+    week_start: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"]))
+) -> Response:
+    service = RealEstateService(db)
+    try:
+        relative_path, file_bytes = service.get_weekly_report_file(current_tenant.id, week_start)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Haftalık rapor PDF bulunamadı")
+
+    filename = relative_path.rsplit("/", 1)[-1]
+    return Response(
+        content=file_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -228,3 +228,56 @@ class GoogleCalendarService:
                 f"Google Calendar event oluşturulamadı: {data.get('error', {}).get('message') or response.text[:300]}"
             )
         return data.get("id")
+
+    @staticmethod
+    def _parse_google_dt(value: str) -> datetime | None:
+        if not value:
+            return None
+        normalized = value.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.replace(tzinfo=None)
+        except Exception:
+            return None
+
+    def list_busy_intervals(
+        self,
+        tenant_id: UUID,
+        agent_id: UUID,
+        *,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[tuple[datetime, datetime]]:
+        integration = self.get_agent_integration(tenant_id, agent_id)
+        if integration is None or integration.status != "active":
+            return []
+
+        access_token = self._resolve_access_token(integration)
+        calendar_id = integration.calendar_id or "primary"
+        response = httpx.post(
+            f"{self.CALENDAR_API_BASE}/freeBusy",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "timeMin": time_min.isoformat() + "Z",
+                "timeMax": time_max.isoformat() + "Z",
+                "items": [{"id": calendar_id}],
+            },
+            timeout=20,
+        )
+        data = response.json()
+        if not response.is_success or "error" in data:
+            raise GoogleCalendarError(
+                f"Google Calendar freebusy alınamadı: {data.get('error', {}).get('message') or response.text[:300]}"
+            )
+
+        busy_rows = (((data.get("calendars") or {}).get(calendar_id) or {}).get("busy") or [])
+        output: list[tuple[datetime, datetime]] = []
+        for row in busy_rows:
+            start_at = self._parse_google_dt(row.get("start"))
+            end_at = self._parse_google_dt(row.get("end"))
+            if start_at and end_at and end_at > start_at:
+                output.append((start_at, end_at))
+        return output

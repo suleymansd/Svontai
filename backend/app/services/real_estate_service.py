@@ -8,7 +8,8 @@ import json
 import re
 import statistics
 from dataclasses import dataclass
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -143,6 +144,99 @@ class RealEstateMessageResult:
 class RealEstateService:
     def __init__(self, db: Session):
         self.db = db
+        self._storage_base = Path("storage/real_estate")
+
+    @staticmethod
+    def _month_key(now: datetime | None = None) -> str:
+        value = now or datetime.utcnow()
+        return value.strftime("%Y-%m")
+
+    @staticmethod
+    def _month_start(now: datetime | None = None) -> datetime:
+        value = now or datetime.utcnow()
+        return datetime(value.year, value.month, 1)
+
+    def _get_tenant(self, tenant_id: UUID) -> Tenant | None:
+        return self.db.query(Tenant).filter(Tenant.id == tenant_id).first()
+
+    def _get_usage_counter(self, tenant_id: UUID, metric: str, month_key: str | None = None) -> int:
+        tenant = self._get_tenant(tenant_id)
+        if not tenant:
+            return 0
+        target_month = month_key or self._month_key()
+        usage_root = (tenant.settings or {}).get("real_estate_usage") or {}
+        month_usage = usage_root.get(target_month) or {}
+        try:
+            return int(month_usage.get(metric, 0))
+        except Exception:
+            return 0
+
+    def _set_usage_counter(
+        self,
+        tenant_id: UUID,
+        metric: str,
+        value: int,
+        month_key: str | None = None,
+    ) -> None:
+        tenant = self._get_tenant(tenant_id)
+        if not tenant:
+            return
+        target_month = month_key or self._month_key()
+        settings_json = dict(tenant.settings or {})
+        usage_root = dict(settings_json.get("real_estate_usage") or {})
+        month_usage = dict(usage_root.get(target_month) or {})
+        month_usage[metric] = int(max(0, value))
+        usage_root[target_month] = month_usage
+        settings_json["real_estate_usage"] = usage_root
+        tenant.settings = settings_json
+
+    def _increment_usage_counter(
+        self,
+        tenant_id: UUID,
+        metric: str,
+        amount: int = 1,
+        month_key: str | None = None,
+    ) -> int:
+        current = self._get_usage_counter(tenant_id, metric, month_key=month_key)
+        next_value = current + amount
+        self._set_usage_counter(tenant_id, metric, next_value, month_key=month_key)
+        return next_value
+
+    def _seed_usage_counter_if_missing(
+        self,
+        tenant_id: UUID,
+        metric: str,
+        fallback_value: int,
+        month_key: str | None = None,
+    ) -> int:
+        current = self._get_usage_counter(tenant_id, metric, month_key=month_key)
+        if current <= 0 and fallback_value > 0:
+            self._set_usage_counter(tenant_id, metric, fallback_value, month_key=month_key)
+            return fallback_value
+        return current
+
+    def _storage_path(self, relative_path: str) -> Path:
+        return self._storage_base / relative_path
+
+    def _write_storage_file(self, relative_path: str, content: bytes) -> str:
+        file_path = self._storage_path(relative_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(content)
+        return relative_path
+
+    def read_storage_file(self, relative_path: str) -> bytes:
+        file_path = self._storage_path(relative_path)
+        if not file_path.exists():
+            raise FileNotFoundError(relative_path)
+        return file_path.read_bytes()
+
+    @staticmethod
+    def _parse_hhmm(value: str, fallback: time) -> time:
+        try:
+            hour_part, minute_part = value.strip().split(":")
+            return time(hour=int(hour_part), minute=int(minute_part))
+        except Exception:
+            return fallback
 
     def get_or_create_settings(self, tenant_id: UUID) -> RealEstatePackSettings:
         settings = self.db.query(RealEstatePackSettings).filter(
@@ -417,6 +511,21 @@ class RealEstateService:
             ).order_by(Lead.created_at.desc()).first()
 
         if lead is None:
+            settings = self.get_or_create_settings(tenant_id)
+            month_start = self._month_start()
+            historical_count = self.db.query(func.count(Lead.id)).filter(
+                Lead.tenant_id == tenant_id,
+                Lead.created_at >= month_start,
+                Lead.is_deleted.is_(False),
+            ).scalar() or 0
+            usage_count = self._seed_usage_counter_if_missing(
+                tenant_id=tenant_id,
+                metric="lead_created",
+                fallback_value=int(historical_count),
+            )
+            if usage_count >= settings.lead_limit_monthly:
+                raise ValueError("lead_limit_reached")
+
             lead = Lead(
                 tenant_id=tenant_id,
                 bot_id=bot.id,
@@ -432,6 +541,7 @@ class RealEstateService:
             )
             self.db.add(lead)
             self.db.flush()
+            self._increment_usage_counter(tenant_id, "lead_created", amount=1)
         else:
             lead.bot_id = bot.id
             lead.conversation_id = conversation.id
@@ -784,7 +894,15 @@ class RealEstateService:
         self.ensure_default_templates(tenant_id)
 
         parsed = self.parse_message(text)
-        lead = self._upsert_lead(tenant_id, bot, conversation, from_number, contact_name)
+        try:
+            lead = self._upsert_lead(tenant_id, bot, conversation, from_number, contact_name)
+        except ValueError as exc:
+            if str(exc) == "lead_limit_reached":
+                return RealEstateMessageResult(
+                    handled=True,
+                    response_text="Bu ay lead limitinize ulaştınız. Yeni lead işlemek için paket limitinizi yükseltin.",
+                )
+            raise
         state = self._get_or_create_state(tenant_id, conversation, lead, contact_name, from_number)
 
         now = datetime.utcnow()
@@ -870,6 +988,20 @@ class RealEstateService:
         if not settings.enabled:
             return {"pending": 0, "sent": 0, "skipped": 0, "failed": 0}
 
+        month_start = self._month_start(now)
+        historical_sent_count = self.db.query(func.count(RealEstateFollowUpJob.id)).filter(
+            RealEstateFollowUpJob.tenant_id == tenant_id,
+            RealEstateFollowUpJob.status == "sent",
+            RealEstateFollowUpJob.sent_at.isnot(None),
+            RealEstateFollowUpJob.sent_at >= month_start,
+        ).scalar() or 0
+        usage_sent_count = self._seed_usage_counter_if_missing(
+            tenant_id=tenant_id,
+            metric="followup_sent",
+            fallback_value=int(historical_sent_count),
+            month_key=self._month_key(now),
+        )
+
         jobs = self.db.query(RealEstateFollowUpJob).filter(
             RealEstateFollowUpJob.tenant_id == tenant_id,
             RealEstateFollowUpJob.status == "pending",
@@ -888,6 +1020,12 @@ class RealEstateService:
         access_token = decrypt_token(account.access_token_encrypted) if account else None
 
         for job in jobs:
+            if usage_sent_count >= settings.followup_limit_monthly:
+                job.status = "skipped"
+                job.error_text = "followup_limit_reached"
+                skipped += 1
+                continue
+
             state = self.db.query(RealEstateConversationState).filter(
                 RealEstateConversationState.conversation_id == job.conversation_id
             ).first()
@@ -948,6 +1086,12 @@ class RealEstateService:
                 job.status = "sent"
                 job.sent_at = now
                 sent += 1
+                usage_sent_count = self._increment_usage_counter(
+                    tenant_id=tenant_id,
+                    metric="followup_sent",
+                    amount=1,
+                    month_key=self._month_key(now),
+                )
 
                 if job.attempt_no < job.max_attempts:
                     next_delay = timedelta(days=1 if job.attempt_no == 1 else settings.followup_days)
@@ -1215,11 +1359,19 @@ class RealEstateService:
         listing_ids: list[UUID],
         lead_id: UUID | None = None,
     ) -> tuple[dict[str, Any], bytes, str]:
+        settings = self.get_or_create_settings(tenant_id)
+        now = datetime.utcnow()
+        month_key = self._month_key(now)
+        usage_pdf = self._get_usage_counter(tenant_id, "pdf_generated", month_key=month_key)
+        if usage_pdf >= settings.pdf_limit_monthly:
+            raise ValueError("pdf_limit_reached")
+
         summary = self.build_listing_summary(tenant_id, listing_ids, lead_id=lead_id)
         rows = summary.get("items", [])
         title = "SvontAI Listing Summary"
         if not rows:
             pdf = SimplePdfService.build_text_pdf(title=title, lines=["Secilen listing bulunamadi."], footer="SvontAI Real Estate Pack")
+            self._increment_usage_counter(tenant_id, "pdf_generated", amount=1, month_key=month_key)
             return summary, pdf, "listing-summary-empty.pdf"
 
         lines: list[str] = []
@@ -1240,6 +1392,7 @@ class RealEstateService:
             footer="Rapor yalnizca tenant ilan verisinden uretilmistir.",
         )
         filename = f"listing-summary-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+        self._increment_usage_counter(tenant_id, "pdf_generated", amount=1, month_key=month_key)
         return summary, pdf, filename
 
     async def send_listing_summary_pdf_to_lead(
@@ -1421,6 +1574,87 @@ class RealEstateService:
 
         return sorted(output, key=lambda item: (item.get("full_name") or "").lower())
 
+    def get_available_slots(
+        self,
+        tenant_id: UUID,
+        agent_id: UUID,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+        duration_minutes: int = 60,
+        step_minutes: int = 30,
+    ) -> list[dict[str, str]]:
+        settings = self.get_or_create_settings(tenant_id)
+        duration = timedelta(minutes=max(15, duration_minutes))
+        step = timedelta(minutes=max(15, step_minutes))
+
+        raw_windows = settings.manual_availability or []
+        windows: list[dict[str, Any]] = []
+        for row in raw_windows:
+            if not isinstance(row, dict):
+                continue
+            windows.append(
+                {
+                    "weekday": int(row.get("weekday", 0)),
+                    "start": self._parse_hhmm(str(row.get("start", "09:00")), fallback=time(9, 0)),
+                    "end": self._parse_hhmm(str(row.get("end", "18:00")), fallback=time(18, 0)),
+                }
+            )
+        if not windows:
+            windows = [
+                {"weekday": day, "start": time(9, 0), "end": time(18, 0)}
+                for day in range(0, 5)
+            ]
+
+        busy_intervals: list[tuple[datetime, datetime]] = []
+        if settings.google_calendar_enabled:
+            try:
+                busy_intervals = GoogleCalendarService(self.db).list_busy_intervals(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    time_min=start_at,
+                    time_max=end_at,
+                )
+            except Exception as exc:
+                SystemEventService(self.db).log(
+                    tenant_id=str(tenant_id),
+                    source="real_estate_pack",
+                    level="warn",
+                    code="RE_CALENDAR_BUSY_FETCH_FAILED",
+                    message=str(exc)[:500],
+                    meta_json={"agent_id": str(agent_id)},
+                )
+
+        def _is_busy(slot_start: datetime, slot_end: datetime) -> bool:
+            for busy_start, busy_end in busy_intervals:
+                if slot_start < busy_end and slot_end > busy_start:
+                    return True
+            return False
+
+        output: list[dict[str, str]] = []
+        cursor_date = datetime(start_at.year, start_at.month, start_at.day)
+        max_slots = 120
+        while cursor_date <= end_at and len(output) < max_slots:
+            weekday = cursor_date.weekday()
+            todays_windows = [window for window in windows if int(window["weekday"]) == weekday]
+            for window in todays_windows:
+                day_start = datetime.combine(cursor_date.date(), window["start"])
+                day_end = datetime.combine(cursor_date.date(), window["end"])
+                slot_start = max(day_start, start_at)
+                while slot_start + duration <= day_end and slot_start + duration <= end_at and len(output) < max_slots:
+                    slot_end = slot_start + duration
+                    if not _is_busy(slot_start, slot_end):
+                        output.append(
+                            {
+                                "start_at": slot_start.isoformat(),
+                                "end_at": slot_end.isoformat(),
+                            }
+                        )
+                    slot_start += step
+            cursor_date += timedelta(days=1)
+
+        return output
+
     def build_seller_service_report(self, tenant_id: UUID, lead_id: UUID, days: int = 7) -> dict[str, Any]:
         lead = self.db.query(Lead).filter(
             Lead.id == lead_id,
@@ -1566,6 +1800,13 @@ class RealEstateService:
         return {"due": len(due_leads), "sent": sent, "failed": failed}
 
     def generate_weekly_report_pdf(self, tenant_id: UUID) -> tuple[dict[str, Any], bytes]:
+        settings = self.get_or_create_settings(tenant_id)
+        now = datetime.utcnow()
+        month_key = self._month_key(now)
+        usage_pdf = self._get_usage_counter(tenant_id, "pdf_generated", month_key=month_key)
+        if usage_pdf >= settings.pdf_limit_monthly:
+            raise ValueError("pdf_limit_reached")
+
         metrics = self.get_weekly_metrics(tenant_id)
         top_locations = metrics.get("top_locations") or []
         lines = [
@@ -1586,7 +1827,24 @@ class RealEstateService:
             lines=lines,
             footer="SvontAI Real Estate Pack",
         )
+        self._increment_usage_counter(tenant_id, "pdf_generated", amount=1, month_key=month_key)
         return metrics, pdf
+
+    @staticmethod
+    def _weekly_report_relative_path(tenant_id: UUID, week_start: str) -> str:
+        safe_week = week_start.replace("/", "-")
+        return f"weekly/{tenant_id}/{safe_week}.pdf"
+
+    def get_weekly_report_file(self, tenant_id: UUID, week_start: str) -> tuple[str, bytes]:
+        report = self.db.query(RealEstateWeeklyReport).filter(
+            RealEstateWeeklyReport.tenant_id == tenant_id,
+            RealEstateWeeklyReport.week_start == date.fromisoformat(week_start),
+        ).first()
+        if not report or not report.pdf_url:
+            raise FileNotFoundError("weekly_report_not_found")
+        if report.pdf_url.startswith("generated://"):
+            raise FileNotFoundError("weekly_report_not_stored")
+        return report.pdf_url, self.read_storage_file(report.pdf_url)
 
     def dispatch_weekly_report_if_due(self, tenant_id: UUID, force: bool = False) -> dict[str, Any]:
         tenant = self.db.query(Tenant).filter(Tenant.id == tenant_id).first()
@@ -1608,7 +1866,12 @@ class RealEstateService:
         if not force and last_sent_week == week_start:
             return {"sent": False, "reason": "already_sent_this_week"}
 
-        metrics, pdf = self.generate_weekly_report_pdf(tenant_id)
+        try:
+            metrics, pdf = self.generate_weekly_report_pdf(tenant_id)
+        except ValueError as exc:
+            if str(exc) == "pdf_limit_reached":
+                return {"sent": False, "reason": "pdf_limit_reached"}
+            raise
         agents = self.list_agents(tenant_id)
         recipients = [agent["email"] for agent in agents if agent.get("email")]
         if tenant.owner and tenant.owner.email:
@@ -1633,7 +1896,8 @@ class RealEstateService:
             RealEstateWeeklyReport.week_start == date.fromisoformat(week_start),
         ).first()
         if report:
-            report.pdf_url = f"generated://weekly/{week_start}"
+            report.pdf_url = self._weekly_report_relative_path(tenant_id, week_start)
+            self._write_storage_file(report.pdf_url, pdf)
         self.db.commit()
         return {"sent": True, "recipients": len(recipients), "week_start": week_start}
 

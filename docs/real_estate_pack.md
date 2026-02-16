@@ -71,6 +71,7 @@ Tenant panel:
 - `PATCH /real-estate/templates/{template_id}`
 - `POST /real-estate/leads/{lead_id}/suggest-listings`
 - `POST /real-estate/appointments/book`
+- `GET /real-estate/appointments/available-slots`
 - `POST /real-estate/followups/run`
 - `GET /real-estate/analytics/weekly`
 - `GET /real-estate/agents`
@@ -84,6 +85,7 @@ Tenant panel:
 - `GET /real-estate/leads/{lead_id}/ai-suggested-listings`
 - `POST /real-estate/leads/{lead_id}/seller-service-report`
 - `POST /real-estate/reports/weekly/send`
+- `GET /real-estate/reports/weekly/download`
 
 Super admin:
 - `GET /admin/tenants/{tenant_id}/real-estate-pack`
@@ -147,3 +149,8 @@ Follow-up simülasyonu:
   - periyodik follow-up çalıştırır,
   - satıcı servis raporlarını otomatik gönderir,
   - haftalık e-posta + PDF raporunu planlı pencerede yollar.
+
+## Limit Enforcement
+- `lead_limit_monthly`: inbound akışta yeni lead oluşturma limitine ulaşınca yeni lead oluşturulmaz.
+- `pdf_limit_monthly`: listing/rapor PDF üretimi limit aşımında `429` döner.
+- `followup_limit_monthly`: takip mesajları aylık limite göre otomatik durdurulur.

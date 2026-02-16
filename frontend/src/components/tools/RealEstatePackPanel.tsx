@@ -222,6 +222,22 @@ export function RealEstatePackPanel() {
     },
   })
 
+  const downloadWeeklyMutation = useMutation({
+    mutationFn: (weekStart: string) => realEstateApi.downloadWeeklyReport(weekStart),
+    onSuccess: (res) => {
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'real-estate-weekly-report.pdf'
+      link.click()
+      URL.revokeObjectURL(url)
+    },
+    onError: () => {
+      toast({ title: 'Haftalık PDF indirilemedi', variant: 'destructive' })
+    },
+  })
+
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type !== 'GOOGLE_CALENDAR_CONNECTED') return
@@ -596,6 +612,14 @@ export function RealEstatePackPanel() {
               disabled={sendWeeklyMutation.isPending}
             >
               Haftalık E-Posta/PDF Raporunu Gönder
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => analyticsQuery.data?.week_start && downloadWeeklyMutation.mutate(String(analyticsQuery.data.week_start))}
+              disabled={!analyticsQuery.data?.week_start || downloadWeeklyMutation.isPending}
+            >
+              Haftalık PDF İndir
             </Button>
           </div>
           {(listingsQuery.data || []).length > 0 && (
