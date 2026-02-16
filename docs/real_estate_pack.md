@@ -80,6 +80,7 @@ Tenant panel:
 - `GET /real-estate/calendar/google/start`
 - `GET /real-estate/calendar/google/callback`
 - `GET /real-estate/calendar/google/status`
+- `GET /real-estate/calendar/google/diagnostics`
 - `DELETE /real-estate/calendar/google/disconnect`
 - `POST /real-estate/pdf/generate`
 - `POST /real-estate/pdf/download`
@@ -96,6 +97,11 @@ Tenant panel:
 - `save_to_settings=true` iken connector ayarları tenant `listings_source` içine yazılır.
 - `auto_sync=true` ve `sync_interval_minutes` ayarıyla scheduler döngüsünde otomatik sync yapılır.
 - Remax API key düz metin saklanmaz, `api_key_encrypted` olarak tutulur.
+
+### Google Calendar Tanılama
+- `GET /real-estate/calendar/google/diagnostics?live=true` çağrısı:
+  - redirect URI, domain eşleşmesi ve OAuth client ayarlarını kontrol eder,
+  - canlı OAuth probe ile `redirect_uri_mismatch` gibi hata nedenlerini döner.
 
 Super admin:
 - `GET /admin/tenants/{tenant_id}/real-estate-pack`

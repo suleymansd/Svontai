@@ -560,6 +560,8 @@ export const realEstateApi = {
     api.get('/real-estate/calendar/google/start', { params }),
   getGoogleCalendarStatus: (params?: { agent_id?: string }) =>
     api.get('/real-estate/calendar/google/status', { params }),
+  getGoogleCalendarDiagnostics: (params?: { live?: boolean }) =>
+    api.get('/real-estate/calendar/google/diagnostics', { params }),
   disconnectGoogleCalendar: (params?: { agent_id?: string }) =>
     api.delete('/real-estate/calendar/google/disconnect', { params }),
   generateListingSummaryPdf: (data: {

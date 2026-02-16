@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, CalendarCheck2, FileDown, FileText, Plus, Save, Send, UploadCloud } from 'lucide-react'
+import { AlertTriangle, Building2, CalendarCheck2, FileDown, FileText, Plus, Save, Send, UploadCloud } from 'lucide-react'
 import { realEstateApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Persona = 'luxury' | 'pro' | 'warm'
 
@@ -58,6 +59,7 @@ export function RealEstatePackPanel() {
     deactivate_missing: false,
     save_to_settings: true,
   })
+  const [googleDiagnosticsOpen, setGoogleDiagnosticsOpen] = useState(false)
   const popupRef = useRef<Window | null>(null)
 
   const settingsQuery = useQuery({
@@ -225,6 +227,17 @@ export function RealEstatePackPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['real-estate-google-calendar-status'] })
       toast({ title: 'Google Calendar bağlantısı kesildi' })
+    },
+  })
+
+  const googleDiagnosticsMutation = useMutation({
+    mutationFn: () => realEstateApi.getGoogleCalendarDiagnostics({ live: true }).then((res) => res.data),
+    onError: (error: any) => {
+      toast({
+        title: 'Google Calendar tanılama alınamadı',
+        description: error.response?.data?.detail || 'Lütfen tekrar deneyin.',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -961,10 +974,108 @@ export function RealEstatePackPanel() {
           <CardDescription>Gerçek OAuth bağlantısı, listing PDF üretimi ve WhatsApp document gönderimi.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Dialog open={googleDiagnosticsOpen} onOpenChange={setGoogleDiagnosticsOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Google Calendar Tanılama</DialogTitle>
+                <DialogDescription>OAuth redirect, domain ve client ayarlarını doğrular.</DialogDescription>
+              </DialogHeader>
+              {googleDiagnosticsMutation.isPending ? (
+                <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">GOOGLE_REDIRECT_URI</span>
+                      <span className="font-mono text-xs break-all">
+                        {googleDiagnosticsMutation.data?.google_redirect_uri || '-'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Beklenen callback</span>
+                      <span className="font-mono text-xs break-all">
+                        {googleDiagnosticsMutation.data?.expected_redirect_uri || '-'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {(googleDiagnosticsMutation.data?.checks || []).length > 0 && (
+                    <div className="rounded-xl border border-border/70 p-4">
+                      <p className="font-medium mb-2">Kontroller</p>
+                      <div className="space-y-2 text-sm">
+                        {(googleDiagnosticsMutation.data?.checks || []).map((check: any) => (
+                          <div key={check.key} className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium">{check.message}</p>
+                              <p className="text-xs text-muted-foreground break-all">{check.value || '-'}</p>
+                            </div>
+                            <Badge variant={check.ok ? 'success' : 'destructive'}>
+                              {check.ok ? 'OK' : 'Hata'}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {googleDiagnosticsMutation.data?.live_probe && (
+                    <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+                      <p className="font-medium mb-2">Canlı OAuth Probe</p>
+                      <div className="space-y-1 text-sm">
+                        <p>
+                          Durum: <span className="font-medium">{googleDiagnosticsMutation.data.live_probe.status}</span>
+                          {googleDiagnosticsMutation.data.live_probe.http_status ? ` (HTTP ${googleDiagnosticsMutation.data.live_probe.http_status})` : ''}
+                        </p>
+                        {googleDiagnosticsMutation.data.live_probe.error && (
+                          <p>Hata: <span className="font-medium">{googleDiagnosticsMutation.data.live_probe.error}</span></p>
+                        )}
+                        {googleDiagnosticsMutation.data.live_probe.error_description && (
+                          <p className="break-words">Detay: {googleDiagnosticsMutation.data.live_probe.error_description}</p>
+                        )}
+                        {googleDiagnosticsMutation.data.live_probe.location && (
+                          <p className="text-xs break-all text-muted-foreground">
+                            Redirect: {googleDiagnosticsMutation.data.live_probe.location}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {(googleDiagnosticsMutation.data?.issues || []).length > 0 && (
+                    <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                      <p className="font-medium text-red-800 dark:text-red-200 mb-2">Sorunlar</p>
+                      <ul className="list-disc pl-5 text-sm text-red-800 dark:text-red-200 space-y-1">
+                        {(googleDiagnosticsMutation.data?.issues || []).map((issue: string) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setGoogleDiagnosticsOpen(false)}>
+                  Kapat
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={googleStatusQuery.data?.connected ? 'default' : 'outline'}>
               {googleStatusQuery.data?.connected ? 'Google Calendar Bağlı' : 'Google Calendar Bağlı Değil'}
             </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setGoogleDiagnosticsOpen(true)
+                googleDiagnosticsMutation.mutate()
+              }}
+            >
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              Tanılama
+            </Button>
             <Button
               type="button"
               variant="outline"

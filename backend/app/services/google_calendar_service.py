@@ -5,7 +5,7 @@ Google Calendar OAuth + event integration service (Real Estate Pack).
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 from uuid import UUID
 
 import httpx
@@ -25,6 +25,7 @@ class GoogleCalendarService:
     OAUTH_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_URL = "https://oauth2.googleapis.com/token"
     CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
+    CALLBACK_PATH = "/real-estate/calendar/google/callback"
     SCOPES = [
         "openid",
         "email",
@@ -39,6 +40,47 @@ class GoogleCalendarService:
     @staticmethod
     def is_configured() -> bool:
         return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REDIRECT_URI)
+
+    @staticmethod
+    def _is_placeholder(value: str) -> bool:
+        normalized = (value or "").strip().upper()
+        if not normalized:
+            return True
+        placeholder_tokens = ("YOUR_", "CHANGE_", "EXAMPLE", "PLACEHOLDER", "_HERE")
+        return any(token in normalized for token in placeholder_tokens)
+
+    @staticmethod
+    def _expected_redirect_uri() -> str:
+        base = (settings.BACKEND_URL or settings.WEBHOOK_PUBLIC_URL or "").strip()
+        return f"{base.rstrip('/')}{GoogleCalendarService.CALLBACK_PATH}" if base else ""
+
+    def validate_config(self) -> None:
+        errors: list[str] = []
+
+        client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+        client_secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
+        redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").strip()
+        parsed = urlparse(redirect_uri)
+        expected_redirect = self._expected_redirect_uri()
+        expected_parsed = urlparse(expected_redirect)
+
+        if self._is_placeholder(client_id):
+            errors.append("GOOGLE_CLIENT_ID eksik veya örnek değer olarak bırakılmış.")
+        if self._is_placeholder(client_secret):
+            errors.append("GOOGLE_CLIENT_SECRET eksik veya örnek değer olarak bırakılmış.")
+
+        if self._is_placeholder(redirect_uri) or not parsed.scheme or not parsed.netloc:
+            errors.append("GOOGLE_REDIRECT_URI geçerli bir URL olmalıdır.")
+        else:
+            if settings.ENVIRONMENT == "prod" and parsed.scheme != "https":
+                errors.append("Üretimde GOOGLE_REDIRECT_URI https olmalıdır.")
+            if not redirect_uri.endswith(self.CALLBACK_PATH):
+                errors.append(f"GOOGLE_REDIRECT_URI '{self.CALLBACK_PATH}' ile bitmelidir.")
+            if expected_parsed.netloc and parsed.netloc and expected_parsed.netloc != parsed.netloc:
+                errors.append("GOOGLE_REDIRECT_URI domain'i BACKEND_URL/WEBHOOK_PUBLIC_URL ile aynı olmalıdır.")
+
+        if errors:
+            raise GoogleCalendarError("Google Calendar yapılandırması eksik/geçersiz. " + " ".join(errors))
 
     @staticmethod
     def _utcnow() -> datetime:
@@ -69,8 +111,7 @@ class GoogleCalendarService:
         return payload
 
     def get_oauth_start(self, tenant_id: UUID, agent_id: UUID) -> dict:
-        if not self.is_configured():
-            raise GoogleCalendarError("Google Calendar ayarları eksik. GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI kontrol edin.")
+        self.validate_config()
 
         state = self._encode_state(tenant_id, agent_id)
         params = {
@@ -86,7 +127,138 @@ class GoogleCalendarService:
         auth_url = f"{self.OAUTH_BASE_URL}?{urlencode(params)}"
         return {"auth_url": auth_url, "state": state}
 
+    def get_diagnostics(self) -> dict[str, Any]:
+        client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+        client_secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
+        redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").strip()
+        parsed = urlparse(redirect_uri)
+        expected_redirect = self._expected_redirect_uri()
+        expected_parsed = urlparse(expected_redirect)
+
+        issues: list[str] = []
+        hints: list[str] = []
+        checks: list[dict[str, Any]] = []
+
+        client_id_set = bool(client_id) and not self._is_placeholder(client_id)
+        client_secret_set = bool(client_secret) and not self._is_placeholder(client_secret)
+        redirect_set = bool(redirect_uri) and not self._is_placeholder(redirect_uri)
+
+        if not client_id_set:
+            issues.append("GOOGLE_CLIENT_ID eksik")
+        if not client_secret_set:
+            issues.append("GOOGLE_CLIENT_SECRET eksik")
+
+        if not redirect_set:
+            issues.append("GOOGLE_REDIRECT_URI eksik")
+        elif not parsed.scheme or not parsed.netloc:
+            issues.append("GOOGLE_REDIRECT_URI geçerli bir URL olmalıdır")
+        elif not redirect_uri.endswith(self.CALLBACK_PATH):
+            issues.append(f"GOOGLE_REDIRECT_URI '{self.CALLBACK_PATH}' ile bitmelidir")
+
+        if redirect_set and parsed.scheme != "https" and settings.ENVIRONMENT == "prod":
+            issues.append("Üretimde GOOGLE_REDIRECT_URI https olmalı")
+
+        if redirect_set and expected_parsed.netloc and parsed.netloc and expected_parsed.netloc != parsed.netloc:
+            issues.append("GOOGLE_REDIRECT_URI domain BACKEND_URL/WEBHOOK_PUBLIC_URL ile aynı değil")
+
+        if redirect_set and expected_redirect and redirect_uri != expected_redirect:
+            hints.append("GOOGLE_REDIRECT_URI ile beklenen callback URL aynı olmalı (Google Console'da da aynısını tanımlayın).")
+
+        checks.extend([
+            {
+                "key": "google_client_id",
+                "ok": client_id_set,
+                "value": "set" if client_id_set else "missing",
+                "message": "Client ID tanımlı olmalı",
+            },
+            {
+                "key": "google_client_secret",
+                "ok": client_secret_set,
+                "value": "set" if client_secret_set else "missing",
+                "message": "Client Secret tanımlı olmalı",
+            },
+            {
+                "key": "google_redirect_uri",
+                "ok": redirect_set and redirect_uri.endswith(self.CALLBACK_PATH),
+                "value": redirect_uri,
+                "message": f"Redirect URI '{self.CALLBACK_PATH}' ile bitmeli",
+            },
+            {
+                "key": "redirect_domain_match",
+                "ok": not expected_parsed.netloc or not parsed.netloc or expected_parsed.netloc == parsed.netloc,
+                "value": f"{parsed.netloc or '-'} vs {expected_parsed.netloc or '-'}",
+                "message": "Redirect domain ve backend domain aynı olmalı",
+            },
+        ])
+
+        hints.append("Google Cloud Console > OAuth 2.0 Client > Authorized redirect URIs içine callback URL birebir eklenmeli.")
+        hints.append("Test modunda olmayan uygulamalarda Google OAuth consent screen publish durumu kontrol edilmeli.")
+
+        auth_url_preview = ""
+        try:
+            auth_url_preview = self.get_oauth_start(UUID(int=0), UUID(int=0)).get("auth_url", "")
+        except Exception:
+            auth_url_preview = ""
+
+        return {
+            "environment": settings.ENVIRONMENT,
+            "backend_url": settings.BACKEND_URL,
+            "webhook_public_url": settings.WEBHOOK_PUBLIC_URL,
+            "google_client_id_set": client_id_set,
+            "google_client_secret_set": client_secret_set,
+            "google_redirect_uri": redirect_uri,
+            "expected_redirect_uri": expected_redirect,
+            "checks": checks,
+            "issues": issues,
+            "hints": hints,
+            "auth_url_preview": auth_url_preview,
+        }
+
+    async def probe_oauth_dialog(self) -> dict[str, Any]:
+        try:
+            oauth_url = self.get_oauth_start(UUID(int=0), UUID(int=0)).get("auth_url", "")
+        except GoogleCalendarError as exc:
+            return {
+                "status": "config_invalid",
+                "http_status": None,
+                "location": "",
+                "error": str(exc),
+                "error_reason": None,
+                "error_description": None,
+            }
+
+        try:
+            async with httpx.AsyncClient(timeout=12, follow_redirects=False) as client:
+                response = await client.get(
+                    oauth_url,
+                    headers={"User-Agent": "SvontAI-GoogleCalendar-Diagnostics/1.0"},
+                )
+            location = response.headers.get("location", "")
+            query = parse_qs(urlparse(location).query) if location else {}
+            error = (query.get("error") or [None])[0]
+            error_description = (query.get("error_description") or [None])[0]
+            error_reason = (query.get("error_subtype") or [None])[0]
+            status = "error" if (error or error_description or response.status_code >= 400) else "ok"
+            return {
+                "status": status,
+                "http_status": response.status_code,
+                "location": location,
+                "error": error,
+                "error_reason": error_reason,
+                "error_description": error_description,
+            }
+        except Exception as exc:
+            return {
+                "status": "network_error",
+                "http_status": None,
+                "location": "",
+                "error": str(exc),
+                "error_reason": None,
+                "error_description": None,
+            }
+
     def _exchange_code_for_tokens(self, code: str) -> dict:
+        self.validate_config()
         response = httpx.post(
             self.TOKEN_URL,
             data={

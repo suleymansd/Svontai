@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import quote_plus
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Response, status
@@ -16,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.dependencies.auth import get_current_tenant, get_current_user
 from app.dependencies.permissions import require_permissions
 from app.models.lead import Lead
@@ -198,6 +201,21 @@ class GoogleCalendarStatusResponse(BaseModel):
     connected: bool
     status: str
     calendar_id: str | None
+
+
+class GoogleCalendarDiagnosticsResponse(BaseModel):
+    environment: str
+    backend_url: str
+    webhook_public_url: str
+    google_client_id_set: bool
+    google_client_secret_set: bool
+    google_redirect_uri: str
+    expected_redirect_uri: str
+    checks: list[dict]
+    issues: list[str]
+    hints: list[str]
+    auth_url_preview: str
+    live_probe: dict | None = None
 
 
 class ListingEventCreate(BaseModel):
@@ -849,18 +867,22 @@ async def google_calendar_oauth_callback(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     service = GoogleCalendarService(db)
+    frontend_redirect_success = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/tools/tool-real-estate-pack?google_calendar=success"
+    frontend_redirect_error_base = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/tools/tool-real-estate-pack?google_calendar=error"
     try:
         service.process_oauth_callback(code=code, state=state)
+        success_payload = json.dumps({"type": "GOOGLE_CALENDAR_CONNECTED", "success": True})
+        redirect_url_js = json.dumps(frontend_redirect_success)
         return HTMLResponse(
             content="""
             <html>
             <body>
                 <script>
                     if (window.opener) {
-                        window.opener.postMessage({type: 'GOOGLE_CALENDAR_CONNECTED', success: true}, '*');
+                        window.opener.postMessage(""" + success_payload + """, '*');
                         window.close();
                     } else {
-                        window.location.href = '/dashboard/tools/tool-real-estate-pack';
+                        window.location.href = """ + redirect_url_js + """;
                     }
                 </script>
                 <p>Google Calendar bağlantısı başarılı. Bu pencere kapanacak...</p>
@@ -869,14 +891,18 @@ async def google_calendar_oauth_callback(
             """
         )
     except GoogleCalendarError as exc:
-        error_message = str(exc).replace("\\", "\\\\").replace("'", "\\'")
+        error_message_js = json.dumps(str(exc))
+        redirect_error_js = json.dumps(f"{frontend_redirect_error_base}&reason={quote_plus(str(exc))}")
         return HTMLResponse(
             content=f"""
             <html>
             <body>
                 <script>
                     if (window.opener) {{
-                        window.opener.postMessage({{type: 'GOOGLE_CALENDAR_CONNECTED', success: false, error: '{error_message}'}}, '*');
+                        window.opener.postMessage({{type: 'GOOGLE_CALENDAR_CONNECTED', success: false, error: {error_message_js}}}, '*');
+                        window.close();
+                    }} else {{
+                        window.location.href = {redirect_error_js};
                     }}
                 </script>
                 <p>Google Calendar bağlantı hatası: {str(exc)}</p>
@@ -907,6 +933,21 @@ async def get_google_calendar_status(
         status=integration.status,
         calendar_id=integration.calendar_id,
     )
+
+
+@router.get("/calendar/google/diagnostics", response_model=GoogleCalendarDiagnosticsResponse)
+async def get_google_calendar_diagnostics(
+    live: bool = Query(False, description="Canlı OAuth endpoint probe çalıştır"),
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
+) -> GoogleCalendarDiagnosticsResponse:
+    service = GoogleCalendarService(db)
+    diagnostics = service.get_diagnostics()
+    if live:
+        diagnostics["live_probe"] = await service.probe_oauth_dialog()
+    return GoogleCalendarDiagnosticsResponse(**diagnostics)
 
 
 @router.delete("/calendar/google/disconnect", response_model=dict)
