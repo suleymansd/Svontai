@@ -26,7 +26,8 @@ import {
   User,
   Plus,
   Gauge,
-  Boxes
+  Boxes,
+  Building2
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -146,8 +147,11 @@ export default function DashboardLayout({
           <div className="px-4 py-4">
             <div className="p-3 rounded-xl border border-border/70 glass-card">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 text-primary flex items-center justify-center font-semibold shadow-glow-primary">
-                  {tenant?.name?.charAt(0).toUpperCase() || 'İ'}
+                <div className="relative">
+                  <Icon3DBadge icon={Building2} size="sm" from="from-primary" to="to-violet-500" />
+                  <span className="absolute inset-0 z-10 flex items-center justify-center text-[10px] font-semibold text-white">
+                    {tenant?.name?.charAt(0).toUpperCase() || 'İ'}
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{tenant?.name || 'Yükleniyor...'}</p>
@@ -237,13 +241,23 @@ export default function DashboardLayout({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                    'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                     isActive
                       ? 'nav-active-glow text-primary'
                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <Icon3DBadge
+                    icon={item.icon}
+                    size="sm"
+                    active
+                    from={isActive ? 'from-primary' : 'from-slate-200 dark:from-slate-800'}
+                    to={isActive ? 'to-violet-500' : 'to-slate-50 dark:to-slate-700'}
+                    className={cn(
+                      'shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition-transform duration-200 group-hover:-translate-y-0.5',
+                      isActive && 'ring-2 ring-primary/25'
+                    )}
+                  />
                   <span>{item.name}</span>
                 </Link>
               )

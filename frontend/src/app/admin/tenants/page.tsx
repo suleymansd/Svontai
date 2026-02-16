@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 
 interface TenantWithOwner {
   id: string
@@ -103,13 +104,13 @@ export default function TenantsPage() {
           icon={<Icon3DBadge icon={Building2} from="from-amber-500" to="to-orange-500" />}
         />
 
-        <div className="relative">
+        <div className="relative rounded-2xl border border-border/70 bg-card/95 shadow-soft">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
             placeholder="Tenant adı veya sahip e-postası ara..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 border-0 bg-transparent"
           />
         </div>
 
@@ -117,32 +118,36 @@ export default function TenantsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-card border border-border/70 rounded-2xl p-6 animate-pulse">
+            <div key={i} className="bg-card border border-border/70 rounded-2xl p-6 animate-pulse shadow-soft">
               <div className="h-6 w-32 bg-muted rounded mb-4"></div>
               <div className="h-4 w-48 bg-muted rounded mb-2"></div>
               <div className="h-4 w-24 bg-muted rounded"></div>
             </div>
           ))
         ) : tenants.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            Tenant bulunamadı
+          <div className="col-span-full">
+            <EmptyState
+              icon={<Building2 className="h-6 w-6 text-primary" />}
+              title="Tenant bulunamadı"
+              description="Arama kriterini değiştirin veya yeni tenant oluşturun."
+            />
           </div>
         ) : (
           tenants.map((tenant) => (
-            <div key={tenant.id} className="bg-card border border-border/70 rounded-2xl p-6 hover:border-border/70 transition-all duration-300 group relative">
+            <div key={tenant.id} className="bg-card border border-border/70 rounded-2xl p-6 hover:border-primary/30 transition-all duration-300 group relative shadow-soft gradient-border-animated">
               {/* Actions */}
               <div className="absolute top-4 right-4">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setActionMenuId(actionMenuId === tenant.id ? null : tenant.id)}
-                  className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border/60 bg-muted/30"
                 >
                   <MoreVertical className="w-4 h-4" />
                 </Button>
                 
                 {actionMenuId === tenant.id && (
-                  <div className="absolute right-0 top-full mt-1 w-40 bg-muted border border-border/70 rounded-xl shadow-xl z-10 py-1">
+                  <div className="absolute right-0 top-full mt-1 w-40 bg-card border border-border/70 rounded-xl shadow-xl z-10 py-1">
                     <button
                       onClick={() => handleDeleteTenant(tenant.id, tenant.name)}
                       className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
@@ -156,9 +161,7 @@ export default function TenantsPage() {
 
               {/* Header */}
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-foreground" />
-                </div>
+                <Icon3DBadge icon={Building2} from="from-amber-500" to="to-orange-500" />
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">{tenant.name}</h3>
                   <p className="text-sm text-muted-foreground">/{tenant.slug}</p>

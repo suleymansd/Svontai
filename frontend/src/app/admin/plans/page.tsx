@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, BadgeCheck } from 'lucide-react'
+import { Plus, Pencil, Trash2, BadgeCheck, Sparkles, Zap, Crown, Building2, type LucideIcon } from 'lucide-react'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -66,6 +66,13 @@ const emptyPlanForm = {
   feature_flags: '{}'
 }
 
+const planTypeVisual: Record<string, { icon: LucideIcon; from: string; to: string }> = {
+  free: { icon: Sparkles, from: 'from-slate-500', to: 'to-slate-700' },
+  starter: { icon: Zap, from: 'from-cyan-500', to: 'to-blue-500' },
+  pro: { icon: Crown, from: 'from-violet-500', to: 'to-fuchsia-500' },
+  business: { icon: Building2, from: 'from-amber-500', to: 'to-orange-500' },
+}
+
 export default function PlansPage() {
   const { toast } = useToast()
   const [plans, setPlans] = useState<Plan[]>([])
@@ -106,9 +113,17 @@ export default function PlansPage() {
       key: 'name',
       header: 'Plan',
       render: (row) => (
-        <div className="space-y-1">
-          <p className="font-semibold">{row.display_name}</p>
-          <p className="text-xs text-muted-foreground">{row.name} • {row.plan_type}</p>
+        <div className="flex items-center gap-3">
+          <Icon3DBadge
+            icon={(planTypeVisual[row.plan_type]?.icon || BadgeCheck)}
+            size="sm"
+            from={planTypeVisual[row.plan_type]?.from || 'from-primary'}
+            to={planTypeVisual[row.plan_type]?.to || 'to-violet-500'}
+          />
+          <div className="space-y-1">
+            <p className="font-semibold">{row.display_name}</p>
+            <p className="text-xs text-muted-foreground">{row.name} • {row.plan_type}</p>
+          </div>
         </div>
       )
     },

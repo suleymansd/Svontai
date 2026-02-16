@@ -10,6 +10,7 @@ import {
   ShieldOff,
   Trash2,
   Edit,
+  User,
   UserCheck,
   UserX,
   X,
@@ -22,8 +23,9 @@ import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 
-interface User {
+interface AdminUser {
   id: string
   email: string
   full_name: string
@@ -35,7 +37,7 @@ interface User {
 }
 
 interface UserListResponse {
-  users: User[]
+  users: AdminUser[]
   total: number
   page: number
   page_size: number
@@ -44,7 +46,7 @@ interface UserListResponse {
 
 export default function UsersPage() {
   const { toast } = useToast()
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -52,7 +54,7 @@ export default function UsersPage() {
   const [total, setTotal] = useState(0)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [actionMenuId, setActionMenuId] = useState<string | null>(null)
 
   // Create user form
@@ -157,7 +159,7 @@ export default function UsersPage() {
     setActionMenuId(null)
   }
 
-  const handleToggleAdmin = async (user: User) => {
+  const handleToggleAdmin = async (user: AdminUser) => {
     try {
       await adminApi.updateUser(user.id, { is_admin: !user.is_admin })
       toast({
@@ -175,7 +177,7 @@ export default function UsersPage() {
     setActionMenuId(null)
   }
 
-  const handleToggleActive = async (user: User) => {
+  const handleToggleActive = async (user: AdminUser) => {
     try {
       await adminApi.updateUser(user.id, { is_active: !user.is_active })
       toast({
@@ -193,7 +195,7 @@ export default function UsersPage() {
     setActionMenuId(null)
   }
 
-  const openEditModal = (user: User) => {
+  const openEditModal = (user: AdminUser) => {
     setSelectedUser(user)
     setEditForm({
       email: user.email,
@@ -221,50 +223,52 @@ export default function UsersPage() {
         />
 
       {/* Search */}
-        <div className="relative">
+        <div className="relative rounded-2xl border border-border/70 bg-card/95 shadow-soft">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
             placeholder="İsim veya e-posta ara..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 border-0 bg-transparent"
           />
         </div>
 
       {/* Users Table */}
-      <div className="bg-card border border-border/70 rounded-2xl overflow-hidden">
+      <div className="bg-card border border-border/70 rounded-2xl overflow-hidden shadow-soft gradient-border-animated">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-border/70">
-                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Kullanıcı</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Durum</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Rol</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Kayıt Tarihi</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-muted-foreground">İşlemler</th>
+              <tr className="border-b border-border/70 bg-gradient-to-r from-muted/70 to-muted/30">
+                <th className="text-left px-6 py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kullanıcı</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Durum</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rol</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kayıt Tarihi</th>
+                <th className="text-right px-6 py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">İşlemler</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={5} className="text-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-transparent border-t-primary border-b-violet-500 mx-auto"></div>
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-muted-foreground">
-                    Kullanıcı bulunamadı
+                  <td colSpan={5} className="py-10 px-6">
+                    <EmptyState
+                      icon={<Users className="h-6 w-6 text-primary" />}
+                      title="Kullanıcı bulunamadı"
+                      description="Arama kriterini değiştirin veya yeni bir kullanıcı ekleyin."
+                    />
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="border-b border-border/70 hover:bg-muted/50 transition-colors">
+                  <tr key={user.id} className="border-b border-border/70 hover:bg-primary/5 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-foreground font-semibold">
-                          {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
-                        </div>
+                        <Icon3DBadge icon={User} size="sm" from="from-primary" to="to-violet-500" />
                         <div>
                           <p className="text-foreground font-medium">{user.full_name}</p>
                           <p className="text-sm text-muted-foreground">{user.email}</p>
@@ -305,23 +309,23 @@ export default function UsersPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setActionMenuId(actionMenuId === user.id ? null : user.id)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="text-muted-foreground hover:text-foreground border border-border/60 bg-muted/30"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                         
                         {actionMenuId === user.id && (
-                          <div className="absolute right-0 top-full mt-1 w-48 bg-muted border border-border/70 rounded-xl shadow-xl z-10 py-1">
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border/70 rounded-xl shadow-xl z-10 py-1">
                             <button
                               onClick={() => openEditModal(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted/70 hover:text-foreground transition-colors"
                             >
                               <Edit className="w-4 h-4" />
                               Düzenle
                             </button>
                             <button
                               onClick={() => handleToggleAdmin(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted/70 hover:text-foreground transition-colors"
                             >
                               {user.is_admin ? (
                                 <>
@@ -337,7 +341,7 @@ export default function UsersPage() {
                             </button>
                             <button
                               onClick={() => handleToggleActive(user)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted/70 hover:text-foreground transition-colors"
                             >
                               {user.is_active ? (
                                 <>

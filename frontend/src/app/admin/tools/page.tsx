@@ -98,8 +98,16 @@ export default function ToolsAdminPage() {
       header: 'Araç',
       render: (row) => (
         <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
-            {row.icon || row.name.charAt(0).toUpperCase()}
+          <div className="relative">
+            <Icon3DBadge
+              icon={BadgeCheck}
+              size="sm"
+              from={row.coming_soon ? 'from-slate-500' : 'from-primary'}
+              to={row.coming_soon ? 'to-slate-700' : 'to-violet-500'}
+            />
+            <span className="absolute inset-0 z-10 flex items-center justify-center text-[10px] font-semibold text-white">
+              {(row.icon || row.name.charAt(0).toUpperCase()).slice(0, 2)}
+            </span>
           </div>
           <div>
             <p className="font-semibold">{row.name}</p>
