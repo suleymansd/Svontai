@@ -67,9 +67,23 @@ interface WhatsAppDiagnostics {
   meta_config_id_set: boolean
   meta_redirect_uri: string
   expected_redirect_uri: string
+  checks: Array<{
+    key: string
+    ok: boolean
+    value: string
+    message: string
+  }>
   issues: string[]
   hints: string[]
   oauth_url_preview: string
+  live_probe?: {
+    status: 'ok' | 'error' | 'network_error' | 'config_invalid'
+    http_status: number | null
+    location: string
+    error: string | null
+    error_reason: string | null
+    error_description: string | null
+  }
 }
 
 // Step icons
@@ -184,7 +198,7 @@ export default function WhatsAppSetupPage() {
   })
 
   const diagnosticsMutation = useMutation({
-    mutationFn: () => api.get('/api/onboarding/whatsapp/diagnostics').then(res => res.data as WhatsAppDiagnostics),
+    mutationFn: () => api.get('/api/onboarding/whatsapp/diagnostics', { params: { live: true } }).then(res => res.data as WhatsAppDiagnostics),
     onError: (error: any) => {
       toast({
         title: 'Tanılama alınamadı',
@@ -330,6 +344,53 @@ export default function WhatsAppSetupPage() {
                   <span className="font-mono text-xs break-all">{diagnosticsMutation.data?.expected_redirect_uri}</span>
                 </div>
               </div>
+
+              {(diagnosticsMutation.data?.checks || []).length > 0 && (
+                <div className="rounded-xl border border-border/70 p-4">
+                  <p className="font-medium mb-2">Kontroller</p>
+                  <div className="space-y-2 text-sm">
+                    {(diagnosticsMutation.data?.checks || []).map((check) => (
+                      <div key={check.key} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium">{check.message}</p>
+                          <p className="text-xs text-muted-foreground break-all">{check.value || '-'}</p>
+                        </div>
+                        <Badge variant={check.ok ? 'success' : 'destructive'}>
+                          {check.ok ? 'OK' : 'Hata'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {diagnosticsMutation.data?.live_probe && (
+                <div className={cn(
+                  'rounded-xl border p-4',
+                  diagnosticsMutation.data.live_probe.status === 'ok'
+                    ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                    : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
+                )}>
+                  <p className="font-medium mb-2">Canlı OAuth Probe</p>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      Durum: <span className="font-medium">{diagnosticsMutation.data.live_probe.status}</span>
+                      {diagnosticsMutation.data.live_probe.http_status ? ` (HTTP ${diagnosticsMutation.data.live_probe.http_status})` : ''}
+                    </p>
+                    {diagnosticsMutation.data.live_probe.error_reason && (
+                      <p>Hata nedeni: <span className="font-medium">{diagnosticsMutation.data.live_probe.error_reason}</span></p>
+                    )}
+                    {diagnosticsMutation.data.live_probe.error_description && (
+                      <p className="break-words">Detay: {diagnosticsMutation.data.live_probe.error_description}</p>
+                    )}
+                    {diagnosticsMutation.data.live_probe.location && (
+                      <p className="text-xs break-all text-muted-foreground">
+                        Redirect: {diagnosticsMutation.data.live_probe.location}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {(diagnosticsMutation.data?.issues || []).length > 0 && (
                 <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">

@@ -116,6 +116,7 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
 | `/api/onboarding/whatsapp/callback` | GET | OAuth callback handler |
 | `/api/onboarding/whatsapp/status` | GET | Kurulum durumunu döner |
 | `/api/onboarding/whatsapp/account` | GET | WhatsApp hesap bilgisi |
+| `/api/onboarding/whatsapp/diagnostics` | GET | Konfigürasyon tanılama (`?live=true` ile canlı OAuth probe) |
 | `/api/onboarding/whatsapp/reset` | POST | Kurulumu sıfırlar |
 
 ### Webhook Endpoints
@@ -259,6 +260,21 @@ curl "http://localhost:8000/whatsapp/webhook?hub.mode=subscribe&hub.verify_token
 # Başarılı yanıt: test123
 ```
 
+## 🩺 “Geçersiz Sayfa” Hızlı Teşhis
+
+1. Panelden `Dashboard > WhatsApp Kurulum > Tanılama` açın.
+2. `META_REDIRECT_URI` ile `Beklenen callback` değerlerinin birebir aynı olduğunu doğrulayın.
+3. `Canlı OAuth Probe` sonucu `ok` değilse:
+   - `META_CONFIG_ID` yanlış app’e bağlı olabilir,
+   - Meta App > **App Domains** ve **Valid OAuth Redirect URIs** eksik olabilir,
+   - Redirect URI Meta panelinde farklı kayıtlı olabilir.
+4. Gerekirse API ile doğrudan kontrol edin:
+
+```bash
+curl -H "Authorization: Bearer <TOKEN>" \
+  "https://<backend-domain>/api/onboarding/whatsapp/diagnostics?live=true"
+```
+
 ## 🐛 Sorun Giderme
 
 ### "Invalid verify token" hatası
@@ -285,4 +301,3 @@ curl "http://localhost:8000/whatsapp/webhook?hub.mode=subscribe&hub.verify_token
 - [Embedded Signup Documentation](https://developers.facebook.com/docs/whatsapp/embedded-signup)
 - [Graph API Reference](https://developers.facebook.com/docs/graph-api)
 - [Webhook Reference](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks)
-

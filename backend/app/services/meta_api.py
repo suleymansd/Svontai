@@ -7,7 +7,7 @@ import secrets
 import httpx
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, parse_qs
 
 from app.core.config import settings
 
@@ -36,6 +36,7 @@ class MetaAPIService:
         "whatsapp_business_messaging",
         "business_management"
     ]
+    CALLBACK_PATH = "/api/onboarding/whatsapp/callback"
     
     def __init__(self):
         """Initialize Meta API service with configuration."""
@@ -54,6 +55,10 @@ class MetaAPIService:
             return True
         placeholder_tokens = ("YOUR_", "CHANGE_", "EXAMPLE", "PLACEHOLDER", "_HERE")
         return any(token in normalized for token in placeholder_tokens)
+
+    def _expected_redirect_uri(self) -> str:
+        base = (settings.WEBHOOK_PUBLIC_URL or settings.BACKEND_URL or "").strip()
+        return f"{base.rstrip('/')}{self.CALLBACK_PATH}" if base else ""
 
     def validate_onboarding_config(self) -> None:
         errors: list[str] = []
@@ -81,8 +86,8 @@ class MetaAPIService:
                 errors.append("Üretimde META_REDIRECT_URI https olmalıdır.")
             if expected_base_parsed.netloc and parsed.netloc and expected_base_parsed.netloc != parsed.netloc:
                 errors.append("META_REDIRECT_URI domain'i BACKEND_URL / WEBHOOK_PUBLIC_URL ile aynı olmalıdır.")
-            if not redirect_uri.endswith("/api/onboarding/whatsapp/callback"):
-                errors.append("META_REDIRECT_URI '/api/onboarding/whatsapp/callback' ile bitmelidir.")
+            if not redirect_uri.endswith(self.CALLBACK_PATH):
+                errors.append(f"META_REDIRECT_URI '{self.CALLBACK_PATH}' ile bitmelidir.")
 
         if self._is_placeholder(config_id):
             errors.append("META_CONFIG_ID eksik veya örnek değer olarak bırakılmış.")
@@ -102,34 +107,83 @@ class MetaAPIService:
         redirect_uri = (self.redirect_uri or "").strip()
         config_id = (getattr(settings, 'META_CONFIG_ID', '') or "").strip()
 
-        base = (settings.WEBHOOK_PUBLIC_URL or settings.BACKEND_URL or "").strip()
-        expected_redirect = f"{base.rstrip('/')}/api/onboarding/whatsapp/callback" if base else ""
+        expected_redirect = self._expected_redirect_uri()
         parsed = urlparse(redirect_uri)
         expected_parsed = urlparse(expected_redirect)
 
         issues: list[str] = []
         hints: list[str] = []
+        checks: list[dict[str, Any]] = []
 
-        if not app_id:
+        app_id_set = bool(app_id) and not self._is_placeholder(app_id)
+        app_secret_set = bool(app_secret) and not self._is_placeholder(app_secret)
+        config_id_set = bool(config_id) and not self._is_placeholder(config_id)
+        redirect_set = bool(redirect_uri) and not self._is_placeholder(redirect_uri)
+
+        if not app_id_set:
             issues.append("META_APP_ID eksik")
-        if not app_secret:
-            issues.append("META_APP_SECRET eksik")
-        if not config_id:
-            issues.append("META_CONFIG_ID eksik")
-        if not redirect_uri:
-            issues.append("META_REDIRECT_URI eksik")
+        elif not app_id.isdigit():
+            issues.append("META_APP_ID sayısal olmalıdır")
 
-        if redirect_uri and parsed.scheme != "https" and settings.ENVIRONMENT == "prod":
+        if not app_secret_set:
+            issues.append("META_APP_SECRET eksik")
+        if not config_id_set:
+            issues.append("META_CONFIG_ID eksik")
+        elif not config_id.isdigit():
+            issues.append("META_CONFIG_ID sayısal olmalıdır")
+
+        if not redirect_set:
+            issues.append("META_REDIRECT_URI eksik")
+        elif not parsed.scheme or not parsed.netloc:
+            issues.append("META_REDIRECT_URI geçerli bir URL olmalıdır")
+        elif not redirect_uri.endswith(self.CALLBACK_PATH):
+            issues.append(f"META_REDIRECT_URI '{self.CALLBACK_PATH}' ile bitmelidir")
+
+        if redirect_set and parsed.scheme != "https" and settings.ENVIRONMENT == "prod":
             issues.append("Üretimde META_REDIRECT_URI https olmalı")
 
-        if redirect_uri and expected_parsed.netloc and parsed.netloc and expected_parsed.netloc != parsed.netloc:
+        if redirect_set and expected_parsed.netloc and parsed.netloc and expected_parsed.netloc != parsed.netloc:
             issues.append("META_REDIRECT_URI domain BACKEND_URL/WEBHOOK_PUBLIC_URL ile aynı değil")
 
-        if redirect_uri and expected_redirect and redirect_uri != expected_redirect:
+        if redirect_set and expected_redirect and redirect_uri != expected_redirect:
             hints.append("META_REDIRECT_URI ile beklenen callback URL aynı olmalı (Meta panelde de aynısını tanımlayın).")
+
+        checks.extend([
+            {
+                "key": "meta_app_id",
+                "ok": app_id_set and app_id.isdigit(),
+                "value": "set" if app_id_set else "missing",
+                "message": "App ID mevcut ve sayısal olmalı",
+            },
+            {
+                "key": "meta_app_secret",
+                "ok": app_secret_set,
+                "value": "set" if app_secret_set else "missing",
+                "message": "App Secret tanımlı olmalı",
+            },
+            {
+                "key": "meta_config_id",
+                "ok": config_id_set and config_id.isdigit(),
+                "value": "set" if config_id_set else "missing",
+                "message": "Config ID mevcut ve sayısal olmalı",
+            },
+            {
+                "key": "meta_redirect_uri",
+                "ok": redirect_set and redirect_uri.endswith(self.CALLBACK_PATH),
+                "value": redirect_uri,
+                "message": f"Redirect URI '{self.CALLBACK_PATH}' ile bitmeli",
+            },
+            {
+                "key": "redirect_domain_match",
+                "ok": not expected_parsed.netloc or not parsed.netloc or expected_parsed.netloc == parsed.netloc,
+                "value": f"{parsed.netloc or '-'} vs {expected_parsed.netloc or '-'}",
+                "message": "Redirect domain ve backend domain aynı olmalı",
+            },
+        ])
 
         hints.append("Meta Embedded Signup Config ID (META_CONFIG_ID) doğru app'e ait olmalı; 'Geçersiz sayfa' hatasında ilk kontrol burasıdır.")
         hints.append("Meta App 'App Domains' ve 'Valid OAuth Redirect URIs' listesinde BACKEND_URL domain'i bulunmalı.")
+        hints.append("Meta panelinde WhatsApp -> Embedded Signup Config içinde callback URL ve Config ID değerleri birebir aynı olmalı.")
 
         oauth_url = ""
         try:
@@ -141,15 +195,66 @@ class MetaAPIService:
             "environment": settings.ENVIRONMENT,
             "backend_url": settings.BACKEND_URL,
             "webhook_public_url": settings.WEBHOOK_PUBLIC_URL,
-            "meta_app_id_set": bool(app_id),
-            "meta_app_secret_set": bool(app_secret),
-            "meta_config_id_set": bool(config_id),
+            "meta_app_id_set": app_id_set,
+            "meta_app_secret_set": app_secret_set,
+            "meta_config_id_set": config_id_set,
             "meta_redirect_uri": redirect_uri,
             "expected_redirect_uri": expected_redirect,
+            "checks": checks,
             "issues": issues,
             "hints": hints,
             "oauth_url_preview": oauth_url,
         }
+
+    async def probe_oauth_dialog(self) -> dict[str, Any]:
+        try:
+            oauth_url = self.get_oauth_url("diagnostic_probe")
+        except MetaAPIError as exc:
+            return {
+                "status": "config_invalid",
+                "http_status": None,
+                "location": "",
+                "error": exc.message,
+                "error_reason": None,
+                "error_description": None,
+            }
+
+        try:
+            async with httpx.AsyncClient(timeout=12, follow_redirects=False) as client:
+                response = await client.get(
+                    oauth_url,
+                    headers={"User-Agent": "SvontAI-Diagnostics/1.0"},
+                )
+            location = response.headers.get("location", "")
+            location_query = parse_qs(urlparse(location).query) if location else {}
+            error_reason = (location_query.get("error_reason") or [None])[0]
+            error_description = (location_query.get("error_description") or [None])[0]
+            error = (location_query.get("error") or [None])[0]
+
+            if error_reason or error_description or error:
+                status = "error"
+            elif response.status_code >= 400:
+                status = "error"
+            else:
+                status = "ok"
+
+            return {
+                "status": status,
+                "http_status": response.status_code,
+                "location": location,
+                "error": error,
+                "error_reason": error_reason,
+                "error_description": error_description,
+            }
+        except Exception as exc:
+            return {
+                "status": "network_error",
+                "http_status": None,
+                "location": "",
+                "error": str(exc),
+                "error_reason": None,
+                "error_description": None,
+            }
     
     def generate_verify_token(self) -> str:
         """

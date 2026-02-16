@@ -92,9 +92,11 @@ class WhatsAppDiagnosticsResponse(BaseModel):
     meta_config_id_set: bool
     meta_redirect_uri: str
     expected_redirect_uri: str
+    checks: list[dict]
     issues: list[str]
     hints: list[str]
     oauth_url_preview: str
+    live_probe: Optional[dict] = None
 
 
 @router.post("/whatsapp/start", response_model=OnboardingStartResponse)
@@ -141,12 +143,15 @@ async def start_whatsapp_onboarding(
 
 @router.get("/whatsapp/diagnostics", response_model=WhatsAppDiagnosticsResponse)
 async def whatsapp_diagnostics(
+    live: bool = Query(False, description="Canlı OAuth endpoint probe çalıştır"),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["settings:write"]))
 ) -> WhatsAppDiagnosticsResponse:
     diagnostics = meta_api_service.get_onboarding_diagnostics()
+    if live:
+        diagnostics["live_probe"] = await meta_api_service.probe_oauth_dialog()
     return WhatsAppDiagnosticsResponse(**diagnostics)
 
 
