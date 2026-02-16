@@ -17,6 +17,8 @@ export default function LoginPage() {
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -28,7 +30,10 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const loginResponse = await authApi.login(formData)
+      const loginResponse = await authApi.login({
+        ...formData,
+        two_factor_code: twoFactorRequired ? twoFactorCode : undefined,
+      })
       const { access_token, refresh_token } = loginResponse.data
 
       localStorage.setItem('access_token', access_token)
@@ -47,9 +52,23 @@ export default function LoginPage() {
         clearAdminTenantContext()
       }
 
+      setTwoFactorRequired(false)
+      setTwoFactorCode('')
       router.push(user?.is_admin ? '/admin' : '/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
+      const detail = err.response?.data?.detail
+      const detailCode = detail?.code
+      const detailMessage = detail?.message || detail
+
+      if (detailCode === 'TWO_FACTOR_REQUIRED') {
+        setTwoFactorRequired(true)
+        setError(detailMessage || 'İki faktörlü doğrulama kodu gerekli.')
+      } else if (detailCode === 'TWO_FACTOR_INVALID') {
+        setTwoFactorRequired(true)
+        setError(detailMessage || 'Doğrulama kodu geçersiz.')
+      } else {
+        setError(detailMessage || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -123,6 +142,23 @@ export default function LoginPage() {
                 />
               </div>
             </div>
+
+            {twoFactorRequired && (
+              <div className="space-y-2">
+                <Label htmlFor="two_factor_code" className="text-sm font-medium">Doğrulama Kodu</Label>
+                <Input
+                  id="two_factor_code"
+                  type="text"
+                  placeholder="Authenticator 6 haneli kod"
+                  className="h-12 rounded-xl text-center tracking-[0.3em] text-lg"
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  required={twoFactorRequired}
+                  minLength={6}
+                  maxLength={6}
+                />
+              </div>
+            )}
 
             <Button
               type="submit"

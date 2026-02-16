@@ -41,6 +41,7 @@ class UserResponse(UserBase):
     is_admin: bool = False
     is_active: bool = True
     email_verified: bool = True
+    two_factor_enabled: bool = False
     last_login: datetime | None = None
     created_at: datetime
     updated_at: datetime

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.config import settings
+from app.core.encryption import decrypt_token, encrypt_token
 from app.core.security import (
     get_password_hash,
     verify_password,
@@ -22,12 +23,20 @@ from app.core.security import (
     hash_token
 )
 from app.core.rate_limit import login_rate_limiter, register_rate_limiter, refresh_rate_limiter
+from app.core.totp import generate_secret, provisioning_uri, verify_code
+from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.models.session import UserSession
 from app.models.password_reset import PasswordResetCode
 from app.models.email_verification import EmailVerificationCode
 from app.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
+    TwoFactorDisableRequest,
+    TwoFactorEnableRequest,
+    TwoFactorSetupRequest,
+    TwoFactorSetupResponse,
+    TwoFactorStatusResponse,
     TokenResponse,
     RefreshTokenRequest
 )
@@ -88,6 +97,34 @@ def _issue_email_verification_code(db: Session, user: User) -> tuple[str, dateti
     db.add(verification_record)
     db.commit()
     return code, now
+
+
+def _require_valid_two_factor_code(user: User, incoming_code: str | None) -> None:
+    secret_encrypted = (user.two_factor_secret_encrypted or "").strip()
+    if not secret_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="2FA yapılandırması eksik. Lütfen güvenlik ayarlarından yeniden kurun."
+        )
+
+    secret = decrypt_token(secret_encrypted)
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="2FA doğrulama sırrı çözülemedi."
+        )
+
+    if not incoming_code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "TWO_FACTOR_REQUIRED", "message": "İki faktörlü doğrulama kodu gerekli."},
+        )
+
+    if not verify_code(secret, incoming_code):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "TWO_FACTOR_INVALID", "message": "İki faktör doğrulama kodu geçersiz."},
+        )
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -248,6 +285,9 @@ async def login(
     if user.failed_login_attempts or user.locked_until:
         user.failed_login_attempts = 0
         user.locked_until = None
+
+    if user.two_factor_enabled:
+        _require_valid_two_factor_code(user, credentials.two_factor_code)
     
     # Create tokens + session
     access_token = create_access_token(data={"sub": str(user.id)})
@@ -374,6 +414,120 @@ async def refresh_token(
     access_token = create_access_token(data={"sub": str(user.id)})
     
     return TokenResponse(access_token=access_token, refresh_token=refresh_token_value)
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Mevcut şifre hatalı"
+        )
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Yeni şifre en az 8 karakter olmalıdır"
+        )
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Yeni şifre mevcut şifre ile aynı olamaz"
+        )
+
+    current_user.password_hash = get_password_hash(payload.new_password)
+    current_user.updated_at = datetime.utcnow()
+    db.query(UserSession).filter(
+        UserSession.user_id == current_user.id,
+        UserSession.revoked_at.is_(None)
+    ).update({"revoked_at": datetime.utcnow()}, synchronize_session=False)
+    db.commit()
+
+    EmailService.send_password_changed_confirmation(current_user.email, current_user.full_name)
+    return {"success": True, "message": "Şifre güncellendi. Lütfen tekrar giriş yapın."}
+
+
+@router.get("/2fa/status", response_model=TwoFactorStatusResponse)
+async def get_two_factor_status(
+    current_user: User = Depends(get_current_user),
+) -> TwoFactorStatusResponse:
+    return TwoFactorStatusResponse(enabled=bool(current_user.two_factor_enabled))
+
+
+@router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
+async def setup_two_factor(
+    payload: TwoFactorSetupRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TwoFactorSetupResponse:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Şifre doğrulaması başarısız"
+        )
+
+    secret = generate_secret()
+    current_user.two_factor_secret_encrypted = encrypt_token(secret)
+    current_user.two_factor_enabled = False
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+
+    return TwoFactorSetupResponse(
+        secret=secret,
+        otpauth_uri=provisioning_uri(secret=secret, account_name=current_user.email, issuer="SvontAI")
+    )
+
+
+@router.post("/2fa/enable")
+async def enable_two_factor(
+    payload: TwoFactorEnableRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    secret_encrypted = (current_user.two_factor_secret_encrypted or "").strip()
+    if not secret_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Önce 2FA kurulumu başlatılmalı"
+        )
+
+    secret = decrypt_token(secret_encrypted)
+    if not secret or not verify_code(secret, payload.code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doğrulama kodu geçersiz"
+        )
+
+    current_user.two_factor_enabled = True
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "enabled": True}
+
+
+@router.post("/2fa/disable")
+async def disable_two_factor(
+    payload: TwoFactorDisableRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.two_factor_enabled:
+        return {"success": True, "enabled": False}
+
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Şifre doğrulaması başarısız"
+        )
+
+    _require_valid_two_factor_code(current_user, payload.code)
+    current_user.two_factor_enabled = False
+    current_user.two_factor_secret_encrypted = None
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "enabled": False}
 
 
 @router.post("/password-reset/request", response_model=PasswordResetResponse)

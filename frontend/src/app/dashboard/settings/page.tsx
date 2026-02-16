@@ -63,6 +63,14 @@ export default function SettingsPage() {
   const [createKeyForm, setCreateKeyForm] = useState({ name: 'Default', current_password: '' })
   const [revokeKeyId, setRevokeKeyId] = useState<string | null>(null)
   const [revokePassword, setRevokePassword] = useState('')
+  const [twoFactorSetupOpen, setTwoFactorSetupOpen] = useState(false)
+  const [twoFactorDisableOpen, setTwoFactorDisableOpen] = useState(false)
+  const [twoFactorSetupPassword, setTwoFactorSetupPassword] = useState('')
+  const [twoFactorSetupSecret, setTwoFactorSetupSecret] = useState('')
+  const [twoFactorSetupOtpUri, setTwoFactorSetupOtpUri] = useState('')
+  const [twoFactorEnableCode, setTwoFactorEnableCode] = useState('')
+  const [twoFactorDisablePassword, setTwoFactorDisablePassword] = useState('')
+  const [twoFactorDisableCode, setTwoFactorDisableCode] = useState('')
 
   const [profileData, setProfileData] = useState({
     full_name: user?.full_name || '',
@@ -119,6 +127,12 @@ export default function SettingsPage() {
     queryKey: ['api-keys'],
     queryFn: () => apiKeysApi.list({ include_revoked: true }).then(res => res.data),
     enabled: activeTab === 'api' && apiAccessEnabled,
+  })
+
+  const { data: twoFactorStatus } = useQuery({
+    queryKey: ['two-factor-status'],
+    queryFn: () => authApi.getTwoFactorStatus().then(res => res.data),
+    enabled: activeTab === 'security',
   })
 
   // Update automation data when settings are fetched
@@ -218,6 +232,81 @@ export default function SettingsPage() {
     },
   })
 
+  const changePasswordMutation = useMutation({
+    mutationFn: (payload: { current_password: string; new_password: string }) => authApi.changePassword(payload),
+    onSuccess: () => {
+      toast({
+        title: 'Şifre güncellendi',
+        description: 'Güvenlik için tekrar giriş yapmanız önerilir.',
+      })
+      setSecurityData({ current_password: '', new_password: '', confirm_password: '' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || 'Şifre güncellenemedi',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const setupTwoFactorMutation = useMutation({
+    mutationFn: (payload: { current_password: string }) => authApi.setupTwoFactor(payload),
+    onSuccess: (response) => {
+      setTwoFactorSetupSecret(response.data?.secret || '')
+      setTwoFactorSetupOtpUri(response.data?.otpauth_uri || '')
+      toast({
+        title: '2FA kurulumu hazır',
+        description: 'Authenticator uygulamasına anahtarı ekleyip kodu doğrulayın.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || '2FA kurulumu başlatılamadı',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const enableTwoFactorMutation = useMutation({
+    mutationFn: (payload: { code: string }) => authApi.enableTwoFactor(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['two-factor-status'] })
+      setTwoFactorSetupOpen(false)
+      setTwoFactorSetupPassword('')
+      setTwoFactorSetupSecret('')
+      setTwoFactorSetupOtpUri('')
+      setTwoFactorEnableCode('')
+      toast({ title: '2FA aktif edildi' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || '2FA aktif edilemedi',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const disableTwoFactorMutation = useMutation({
+    mutationFn: (payload: { current_password: string; code: string }) => authApi.disableTwoFactor(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['two-factor-status'] })
+      setTwoFactorDisableOpen(false)
+      setTwoFactorDisablePassword('')
+      setTwoFactorDisableCode('')
+      toast({ title: '2FA kapatıldı' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.detail || '2FA kapatılamadı',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handleSaveAutomation = () => {
     updateAutomationMutation.mutate(automationData)
   }
@@ -237,7 +326,7 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (!securityData.current_password || !securityData.new_password) {
       toast({
         title: 'Hata',
@@ -256,21 +345,19 @@ export default function SettingsPage() {
       return
     }
 
-    if (securityData.new_password.length < 6) {
+    if (securityData.new_password.length < 8) {
       toast({
         title: 'Hata',
-        description: 'Yeni şifre en az 6 karakter olmalıdır.',
+        description: 'Yeni şifre en az 8 karakter olmalıdır.',
         variant: 'destructive',
       })
       return
     }
 
-    // In a real app, this would call the API
-    toast({
-      title: 'Şifre güncellendi',
-      description: 'Şifreniz başarıyla değiştirildi.',
+    await changePasswordMutation.mutateAsync({
+      current_password: securityData.current_password,
+      new_password: securityData.new_password,
     })
-    setSecurityData({ current_password: '', new_password: '', confirm_password: '' })
   }
 
   const copyValue = async (value: string, label: string) => {
@@ -730,8 +817,16 @@ export default function SettingsPage() {
                         variant="outline"
                         className="w-fit"
                         onClick={handlePasswordChange}
+                        disabled={changePasswordMutation.isPending}
                       >
-                        Şifreyi Güncelle
+                        {changePasswordMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Güncelleniyor...
+                          </>
+                        ) : (
+                          'Şifreyi Güncelle'
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -740,9 +835,42 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <p className="font-medium">İki Faktörlü Doğrulama</p>
-                        <p className="text-sm text-muted-foreground">Bu özellik yakında aktif olacak</p>
+                        <p className="text-sm text-muted-foreground">
+                          Authenticator uygulamasıyla giriş güvenliğini artırın
+                        </p>
                       </div>
-                      <Switch disabled />
+                      {twoFactorStatus?.enabled ? (
+                        <Badge variant="success">Aktif</Badge>
+                      ) : (
+                        <Badge variant="outline">Pasif</Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {!twoFactorStatus?.enabled ? (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setTwoFactorSetupOpen(true)
+                            setTwoFactorSetupPassword('')
+                            setTwoFactorSetupSecret('')
+                            setTwoFactorSetupOtpUri('')
+                            setTwoFactorEnableCode('')
+                          }}
+                        >
+                          2FA Kurulumu Başlat
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            setTwoFactorDisableOpen(true)
+                            setTwoFactorDisablePassword('')
+                            setTwoFactorDisableCode('')
+                          }}
+                        >
+                          2FA Kapat
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -924,6 +1052,147 @@ export default function SettingsPage() {
                       </>
                     ) : (
                       'İptal Et'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={twoFactorSetupOpen} onOpenChange={(open) => {
+              setTwoFactorSetupOpen(open)
+              if (!open) {
+                setTwoFactorSetupPassword('')
+                setTwoFactorSetupSecret('')
+                setTwoFactorSetupOtpUri('')
+                setTwoFactorEnableCode('')
+              }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>2FA Kurulumu</DialogTitle>
+                  <DialogDescription>
+                    Önce şifrenizi doğrulayın, ardından authenticator kodunu onaylayın.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {!twoFactorSetupSecret ? (
+                  <div className="space-y-2">
+                    <Label>Şifreniz</Label>
+                    <Input
+                      type="password"
+                      value={twoFactorSetupPassword}
+                      onChange={(e) => setTwoFactorSetupPassword(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border p-4 space-y-2">
+                      <p className="text-sm font-medium">Manuel anahtar</p>
+                      <code className="block break-all text-sm text-muted-foreground">{twoFactorSetupSecret}</code>
+                    </div>
+                    <div className="rounded-xl border p-4 space-y-2">
+                      <p className="text-sm font-medium">OTP URI</p>
+                      <code className="block break-all text-xs text-muted-foreground">{twoFactorSetupOtpUri}</code>
+                      <Button variant="outline" size="sm" onClick={() => copyValue(twoFactorSetupOtpUri, 'OTP URI kopyalandı')}>
+                        <Copy className="w-4 h-4 mr-2" />
+                        URI Kopyala
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Authenticator Kodu</Label>
+                      <Input
+                        placeholder="6 haneli kod"
+                        value={twoFactorEnableCode}
+                        onChange={(e) => setTwoFactorEnableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="text-center tracking-[0.3em]"
+                        maxLength={6}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setTwoFactorSetupOpen(false)}>Kapat</Button>
+                  {!twoFactorSetupSecret ? (
+                    <Button
+                      onClick={() => setupTwoFactorMutation.mutate({ current_password: twoFactorSetupPassword })}
+                      disabled={setupTwoFactorMutation.isPending || !twoFactorSetupPassword}
+                    >
+                      {setupTwoFactorMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Hazırlanıyor...
+                        </>
+                      ) : (
+                        'Kurulumu Başlat'
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => enableTwoFactorMutation.mutate({ code: twoFactorEnableCode })}
+                      disabled={enableTwoFactorMutation.isPending || twoFactorEnableCode.length !== 6}
+                    >
+                      {enableTwoFactorMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Doğrulanıyor...
+                        </>
+                      ) : (
+                        '2FA Aktif Et'
+                      )}
+                    </Button>
+                  )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={twoFactorDisableOpen} onOpenChange={(open) => {
+              setTwoFactorDisableOpen(open)
+              if (!open) {
+                setTwoFactorDisablePassword('')
+                setTwoFactorDisableCode('')
+              }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>2FA Kapat</DialogTitle>
+                  <DialogDescription>
+                    Güvenlik için şifrenizi ve güncel authenticator kodunu girin.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>Şifreniz</Label>
+                    <Input
+                      type="password"
+                      value={twoFactorDisablePassword}
+                      onChange={(e) => setTwoFactorDisablePassword(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Authenticator Kodu</Label>
+                    <Input
+                      value={twoFactorDisableCode}
+                      onChange={(e) => setTwoFactorDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="text-center tracking-[0.3em]"
+                      maxLength={6}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setTwoFactorDisableOpen(false)}>Vazgeç</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => disableTwoFactorMutation.mutate({ current_password: twoFactorDisablePassword, code: twoFactorDisableCode })}
+                    disabled={disableTwoFactorMutation.isPending || !twoFactorDisablePassword || twoFactorDisableCode.length !== 6}
+                  >
+                    {disableTwoFactorMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Kapatılıyor...
+                      </>
+                    ) : (
+                      '2FA Kapat'
                     )}
                   </Button>
                 </DialogFooter>

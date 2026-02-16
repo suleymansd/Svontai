@@ -41,8 +41,10 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+    const requestUrl = String(originalRequest?.url || '')
+    const isAuthRoute = requestUrl.startsWith('/auth/')
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true
 
       try {
@@ -80,7 +82,7 @@ export const authApi = {
   register: (data: { email: string; password: string; full_name: string }) =>
     api.post('/auth/register', data),
   
-  login: (data: { email: string; password: string }) =>
+  login: (data: { email: string; password: string; two_factor_code?: string }) =>
     api.post('/auth/login', data),
   
   refresh: (refresh_token: string) =>
@@ -97,6 +99,20 @@ export const authApi = {
 
   confirmEmailVerification: (data: { email: string; code: string }) =>
     api.post('/auth/email-verification/confirm', data),
+
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    api.post('/auth/change-password', data),
+
+  getTwoFactorStatus: () => api.get('/auth/2fa/status'),
+
+  setupTwoFactor: (data: { current_password: string }) =>
+    api.post('/auth/2fa/setup', data),
+
+  enableTwoFactor: (data: { code: string }) =>
+    api.post('/auth/2fa/enable', data),
+
+  disableTwoFactor: (data: { current_password: string; code: string }) =>
+    api.post('/auth/2fa/disable', data),
 }
 
 // User API

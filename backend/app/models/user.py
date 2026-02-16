@@ -5,7 +5,7 @@ User model for authentication and user management.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Boolean, Integer
+from sqlalchemy import String, DateTime, Boolean, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -60,6 +60,15 @@ class User(Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime,
+        nullable=True
+    )
+    two_factor_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+    two_factor_secret_encrypted: Mapped[str | None] = mapped_column(
+        Text,
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
