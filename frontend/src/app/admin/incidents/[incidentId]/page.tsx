@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Incident {
   id: string
@@ -93,6 +94,7 @@ export default function IncidentDetailPage() {
         <PageHeader
           title={incident?.title || 'Incident Detayı'}
           description="Olayın kök nedeni, çözüm ve durum güncellemelerini yönetin."
+          icon={<Icon3DBadge icon={ShieldAlert} from="from-amber-500" to="to-rose-500" />}
           actions={(
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => router.push('/admin/incidents')}>

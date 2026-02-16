@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface TenantWithOwner {
   id: string
@@ -99,6 +100,7 @@ export default function TenantsPage() {
         <PageHeader
           title="Tenantlar"
           description={`Toplam ${total} tenant (işletme)`}
+          icon={<Icon3DBadge icon={Building2} from="from-amber-500" to="to-orange-500" />}
         />
 
         <div className="relative">

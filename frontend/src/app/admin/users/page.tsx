@@ -21,6 +21,7 @@ import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface User {
   id: string
@@ -210,6 +211,7 @@ export default function UsersPage() {
         <PageHeader
           title="Kullanıcılar"
           description={`Toplam ${total} kullanıcı`}
+          icon={<Icon3DBadge icon={Users} from="from-cyan-500" to="to-blue-500" />}
           actions={(
             <Button onClick={() => setShowCreateModal(true)}>
               <Plus className="w-4 h-4 mr-2" />

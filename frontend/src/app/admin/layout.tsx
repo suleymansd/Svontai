@@ -8,6 +8,7 @@ import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
 import { userApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import {
   LayoutDashboard,
   Users,
@@ -135,9 +136,7 @@ export default function AdminLayout({
           <div className="p-6 border-b border-border/70">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-primary/15 to-primary/5 rounded-xl text-primary shadow-glow-primary">
-                  <Shield className="w-6 h-6" />
-                </div>
+                <Icon3DBadge icon={Shield} from="from-primary" to="to-violet-500" />
                 <div>
                   <h1 className="text-lg font-bold">Admin Panel</h1>
                   <p className="text-xs text-muted-foreground">SvontAi Yönetim</p>
@@ -170,17 +169,24 @@ export default function AdminLayout({
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",
+                    "group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",
                     isActive
                       ? "nav-active-glow text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >
-                  <item.icon className={cn(
-                    "w-5 h-5",
-                    isActive ? "text-primary" : ""
-                  )} />
+                  <Icon3DBadge
+                    icon={item.icon}
+                    size="sm"
+                    active
+                    from={isActive ? "from-primary" : "from-slate-200 dark:from-slate-800"}
+                    to={isActive ? "to-violet-500" : "to-slate-50 dark:to-slate-700"}
+                    className={cn(
+                      "transition-transform duration-200 group-hover:-translate-y-0.5",
+                      isActive && "ring-2 ring-primary/25"
+                    )}
+                  />
                   {item.name}
                 </Link>
               )

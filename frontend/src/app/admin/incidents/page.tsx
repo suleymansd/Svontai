@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { incidentsApi, systemEventsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function IncidentsPage() {
   const router = useRouter()
@@ -93,6 +94,7 @@ export default function IncidentsPage() {
         <PageHeader
           title="Incidents"
           description="Sistem genelindeki olayları yönetin."
+          icon={<Icon3DBadge icon={AlertTriangle} from="from-rose-500" to="to-orange-500" />}
           actions={(
             <Button onClick={() => setIsCreateOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />

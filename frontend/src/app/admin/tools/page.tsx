@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/shared/icon-button'
 import { ToolGuideAssistant } from '@/components/shared/tool-guide'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Tool {
   id: string
@@ -243,6 +244,7 @@ export default function ToolsAdminPage() {
         <PageHeader
           title="Araç Kataloğu"
           description={`Toplam ${total} araç`}
+          icon={<Icon3DBadge icon={BadgeCheck} from="from-primary" to="to-violet-500" />}
           actions={(
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4 mr-2" />

@@ -16,6 +16,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { setAdminTenantContext } from '@/lib/admin-tenant-context'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function TenantDetailPage({ params }: { params: { tenantId: string } }) {
   const tenantId = params.tenantId
@@ -80,6 +81,7 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
         <PageHeader
           title={data?.tenant?.name || 'Tenant'}
           description={data?.owner_email || 'Tenant detayları'}
+          icon={<Icon3DBadge icon={ShieldCheck} from="from-emerald-500" to="to-teal-500" />}
           actions={(
             <Link href="/admin/tenants">
               <Button variant="outline">Geri Dön</Button>

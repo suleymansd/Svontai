@@ -19,6 +19,7 @@ import { systemEventsApi } from '@/lib/api'
 import { SectionCard } from '@/components/shared/section-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Badge } from '@/components/ui/badge'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface AdminStats {
   total_users: number
@@ -87,6 +88,7 @@ export default function AdminDashboard() {
         <PageHeader
           title="Admin Dashboard"
           description="Sistem genel görünümü ve metrikler."
+          icon={<Icon3DBadge icon={Activity} from="from-primary" to="to-violet-500" />}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface TicketMessage {
   id: string
@@ -108,6 +109,7 @@ export default function AdminTicketDetailPage() {
         <PageHeader
           title={ticket?.subject || 'Ticket Detayı'}
           description="Destek talebi detaylarını yönetin."
+          icon={<Icon3DBadge icon={ShieldCheck} from="from-primary" to="to-violet-500" />}
           actions={(
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => router.push('/admin/tickets')}>

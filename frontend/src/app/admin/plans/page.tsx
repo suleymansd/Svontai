@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/shared/icon-button'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Plan {
   id: string
@@ -298,6 +299,7 @@ export default function PlansPage() {
         <PageHeader
           title="Planlar"
           description={`Toplam ${total} plan`}
+          icon={<Icon3DBadge icon={BadgeCheck} from="from-violet-500" to="to-fuchsia-500" />}
           actions={(
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4 mr-2" />

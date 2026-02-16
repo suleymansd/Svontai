@@ -17,6 +17,7 @@ import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface SystemHealth {
   status: string
@@ -83,6 +84,7 @@ export default function SettingsPage() {
         <PageHeader
           title="Sistem Ayarları"
           description="Sistem durumu ve yapılandırma."
+          icon={<Icon3DBadge icon={Settings} from="from-slate-600" to="to-zinc-500" />}
           actions={(
             <Button onClick={handleRefresh} disabled={refreshing} variant="outline">
               <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />

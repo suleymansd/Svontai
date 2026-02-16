@@ -12,6 +12,7 @@ import { FilterBar } from '@/components/shared/filter-bar'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Ticket {
   id: string
@@ -75,6 +76,7 @@ export default function AdminTicketsPage() {
         <PageHeader
           title="Tickets"
           description="Destek taleplerini ve SLA akışlarını yönetin."
+          icon={<Icon3DBadge icon={LifeBuoy} from="from-cyan-500" to="to-blue-500" />}
         />
 
         <FilterBar

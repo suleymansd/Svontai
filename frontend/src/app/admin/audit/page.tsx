@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { adminApi } from '@/lib/api'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function AuditPage() {
   const [actionFilter, setActionFilter] = useState<string | undefined>()
@@ -33,6 +34,7 @@ export default function AuditPage() {
         <PageHeader
           title="Audit Logs"
           description="Hassas aksiyonlar için denetim kayıtları."
+          icon={<Icon3DBadge icon={ListChecks} from="from-slate-600" to="to-zinc-500" />}
         />
 
         <FilterBar
