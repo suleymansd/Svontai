@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 
 from sqlalchemy import create_engine
@@ -501,5 +502,80 @@ def test_remax_sync_deactivates_missing_and_encrypts_api_key():
     assert encrypted
     assert decrypt_token(encrypted) == "secret-key-123"
     assert not remax_cfg.get("api_key")
+
+    db.close()
+
+
+def test_connector_auto_sync_runs_only_when_due():
+    db = _build_session()
+    service = RealEstateService(db)
+
+    owner = User(
+        email="owner-auto-sync@test.com",
+        password_hash="hash",
+        full_name="Owner Auto",
+        is_admin=False,
+        is_active=True,
+    )
+    db.add(owner)
+    db.flush()
+
+    tenant = Tenant(name="Auto Sync Tenant", owner_id=owner.id, settings={})
+    db.add(tenant)
+    db.flush()
+
+    service.upsert_settings(
+        tenant.id,
+        {
+            "enabled": True,
+            "listings_source": {
+                "google_sheets": {
+                    "enabled": True,
+                    "auto_sync": True,
+                    "sync_interval_minutes": 60,
+                    "csv_url": "https://example.com/sheet.csv",
+                },
+                "remax_connector": {
+                    "enabled": True,
+                    "auto_sync": True,
+                    "sync_interval_minutes": 60,
+                    "endpoint_url": "https://example.com/remax",
+                },
+            },
+        },
+    )
+
+    calls: list[str] = []
+
+    def fake_google(tenant_id, user_id, config):
+        calls.append("google")
+        return {"source": "google_sheets", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": datetime.utcnow().isoformat()}
+
+    def fake_remax(tenant_id, user_id, config):
+        calls.append("remax")
+        return {"source": "remax_connector", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": datetime.utcnow().isoformat()}
+
+    service.sync_listings_from_google_sheets = fake_google  # type: ignore[assignment]
+    service.sync_listings_from_remax_connector = fake_remax  # type: ignore[assignment]
+
+    result_first = service.run_connector_auto_sync(tenant.id)
+    assert set(calls) == {"google", "remax"}
+    assert result_first["google_sheets"]["status"] == "ok"
+    assert result_first["remax_connector"]["status"] == "ok"
+
+    settings = service.get_or_create_settings(tenant.id)
+    source = copy.deepcopy(settings.listings_source)
+    source["google_sheets"]["last_sync_at"] = datetime.utcnow().isoformat()
+    source["remax_connector"]["last_sync_at"] = datetime.utcnow().isoformat()
+    settings.listings_source = source
+    db.commit()
+
+    calls.clear()
+    result_second = service.run_connector_auto_sync(tenant.id)
+    assert calls == []
+    assert result_second["google_sheets"]["status"] == "skipped"
+    assert result_second["google_sheets"]["reason"] == "not_due"
+    assert result_second["remax_connector"]["status"] == "skipped"
+    assert result_second["remax_connector"]["reason"] == "not_due"
 
     db.close()

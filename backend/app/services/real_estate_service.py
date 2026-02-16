@@ -76,6 +76,8 @@ DEFAULT_LISTING_SOURCE = {
     "csv_import": True,
     "google_sheets": {
         "enabled": False,
+        "auto_sync": False,
+        "sync_interval_minutes": 60,
         "sheet_url": "",
         "gid": "",
         "csv_url": "",
@@ -85,6 +87,8 @@ DEFAULT_LISTING_SOURCE = {
     },
     "remax_connector": {
         "enabled": False,
+        "auto_sync": False,
+        "sync_interval_minutes": 60,
         "endpoint_url": "",
         "response_path": "data.listings",
         "mapping": {},
@@ -333,6 +337,8 @@ class RealEstateService:
         if isinstance(google_raw, dict):
             google_cfg.update({k: v for k, v in google_raw.items() if v is not None})
         google_cfg["enabled"] = bool(google_cfg.get("enabled", False))
+        google_cfg["auto_sync"] = bool(google_cfg.get("auto_sync", False))
+        google_cfg["sync_interval_minutes"] = max(5, int(google_cfg.get("sync_interval_minutes") or 60))
         google_cfg["mapping"] = dict(google_cfg.get("mapping") or {})
         source["google_sheets"] = google_cfg
 
@@ -343,6 +349,8 @@ class RealEstateService:
         if isinstance(remax_raw, dict):
             remax_cfg.update({k: v for k, v in remax_raw.items() if v is not None})
         remax_cfg["enabled"] = bool(remax_cfg.get("enabled", False))
+        remax_cfg["auto_sync"] = bool(remax_cfg.get("auto_sync", False))
+        remax_cfg["sync_interval_minutes"] = max(5, int(remax_cfg.get("sync_interval_minutes") or 60))
         remax_cfg["mapping"] = dict(remax_cfg.get("mapping") or {})
         source["remax_connector"] = remax_cfg
         return source
@@ -714,6 +722,80 @@ class RealEstateService:
         self.db.commit()
         self.db.refresh(settings)
         return {"source": "remax_connector", "stats": stats, "synced_at": now_iso}
+
+    @staticmethod
+    def _is_connector_sync_due(config: dict[str, Any], now: datetime) -> bool:
+        if not bool(config.get("enabled")) or not bool(config.get("auto_sync")):
+            return False
+        last_sync_raw = str(config.get("last_sync_at") or "").strip()
+        if not last_sync_raw:
+            return True
+        try:
+            last_sync = datetime.fromisoformat(last_sync_raw)
+        except Exception:
+            return True
+        interval_minutes = max(5, int(config.get("sync_interval_minutes") or 60))
+        return now - last_sync >= timedelta(minutes=interval_minutes)
+
+    def run_connector_auto_sync(self, tenant_id: UUID) -> dict[str, Any]:
+        settings = self.get_or_create_settings(tenant_id)
+        source_config = self._normalize_listing_source_config(settings.listings_source or {})
+        tenant = self._get_tenant(tenant_id)
+        owner_id = tenant.owner_id if tenant else None
+        if owner_id is None:
+            return {"google_sheets": {"status": "skipped", "reason": "owner_not_found"}, "remax_connector": {"status": "skipped", "reason": "owner_not_found"}}
+
+        now = datetime.utcnow()
+        result: dict[str, Any] = {
+            "google_sheets": {"status": "skipped", "reason": "disabled"},
+            "remax_connector": {"status": "skipped", "reason": "disabled"},
+        }
+
+        google_cfg = dict(source_config.get("google_sheets") or {})
+        if self._is_connector_sync_due(google_cfg, now):
+            try:
+                sync_result = self.sync_listings_from_google_sheets(
+                    tenant_id=tenant_id,
+                    user_id=owner_id,
+                    config={**google_cfg, "save_to_settings": True},
+                )
+                result["google_sheets"] = {"status": "ok", **sync_result}
+            except Exception as exc:
+                result["google_sheets"] = {"status": "error", "error": str(exc)}
+                SystemEventService(self.db).log(
+                    tenant_id=str(tenant_id),
+                    source="real_estate_pack",
+                    level="warn",
+                    code="RE_GOOGLE_SHEETS_SYNC_FAILED",
+                    message=str(exc)[:500],
+                    meta_json={"connector": "google_sheets"},
+                )
+        elif bool(google_cfg.get("enabled")) and bool(google_cfg.get("auto_sync")):
+            result["google_sheets"] = {"status": "skipped", "reason": "not_due"}
+
+        remax_cfg = dict(source_config.get("remax_connector") or {})
+        if self._is_connector_sync_due(remax_cfg, now):
+            try:
+                sync_result = self.sync_listings_from_remax_connector(
+                    tenant_id=tenant_id,
+                    user_id=owner_id,
+                    config={**remax_cfg, "save_to_settings": True},
+                )
+                result["remax_connector"] = {"status": "ok", **sync_result}
+            except Exception as exc:
+                result["remax_connector"] = {"status": "error", "error": str(exc)}
+                SystemEventService(self.db).log(
+                    tenant_id=str(tenant_id),
+                    source="real_estate_pack",
+                    level="warn",
+                    code="RE_REMAX_SYNC_FAILED",
+                    message=str(exc)[:500],
+                    meta_json={"connector": "remax_connector"},
+                )
+        elif bool(remax_cfg.get("enabled")) and bool(remax_cfg.get("auto_sync")):
+            result["remax_connector"] = {"status": "skipped", "reason": "not_due"}
+
+        return result
 
     def ensure_pack_feature_flag(self, tenant_id: UUID, enabled: bool) -> None:
         feature = self.db.query(FeatureFlag).filter(
@@ -2345,8 +2427,10 @@ class RealEstateService:
         tenant_ids = self.get_enabled_tenant_ids()
         followup_total = {"pending": 0, "sent": 0, "skipped": 0, "failed": 0}
         weekly_sent = 0
+        connector_sync: dict[str, Any] = {}
 
         for tenant_id in tenant_ids:
+            connector_sync[str(tenant_id)] = self.run_connector_auto_sync(tenant_id)
             followup_stats = await self.run_followups(tenant_id)
             for key in followup_total:
                 followup_total[key] += int(followup_stats.get(key, 0))
@@ -2357,6 +2441,7 @@ class RealEstateService:
 
         return {
             "tenant_count": len(tenant_ids),
+            "connector_sync": connector_sync,
             "followups": followup_total,
             "weekly_reports_sent": weekly_sent,
         }

@@ -94,6 +94,7 @@ Tenant panel:
 - `remax_connector`: JSON endpoint + `response_path` ile kayıtları okur, mapping’e göre upsert yapar.
 - `deactivate_missing=true` verildiğinde sync sonucunda kaynakta bulunmayan önceki kayıtlar pasife çekilir.
 - `save_to_settings=true` iken connector ayarları tenant `listings_source` içine yazılır.
+- `auto_sync=true` ve `sync_interval_minutes` ayarıyla scheduler döngüsünde otomatik sync yapılır.
 - Remax API key düz metin saklanmaz, `api_key_encrypted` olarak tutulur.
 
 Super admin:

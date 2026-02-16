@@ -44,6 +44,7 @@ export function RealEstatePackPanel() {
     sheet_url: '',
     gid: '',
     csv_url: '',
+    mapping_text: '',
     deactivate_missing: false,
     save_to_settings: true,
   })
@@ -53,6 +54,7 @@ export function RealEstatePackPanel() {
     auth_header: 'Authorization',
     auth_scheme: 'Bearer',
     api_key: '',
+    mapping_text: '',
     deactivate_missing: false,
     save_to_settings: true,
   })
@@ -306,6 +308,7 @@ export function RealEstatePackPanel() {
       sheet_url: String(googleCfg.sheet_url || ''),
       gid: String(googleCfg.gid || ''),
       csv_url: String(googleCfg.csv_url || ''),
+      mapping_text: JSON.stringify(googleCfg.mapping || {}, null, 2),
       deactivate_missing: Boolean(googleCfg.deactivate_missing),
     }))
 
@@ -319,6 +322,7 @@ export function RealEstatePackPanel() {
       response_path: String(remaxCfg.response_path || 'data.listings'),
       auth_header: String(remaxCfg.auth_header || 'Authorization'),
       auth_scheme: String(remaxCfg.auth_scheme || 'Bearer'),
+      mapping_text: JSON.stringify(remaxCfg.mapping || {}, null, 2),
       deactivate_missing: Boolean(remaxCfg.deactivate_missing),
       api_key: '',
     }))
@@ -345,6 +349,53 @@ export function RealEstatePackPanel() {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+
+  const parseMappingText = (input: string, label: string): Record<string, string> | null => {
+    const raw = (input || '').trim()
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('mapping object olmalı')
+      }
+      return parsed as Record<string, string>
+    } catch {
+      toast({
+        title: `${label} mapping hatası`,
+        description: 'Geçerli bir JSON object girin. Ör: {"title":"Baslik","price":"Fiyat"}',
+        variant: 'destructive',
+      })
+      return null
+    }
+  }
+
+  const handleSyncGoogleSheets = () => {
+    const mapping = parseMappingText(googleSyncConfig.mapping_text, 'Google Sheets')
+    if (mapping === null) return
+    syncGoogleSheetsMutation.mutate({
+      sheet_url: googleSyncConfig.sheet_url,
+      gid: googleSyncConfig.gid,
+      csv_url: googleSyncConfig.csv_url,
+      mapping,
+      deactivate_missing: googleSyncConfig.deactivate_missing,
+      save_to_settings: googleSyncConfig.save_to_settings,
+    } as any)
+  }
+
+  const handleSyncRemax = () => {
+    const mapping = parseMappingText(remaxSyncConfig.mapping_text, 'Remax')
+    if (mapping === null) return
+    syncRemaxMutation.mutate({
+      endpoint_url: remaxSyncConfig.endpoint_url,
+      response_path: remaxSyncConfig.response_path,
+      auth_header: remaxSyncConfig.auth_header,
+      auth_scheme: remaxSyncConfig.auth_scheme,
+      api_key: remaxSyncConfig.api_key,
+      mapping,
+      deactivate_missing: remaxSyncConfig.deactivate_missing,
+      save_to_settings: remaxSyncConfig.save_to_settings,
+    } as any)
+  }
 
   return (
     <div className="space-y-4">
@@ -427,54 +478,134 @@ export function RealEstatePackPanel() {
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">Google Sheets kaynağı</p>
-                    <p className="text-xs text-muted-foreground">Sheets üzerinden listing senkronizasyonu</p>
+                <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Google Sheets kaynağı</p>
+                      <p className="text-xs text-muted-foreground">Sheets üzerinden listing senkronizasyonu</p>
+                    </div>
+                    <Switch
+                      checked={Boolean(
+                        typeof listingSource?.google_sheets === 'object'
+                          ? listingSource?.google_sheets?.enabled
+                          : listingSource?.google_sheets
+                      )}
+                      onCheckedChange={(checked) =>
+                        setSettingsDraft({
+                          ...settings,
+                          listings_source: {
+                            ...listingSource,
+                            google_sheets: {
+                              ...(typeof listingSource?.google_sheets === 'object' ? listingSource?.google_sheets : {}),
+                              enabled: checked,
+                            },
+                          },
+                        })
+                      }
+                    />
                   </div>
-                  <Switch
-                    checked={Boolean(
-                      typeof listingSource?.google_sheets === 'object'
-                        ? listingSource?.google_sheets?.enabled
-                        : listingSource?.google_sheets
-                    )}
-                    onCheckedChange={(checked) =>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Otomatik sync</p>
+                    <Switch
+                      checked={Boolean((listingSource?.google_sheets || {}).auto_sync)}
+                      onCheckedChange={(checked) =>
+                        setSettingsDraft({
+                          ...settings,
+                          listings_source: {
+                            ...listingSource,
+                            google_sheets: {
+                              ...(typeof listingSource?.google_sheets === 'object' ? listingSource?.google_sheets : {}),
+                              auto_sync: checked,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <Input
+                    className="h-9 border-border/70 bg-background"
+                    type="number"
+                    min={5}
+                    step={5}
+                    value={Number((listingSource?.google_sheets || {}).sync_interval_minutes || 60)}
+                    onChange={(event) =>
                       setSettingsDraft({
                         ...settings,
                         listings_source: {
                           ...listingSource,
                           google_sheets: {
                             ...(typeof listingSource?.google_sheets === 'object' ? listingSource?.google_sheets : {}),
-                            enabled: checked,
+                            sync_interval_minutes: Math.max(5, Number(event.target.value || 60)),
                           },
                         },
                       })
                     }
+                    placeholder="Sync aralığı (dakika)"
                   />
                 </div>
-                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">Remax connector</p>
-                    <p className="text-xs text-muted-foreground">Harici CRM listing sync</p>
+                <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Remax connector</p>
+                      <p className="text-xs text-muted-foreground">Harici CRM listing sync</p>
+                    </div>
+                    <Switch
+                      checked={Boolean(
+                        typeof listingSource?.remax_connector === 'object'
+                          ? listingSource?.remax_connector?.enabled
+                          : listingSource?.remax_connector
+                      )}
+                      onCheckedChange={(checked) =>
+                        setSettingsDraft({
+                          ...settings,
+                          listings_source: {
+                            ...listingSource,
+                            remax_connector: {
+                              ...(typeof listingSource?.remax_connector === 'object' ? listingSource?.remax_connector : {}),
+                              enabled: checked,
+                            },
+                          },
+                        })
+                      }
+                    />
                   </div>
-                  <Switch
-                    checked={Boolean(
-                      typeof listingSource?.remax_connector === 'object'
-                        ? listingSource?.remax_connector?.enabled
-                        : listingSource?.remax_connector
-                    )}
-                    onCheckedChange={(checked) =>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Otomatik sync</p>
+                    <Switch
+                      checked={Boolean((listingSource?.remax_connector || {}).auto_sync)}
+                      onCheckedChange={(checked) =>
+                        setSettingsDraft({
+                          ...settings,
+                          listings_source: {
+                            ...listingSource,
+                            remax_connector: {
+                              ...(typeof listingSource?.remax_connector === 'object' ? listingSource?.remax_connector : {}),
+                              auto_sync: checked,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <Input
+                    className="h-9 border-border/70 bg-background"
+                    type="number"
+                    min={5}
+                    step={5}
+                    value={Number((listingSource?.remax_connector || {}).sync_interval_minutes || 60)}
+                    onChange={(event) =>
                       setSettingsDraft({
                         ...settings,
                         listings_source: {
                           ...listingSource,
                           remax_connector: {
                             ...(typeof listingSource?.remax_connector === 'object' ? listingSource?.remax_connector : {}),
-                            enabled: checked,
+                            sync_interval_minutes: Math.max(5, Number(event.target.value || 60)),
                           },
                         },
                       })
                     }
+                    placeholder="Sync aralığı (dakika)"
                   />
                 </div>
               </div>
@@ -610,6 +741,12 @@ export function RealEstatePackPanel() {
                   onChange={(event) => setGoogleSyncConfig({ ...googleSyncConfig, csv_url: event.target.value })}
                 />
               </div>
+              <Textarea
+                className="min-h-[100px] border-border/70 bg-muted/20 font-mono text-xs"
+                placeholder='Mapping JSON (opsiyonel). Ör: {"title":"Baslik","price":"Fiyat"}'
+                value={googleSyncConfig.mapping_text}
+                onChange={(event) => setGoogleSyncConfig({ ...googleSyncConfig, mapping_text: event.target.value })}
+              />
               <div className="flex flex-wrap gap-3">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Switch
@@ -629,7 +766,7 @@ export function RealEstatePackPanel() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => syncGoogleSheetsMutation.mutate(googleSyncConfig)}
+                onClick={handleSyncGoogleSheets}
                 disabled={syncGoogleSheetsMutation.isPending || (!googleSyncConfig.sheet_url && !googleSyncConfig.csv_url)}
               >
                 <UploadCloud className="mr-2 h-4 w-4" />
@@ -682,6 +819,12 @@ export function RealEstatePackPanel() {
                   onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, auth_scheme: event.target.value })}
                 />
               </div>
+              <Textarea
+                className="min-h-[100px] border-border/70 bg-muted/20 font-mono text-xs"
+                placeholder='Mapping JSON (opsiyonel). Ör: {"title":"title","price":"price"}'
+                value={remaxSyncConfig.mapping_text}
+                onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, mapping_text: event.target.value })}
+              />
               <div className="flex flex-wrap gap-3">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Switch
@@ -701,7 +844,7 @@ export function RealEstatePackPanel() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => syncRemaxMutation.mutate(remaxSyncConfig)}
+                onClick={handleSyncRemax}
                 disabled={syncRemaxMutation.isPending || !remaxSyncConfig.endpoint_url}
               >
                 <UploadCloud className="mr-2 h-4 w-4" />
