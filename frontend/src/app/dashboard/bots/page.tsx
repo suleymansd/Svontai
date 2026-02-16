@@ -40,9 +40,12 @@ import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ToolGuideAssistant } from '@/components/shared/tool-guide'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { useToast } from '@/components/ui/use-toast'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 export default function BotsPage() {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [formErrors, setFormErrors] = useState<{ name?: string }>({})
@@ -86,10 +89,22 @@ export default function BotsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bots'] })
       setIsCreateOpen(false)
+      setFormErrors({})
       setFormData({
         name: '',
         description: '',
         welcome_message: 'Merhaba! 👋 Size nasıl yardımcı olabilirim?',
+      })
+      toast({
+        title: 'Bot oluşturuldu',
+        description: 'Yeni bot başarıyla eklendi.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hata',
+        description: getApiErrorMessage(error, 'Bot oluşturulamadı.'),
+        variant: 'destructive',
       })
     },
   })
@@ -253,25 +268,36 @@ export default function BotsPage() {
         )}
 
         {/* Create Dialog */}
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogContent className="sm:max-w-lg">
+        <Dialog
+          open={isCreateOpen}
+          onOpenChange={(open) => {
+            setIsCreateOpen(open)
+            if (!open) setFormErrors({})
+          }}
+        >
+          <DialogContent className="sm:max-w-xl border border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl">
             <DialogHeader>
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mb-4">
-                <Bot className="w-6 h-6 text-white" />
+              <div className="mb-2 flex items-center gap-3">
+                <Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />
+                <div>
+                  <DialogTitle className="text-2xl">Yeni Bot Oluştur</DialogTitle>
+                  <DialogDescription>
+                    Müşterilerinize otomatik yanıt verecek yeni bir AI asistanı oluşturun.
+                  </DialogDescription>
+                </div>
               </div>
-              <DialogTitle className="text-2xl">Yeni Bot Oluştur</DialogTitle>
-              <DialogDescription>
-                Müşterilerinize otomatik yanıt verecek yeni bir AI asistanı oluşturun.
-              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate}>
-              <div className="space-y-5 py-4">
+              <div className="space-y-5 py-2">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Bot Adı *</Label>
+                  <Label htmlFor="name">Bot Adı <span className="text-destructive">*</span></Label>
                   <Input
                     id="name"
                     placeholder="Örn: Müşteri Destek Botu"
-                    className={cn('h-11', formErrors.name && 'border-destructive focus-visible:ring-destructive')}
+                    className={cn(
+                      'h-11 border-border/70 bg-muted/20',
+                      formErrors.name && 'border-destructive focus-visible:ring-destructive'
+                    )}
                     value={formData.name}
                     onChange={(e) => {
                       setFormData({ ...formData, name: e.target.value })
@@ -287,7 +313,7 @@ export default function BotsPage() {
                   <Textarea
                     id="description"
                     placeholder="Bu bot ne işe yarıyor? (Opsiyonel)"
-                    className="min-h-[80px]"
+                    className="min-h-[88px] border-border/70 bg-muted/20"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   />
@@ -297,13 +323,13 @@ export default function BotsPage() {
                   <Textarea
                     id="welcome_message"
                     placeholder="Müşterilerinizi nasıl karşılayacaksınız?"
-                    className="min-h-[80px]"
+                    className="min-h-[88px] border-border/70 bg-muted/20"
                     value={formData.welcome_message}
                     onChange={(e) => setFormData({ ...formData, welcome_message: e.target.value })}
                   />
                 </div>
               </div>
-              <DialogFooter className="gap-2">
+              <DialogFooter className="mt-6 gap-2 border-t border-border/70 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
                   İptal
                 </Button>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LifeBuoy, Plus, Filter } from 'lucide-react'
+import { LifeBuoy, Plus, Filter, MessageSquareWarning } from 'lucide-react'
 import { ticketsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -21,6 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { cn } from '@/lib/utils'
 
 interface Ticket {
   id: string
@@ -37,6 +38,7 @@ export default function TicketsPage() {
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('open')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [formErrors, setFormErrors] = useState<{ subject?: string; message?: string }>({})
   const [form, setForm] = useState({
     subject: '',
     priority: 'normal',
@@ -53,6 +55,7 @@ export default function TicketsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] })
       setIsCreateOpen(false)
+      setFormErrors({})
       setForm({ subject: '', priority: 'normal', message: '' })
       toast({ title: 'Ticket oluşturuldu' })
     },
@@ -98,6 +101,23 @@ export default function TicketsPage() {
       render: (row) => new Date(row.last_activity_at).toLocaleString('tr-TR'),
     },
   ], [])
+
+  const handleCreate = () => {
+    const subject = form.subject.trim()
+    const message = form.message.trim()
+    const nextErrors: { subject?: string; message?: string } = {}
+
+    if (!subject) nextErrors.subject = 'Konu alanı zorunludur.'
+    if (!message) nextErrors.message = 'Mesaj alanı zorunludur.'
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors)
+      return
+    }
+
+    setFormErrors({})
+    createMutation.mutate()
+  }
 
   return (
     <ContentContainer>
@@ -153,21 +173,43 @@ export default function TicketsPage() {
         />
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-xl">
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open)
+          if (!open) setFormErrors({})
+        }}
+      >
+        <DialogContent className="max-w-xl border border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle>Yeni Ticket</DialogTitle>
-            <DialogDescription>Destek ekibimize konu ve detayları iletin.</DialogDescription>
+            <div className="mb-2 flex items-center gap-3">
+              <Icon3DBadge icon={MessageSquareWarning} from="from-cyan-500" to="to-blue-500" />
+              <div>
+                <DialogTitle>Yeni Ticket</DialogTitle>
+                <DialogDescription>Destek ekibimize konu ve detayları iletin.</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Konu</Label>
-              <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+              <Label>Konu <span className="text-destructive">*</span></Label>
+              <Input
+                className={cn(
+                  'h-11 border-border/70 bg-muted/20',
+                  formErrors.subject && 'border-destructive focus-visible:ring-destructive'
+                )}
+                value={form.subject}
+                onChange={(e) => {
+                  setForm({ ...form, subject: e.target.value })
+                  if (formErrors.subject) setFormErrors((prev) => ({ ...prev, subject: undefined }))
+                }}
+              />
+              {formErrors.subject && <p className="text-xs text-destructive">{formErrors.subject}</p>}
             </div>
             <div className="space-y-2">
               <Label>Öncelik</Label>
               <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
-                <SelectTrigger>
+                <SelectTrigger className="h-11 border-border/70 bg-muted/20">
                   <SelectValue placeholder="Öncelik seç" />
                 </SelectTrigger>
                 <SelectContent>
@@ -179,15 +221,27 @@ export default function TicketsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Mesaj</Label>
-              <Textarea rows={6} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
+              <Label>Mesaj <span className="text-destructive">*</span></Label>
+              <Textarea
+                rows={6}
+                className={cn(
+                  'min-h-[120px] border-border/70 bg-muted/20',
+                  formErrors.message && 'border-destructive focus-visible:ring-destructive'
+                )}
+                value={form.message}
+                onChange={(e) => {
+                  setForm({ ...form, message: e.target.value })
+                  if (formErrors.message) setFormErrors((prev) => ({ ...prev, message: undefined }))
+                }}
+              />
+              {formErrors.message && <p className="text-xs text-destructive">{formErrors.message}</p>}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="mt-6 border-t border-border/70 pt-4">
             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>İptal</Button>
             <Button
               type="button"
-              onClick={() => createMutation.mutate()}
+              onClick={handleCreate}
               disabled={createMutation.isPending || !form.subject.trim() || !form.message.trim()}
             >
               Gönder

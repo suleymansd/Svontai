@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   UserPlus,
   Filter,
+  UserRoundSearch,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -41,12 +42,14 @@ import { DataTable, DataColumn } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { cn } from '@/lib/utils'
 
 export default function LeadsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [formErrors, setFormErrors] = useState<{ name?: string }>({})
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -73,6 +76,7 @@ export default function LeadsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
       setIsCreateOpen(false)
+      setFormErrors({})
       setFormData({ name: '', email: '', phone: '', notes: '', source: 'manual' })
       toast({
         title: 'Lead eklendi',
@@ -102,13 +106,10 @@ export default function LeadsPage() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim()) {
-      toast({
-        title: 'Eksik bilgi',
-        description: 'İsim alanı zorunludur.',
-        variant: 'destructive',
-      })
+      setFormErrors({ name: 'İsim alanı zorunludur.' })
       return
     }
+    setFormErrors({})
 
     createMutation.mutate({
       ...formData,
@@ -294,22 +295,41 @@ export default function LeadsPage() {
         />
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open)
+          if (!open) setFormErrors({})
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px] border border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle>Yeni Lead Ekle</DialogTitle>
-            <DialogDescription>Müşteri bilgilerini girerek lead oluşturun.</DialogDescription>
+            <div className="mb-2 flex items-center gap-3">
+              <Icon3DBadge icon={UserRoundSearch} from="from-amber-500" to="to-orange-500" />
+              <div>
+                <DialogTitle>Yeni Lead Ekle</DialogTitle>
+                <DialogDescription>Müşteri bilgilerini girerek lead oluşturun.</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid gap-3">
               <div className="space-y-2">
-                <Label htmlFor="name">İsim</Label>
+                <Label htmlFor="name">İsim <span className="text-destructive">*</span></Label>
                 <Input
                   id="name"
                   placeholder="Müşteri adı"
+                  className={cn(
+                    'h-11 border-border/70 bg-muted/20',
+                    formErrors.name && 'border-destructive focus-visible:ring-destructive'
+                  )}
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value })
+                    if (formErrors.name) setFormErrors({})
+                  }}
                 />
+                {formErrors.name && <p className="text-xs text-destructive">{formErrors.name}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">E-posta</Label>
@@ -317,6 +337,7 @@ export default function LeadsPage() {
                   id="email"
                   type="email"
                   placeholder="email@ornek.com"
+                  className="h-11 border-border/70 bg-muted/20"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
@@ -326,6 +347,7 @@ export default function LeadsPage() {
                 <Input
                   id="phone"
                   placeholder="+90 555 555 55 55"
+                  className="h-11 border-border/70 bg-muted/20"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 />
@@ -335,12 +357,13 @@ export default function LeadsPage() {
                 <Textarea
                   id="notes"
                   placeholder="Lead hakkında notlar"
+                  className="min-h-[96px] border-border/70 bg-muted/20"
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 />
               </div>
             </div>
-            <DialogFooter className="gap-2">
+            <DialogFooter className="mt-6 gap-2 border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
                 İptal
               </Button>
