@@ -7,6 +7,8 @@ import logging
 import asyncio
 from contextlib import asynccontextmanager, suppress
 
+from sqlalchemy import inspect, text
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -50,6 +52,36 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def _ensure_leads_schema_compatibility() -> None:
+    """
+    Ensure critical lead columns exist for backward-compatible deployments.
+    """
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        table_names = set(inspector.get_table_names())
+        if "leads" not in table_names:
+            return
+
+        lead_columns = {column["name"] for column in inspector.get_columns("leads")}
+        statements: list[str] = []
+        if "status" not in lead_columns:
+            statements.append("ALTER TABLE leads ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'new'")
+        if "source" not in lead_columns:
+            statements.append("ALTER TABLE leads ADD COLUMN source VARCHAR(50) NOT NULL DEFAULT 'web'")
+
+        if statements:
+            for statement in statements:
+                db.execute(text(statement))
+            db.commit()
+            logger.warning("Applied lead schema compatibility patch: %s", ", ".join(statements))
+    finally:
+        db.close()
 
 async def _appointment_reminder_loop() -> None:
     from app.db.session import SessionLocal
@@ -123,6 +155,11 @@ async def lifespan(app: FastAPI):
         logger.info("Default plans initialized")
     except Exception as e:
         logger.warning(f"Could not initialize plans: {e}")
+
+    try:
+        _ensure_leads_schema_compatibility()
+    except Exception as exc:
+        logger.warning("Could not apply leads schema compatibility patch: %s", exc)
     
     yield
     
