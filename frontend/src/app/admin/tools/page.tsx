@@ -125,7 +125,7 @@ export default function ToolsAdminPage() {
             {row.status}
           </Badge>
           {row.coming_soon && (
-            <Badge variant="outline">Coming soon</Badge>
+            <Badge variant="outline">Planlanan</Badge>
           )}
         </div>
       )
@@ -338,7 +338,7 @@ export default function ToolsAdminPage() {
             </div>
             <div className="flex items-center justify-between rounded-xl border border-border/70 p-3">
               <div>
-                <p className="text-sm font-medium">Coming soon</p>
+                <p className="text-sm font-medium">Planlanan</p>
                 <p className="text-xs text-muted-foreground">Erken erişim etiketi</p>
               </div>
               <Switch checked={form.coming_soon} onCheckedChange={(value) => setForm({ ...form, coming_soon: value })} />
@@ -402,7 +402,7 @@ export default function ToolsAdminPage() {
             </div>
             <div className="flex items-center justify-between rounded-xl border border-border/70 p-3">
               <div>
-                <p className="text-sm font-medium">Coming soon</p>
+                <p className="text-sm font-medium">Planlanan</p>
                 <p className="text-xs text-muted-foreground">Erken erişim etiketi</p>
               </div>
               <Switch checked={form.coming_soon} onCheckedChange={(value) => setForm({ ...form, coming_soon: value })} />

@@ -5,14 +5,18 @@ Real Estate Pack orchestration service (MVP).
 from __future__ import annotations
 
 import json
+import csv
+import io
 import re
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
+import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -70,8 +74,24 @@ DEFAULT_SELLER_FLOW = {
 DEFAULT_LISTING_SOURCE = {
     "manual": True,
     "csv_import": True,
-    "google_sheets": False,
-    "remax_connector": False,
+    "google_sheets": {
+        "enabled": False,
+        "sheet_url": "",
+        "gid": "",
+        "csv_url": "",
+        "mapping": {},
+        "deactivate_missing": False,
+        "last_sync_at": None,
+    },
+    "remax_connector": {
+        "enabled": False,
+        "endpoint_url": "",
+        "response_path": "data.listings",
+        "mapping": {},
+        "deactivate_missing": False,
+        "api_key_encrypted": "",
+        "last_sync_at": None,
+    },
 }
 
 DEFAULT_TEMPLATE_DRAFTS = [
@@ -281,8 +301,302 @@ class RealEstateService:
             )
         self.db.commit()
 
+    @staticmethod
+    def _extract_json_path(payload: Any, path: str | None) -> Any:
+        if not path:
+            return payload
+        current = payload
+        for part in [item.strip() for item in path.split(".") if item.strip()]:
+            if isinstance(current, dict):
+                current = current.get(part)
+            elif isinstance(current, list):
+                try:
+                    current = current[int(part)]
+                except Exception:
+                    return None
+            else:
+                return None
+        return current
+
+    @staticmethod
+    def _normalize_listing_source_config(raw_source: Any) -> dict[str, Any]:
+        source = json.loads(json.dumps(DEFAULT_LISTING_SOURCE))
+        candidate = dict(raw_source or {})
+
+        source["manual"] = bool(candidate.get("manual", source["manual"]))
+        source["csv_import"] = bool(candidate.get("csv_import", source["csv_import"]))
+
+        google_raw = candidate.get("google_sheets", {})
+        if isinstance(google_raw, bool):
+            google_raw = {"enabled": google_raw}
+        google_cfg = dict(source["google_sheets"])
+        if isinstance(google_raw, dict):
+            google_cfg.update({k: v for k, v in google_raw.items() if v is not None})
+        google_cfg["enabled"] = bool(google_cfg.get("enabled", False))
+        google_cfg["mapping"] = dict(google_cfg.get("mapping") or {})
+        source["google_sheets"] = google_cfg
+
+        remax_raw = candidate.get("remax_connector", {})
+        if isinstance(remax_raw, bool):
+            remax_raw = {"enabled": remax_raw}
+        remax_cfg = dict(source["remax_connector"])
+        if isinstance(remax_raw, dict):
+            remax_cfg.update({k: v for k, v in remax_raw.items() if v is not None})
+        remax_cfg["enabled"] = bool(remax_cfg.get("enabled", False))
+        remax_cfg["mapping"] = dict(remax_cfg.get("mapping") or {})
+        source["remax_connector"] = remax_cfg
+        return source
+
+    @staticmethod
+    def _to_int(value: Any) -> int | None:
+        try:
+            text = str(value or "").strip()
+            if not text:
+                return None
+            return int(float(text.replace(".", "").replace(",", ".")))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _to_float(value: Any) -> float | None:
+        try:
+            text = str(value or "").strip()
+            if not text:
+                return None
+            return float(text.replace(",", "."))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_sale_rent(value: Any) -> str | None:
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            return None
+        if normalized in {"rent", "kiralık", "kiralik", "kira"}:
+            return "rent"
+        if normalized in {"sale", "satılık", "satilik", "satış", "satis"}:
+            return "sale"
+        return None
+
+    def _http_get_text(self, url: str, headers: dict[str, str] | None = None) -> str:
+        with httpx.Client(timeout=25.0) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.text
+
+    def _http_get_json(self, url: str, headers: dict[str, str] | None = None) -> Any:
+        with httpx.Client(timeout=25.0) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+    @staticmethod
+    def _build_google_sheets_csv_url(config: dict[str, Any]) -> str:
+        csv_url = (config.get("csv_url") or "").strip()
+        if csv_url:
+            return csv_url
+
+        sheet_url = (config.get("sheet_url") or "").strip()
+        if not sheet_url:
+            raise ValueError("Google Sheets URL gerekli")
+
+        match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", sheet_url)
+        if not match:
+            raise ValueError("Geçerli bir Google Sheets URL girin")
+        spreadsheet_id = match.group(1)
+
+        parsed = urlparse(sheet_url)
+        query_gid = parse_qs(parsed.query).get("gid", [None])[0]
+        gid = (config.get("gid") or query_gid or "0").strip()
+        return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
+
+    @staticmethod
+    def _read_row_value(row: dict[str, Any], key: str) -> Any:
+        if key in row:
+            return row.get(key)
+        lowered = {str(k).strip().lower(): v for k, v in row.items()}
+        return lowered.get(str(key).strip().lower())
+
+    def _map_external_listing_row(
+        self,
+        row: dict[str, Any],
+        mapping: dict[str, str],
+    ) -> dict[str, Any] | None:
+        def pick(field: str, default_field: str | None = None) -> Any:
+            mapped_key = (mapping.get(field) or "").strip()
+            if mapped_key:
+                return self._read_row_value(row, mapped_key)
+            direct = self._read_row_value(row, field)
+            if direct not in (None, ""):
+                return direct
+            if default_field:
+                return self._read_row_value(row, default_field)
+            return direct
+
+        external_id = str(pick("external_id", "id") or "").strip()
+        title = str(pick("title") or "").strip()
+        location_text = str(pick("location_text", "location") or "").strip()
+        sale_rent = self._normalize_sale_rent(pick("sale_rent", "type")) or "sale"
+        property_type = str(pick("property_type", "property_type") or "daire").strip().lower() or "daire"
+        price = self._to_int(pick("price"))
+        if not title or not location_text or not price or price <= 0:
+            return None
+
+        data = {
+            "external_id": external_id or None,
+            "title": title,
+            "description": str(pick("description") or "").strip() or None,
+            "sale_rent": sale_rent,
+            "property_type": property_type,
+            "location_text": location_text,
+            "lat": self._to_float(pick("lat")),
+            "lng": self._to_float(pick("lng")),
+            "price": int(price),
+            "currency": str(pick("currency") or "TRY").strip().upper() or "TRY",
+            "m2": self._to_int(pick("m2")),
+            "rooms": str(pick("rooms") or "").strip() or None,
+            "url": str(pick("url") or "").strip() or None,
+            "is_active": True,
+        }
+        return data
+
+    def _upsert_external_listings(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        source_key: str,
+        rows: list[dict[str, Any]],
+        mapping: dict[str, str] | None = None,
+        deactivate_missing: bool = False,
+    ) -> dict[str, int]:
+        mapped_rows = []
+        skipped = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                skipped += 1
+                continue
+            parsed = self._map_external_listing_row(row, mapping or {})
+            if parsed is None:
+                skipped += 1
+                continue
+            mapped_rows.append(parsed)
+
+        existing_rows = self.db.query(RealEstateListing).filter(
+            RealEstateListing.tenant_id == tenant_id
+        ).all()
+        by_external: dict[str, RealEstateListing] = {}
+        for existing in existing_rows:
+            features = existing.features or {}
+            if features.get("_source") != source_key:
+                continue
+            ext = str(features.get("_external_id") or "").strip()
+            if ext:
+                by_external[ext] = existing
+
+        created = 0
+        updated = 0
+        processed_external_ids: set[str] = set()
+        fallback_updated_ids: set[UUID] = set()
+
+        for item in mapped_rows:
+            external_id = str(item.get("external_id") or "").strip()
+            target: RealEstateListing | None = None
+            if external_id:
+                target = by_external.get(external_id)
+                processed_external_ids.add(external_id)
+            if target is None and item.get("url"):
+                for existing in existing_rows:
+                    if existing.tenant_id == tenant_id and (existing.url or "").strip() == (item.get("url") or "").strip():
+                        target = existing
+                        fallback_updated_ids.add(existing.id)
+                        break
+            if target is None:
+                target = RealEstateListing(
+                    tenant_id=tenant_id,
+                    created_by=user_id,
+                    title=item["title"],
+                    description=item.get("description"),
+                    sale_rent=item["sale_rent"],
+                    property_type=item["property_type"],
+                    location_text=item["location_text"],
+                    lat=item.get("lat"),
+                    lng=item.get("lng"),
+                    price=item["price"],
+                    currency=item.get("currency") or "TRY",
+                    m2=item.get("m2"),
+                    rooms=item.get("rooms"),
+                    features={
+                        "_source": source_key,
+                        "_external_id": external_id or None,
+                    },
+                    media=[],
+                    url=item.get("url"),
+                    is_active=True,
+                )
+                self.db.add(target)
+                created += 1
+                continue
+
+            target.title = item["title"]
+            target.description = item.get("description")
+            target.sale_rent = item["sale_rent"]
+            target.property_type = item["property_type"]
+            target.location_text = item["location_text"]
+            target.lat = item.get("lat")
+            target.lng = item.get("lng")
+            target.price = item["price"]
+            target.currency = item.get("currency") or "TRY"
+            target.m2 = item.get("m2")
+            target.rooms = item.get("rooms")
+            target.url = item.get("url")
+            target.is_active = True
+            target.features = {
+                **(target.features or {}),
+                "_source": source_key,
+                "_external_id": external_id or (target.features or {}).get("_external_id"),
+            }
+            updated += 1
+
+        deactivated = 0
+        if deactivate_missing:
+            for existing in existing_rows:
+                features = existing.features or {}
+                if features.get("_source") != source_key:
+                    continue
+                ext = str(features.get("_external_id") or "").strip()
+                if ext:
+                    if ext not in processed_external_ids and existing.is_active:
+                        existing.is_active = False
+                        deactivated += 1
+                elif existing.id not in fallback_updated_ids and existing.is_active:
+                    existing.is_active = False
+                    deactivated += 1
+
+        return {
+            "created": created,
+            "updated": updated,
+            "deactivated": deactivated,
+            "skipped": skipped,
+            "total_processed": len(mapped_rows),
+        }
+
     def upsert_settings(self, tenant_id: UUID, payload: dict[str, Any]) -> RealEstatePackSettings:
         settings = self.get_or_create_settings(tenant_id)
+        if "listings_source" in payload and payload.get("listings_source") is not None:
+            merged = self._normalize_listing_source_config(
+                {
+                    **self._normalize_listing_source_config(settings.listings_source or {}),
+                    **dict(payload.get("listings_source") or {}),
+                }
+            )
+            remax_cfg = dict(merged.get("remax_connector") or {})
+            api_key_raw = (remax_cfg.get("api_key") or "").strip()
+            if api_key_raw:
+                remax_cfg["api_key_encrypted"] = encrypt_token(api_key_raw)
+                remax_cfg["api_key"] = ""
+            merged["remax_connector"] = remax_cfg
+            payload["listings_source"] = merged
+
         for key, value in payload.items():
             if hasattr(settings, key) and value is not None:
                 setattr(settings, key, value)
@@ -291,6 +605,115 @@ class RealEstateService:
         self.ensure_pack_feature_flag(tenant_id, settings.enabled)
         self.ensure_default_templates(tenant_id)
         return settings
+
+    def sync_listings_from_google_sheets(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        settings = self.get_or_create_settings(tenant_id)
+        save_to_settings = bool(config.get("save_to_settings", True))
+        source_config = self._normalize_listing_source_config(settings.listings_source or {})
+        current_cfg = dict(source_config.get("google_sheets") or {})
+        incoming_cfg = dict(config or {})
+        merged_cfg = {**current_cfg, **incoming_cfg}
+        merged_cfg["mapping"] = dict(merged_cfg.get("mapping") or {})
+        merged_cfg["deactivate_missing"] = bool(merged_cfg.get("deactivate_missing", False))
+
+        csv_url = self._build_google_sheets_csv_url(merged_cfg)
+        text = self._http_get_text(csv_url)
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+        stats = self._upsert_external_listings(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_key="google_sheets",
+            rows=rows,
+            mapping=merged_cfg.get("mapping") or {},
+            deactivate_missing=bool(merged_cfg.get("deactivate_missing", False)),
+        )
+        now_iso = datetime.utcnow().isoformat()
+        merged_cfg.update(
+            {
+                "enabled": True,
+                "last_sync_at": now_iso,
+                "last_result": stats,
+                "csv_url": (merged_cfg.get("csv_url") or "").strip(),
+                "sheet_url": (merged_cfg.get("sheet_url") or "").strip(),
+            }
+        )
+        if save_to_settings:
+            source_config["google_sheets"] = merged_cfg
+            settings.listings_source = source_config
+        self.db.commit()
+        self.db.refresh(settings)
+        return {"source": "google_sheets", "stats": stats, "synced_at": now_iso}
+
+    def sync_listings_from_remax_connector(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        settings = self.get_or_create_settings(tenant_id)
+        save_to_settings = bool(config.get("save_to_settings", True))
+        source_config = self._normalize_listing_source_config(settings.listings_source or {})
+        current_cfg = dict(source_config.get("remax_connector") or {})
+        incoming_cfg = dict(config or {})
+        merged_cfg = {**current_cfg, **incoming_cfg}
+        merged_cfg["mapping"] = dict(merged_cfg.get("mapping") or {})
+        merged_cfg["deactivate_missing"] = bool(merged_cfg.get("deactivate_missing", False))
+
+        endpoint_url = (merged_cfg.get("endpoint_url") or "").strip()
+        if not endpoint_url:
+            raise ValueError("Remax endpoint URL gerekli")
+
+        provided_api_key = (merged_cfg.get("api_key") or "").strip()
+        encrypted_api_key = (merged_cfg.get("api_key_encrypted") or "").strip()
+        resolved_api_key = provided_api_key
+        if not resolved_api_key and encrypted_api_key:
+            resolved_api_key = decrypt_token(encrypted_api_key) or ""
+
+        auth_header = (merged_cfg.get("auth_header") or "Authorization").strip() or "Authorization"
+        auth_scheme = (merged_cfg.get("auth_scheme") or "Bearer").strip()
+        headers: dict[str, str] = {}
+        if resolved_api_key:
+            headers[auth_header] = f"{auth_scheme} {resolved_api_key}".strip()
+
+        response_payload = self._http_get_json(endpoint_url, headers=headers or None)
+        response_path = (merged_cfg.get("response_path") or "data.listings").strip()
+        rows_payload = self._extract_json_path(response_payload, response_path)
+        if not isinstance(rows_payload, list):
+            raise ValueError("Remax response_path list dönmüyor")
+
+        stats = self._upsert_external_listings(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_key="remax_connector",
+            rows=rows_payload,
+            mapping=merged_cfg.get("mapping") or {},
+            deactivate_missing=bool(merged_cfg.get("deactivate_missing", False)),
+        )
+        now_iso = datetime.utcnow().isoformat()
+        if provided_api_key:
+            merged_cfg["api_key_encrypted"] = encrypt_token(provided_api_key)
+        merged_cfg["api_key"] = ""
+        merged_cfg.update(
+            {
+                "enabled": True,
+                "last_sync_at": now_iso,
+                "last_result": stats,
+                "endpoint_url": endpoint_url,
+                "response_path": response_path,
+            }
+        )
+        if save_to_settings:
+            source_config["remax_connector"] = merged_cfg
+            settings.listings_source = source_config
+        self.db.commit()
+        self.db.refresh(settings)
+        return {"source": "remax_connector", "stats": stats, "synced_at": now_iso}
 
     def ensure_pack_feature_flag(self, tenant_id: UUID, enabled: bool) -> None:
         feature = self.db.query(FeatureFlag).filter(

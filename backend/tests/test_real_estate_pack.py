@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.encryption import decrypt_token
 from app.db.base import Base
 import app.models  # noqa: F401
 from app.models.bot import Bot
@@ -315,5 +316,190 @@ def test_available_slots_manual_availability():
     assert any(slot["start_at"].startswith("2026-02-16T10:00") for slot in slots)
     assert any(slot["start_at"].startswith("2026-02-16T11:00") for slot in slots)
     assert not any(slot["start_at"].startswith("2026-02-16T09:00") for slot in slots)
+
+    db.close()
+
+
+def test_google_sheets_sync_creates_and_updates_listings():
+    db = _build_session()
+    service = RealEstateService(db)
+
+    owner = User(
+        email="owner-sheets@test.com",
+        password_hash="hash",
+        full_name="Owner Sheets",
+        is_admin=False,
+        is_active=True,
+    )
+    db.add(owner)
+    db.flush()
+
+    tenant = Tenant(name="Sheets Tenant", owner_id=owner.id, settings={})
+    db.add(tenant)
+    db.flush()
+
+    existing = RealEstateListing(
+        tenant_id=tenant.id,
+        created_by=owner.id,
+        title="Eski İlan",
+        sale_rent="sale",
+        property_type="daire",
+        location_text="Ankara",
+        price=2_500_000,
+        currency="TRY",
+        rooms="2+1",
+        m2=100,
+        features={"_source": "google_sheets", "_external_id": "X1"},
+        media=[],
+        url="https://example.com/old-x1",
+        is_active=True,
+    )
+    db.add(existing)
+    db.commit()
+
+    csv_text = (
+        "id,title,sale_rent,property_type,location_text,price,currency,m2,rooms,url\n"
+        "X1,Çankaya Güncel İlan,sale,daire,Ankara Çankaya,3100000,TRY,120,3+1,https://example.com/x1\n"
+        "X2,Yeni İlan,rent,daire,Ankara Keçiören,24000,TRY,95,2+1,https://example.com/x2\n"
+    )
+    service._http_get_text = lambda url, headers=None: csv_text  # type: ignore[assignment]
+
+    result = service.sync_listings_from_google_sheets(
+        tenant_id=tenant.id,
+        user_id=owner.id,
+        config={
+            "sheet_url": "https://docs.google.com/spreadsheets/d/test-sheet-id/edit#gid=0",
+            "save_to_settings": True,
+        },
+    )
+
+    assert result["source"] == "google_sheets"
+    assert result["stats"]["updated"] == 1
+    assert result["stats"]["created"] == 1
+    assert result["stats"]["skipped"] == 0
+
+    listings = db.query(RealEstateListing).filter(RealEstateListing.tenant_id == tenant.id).all()
+    assert len(listings) == 2
+    updated = next(
+        (
+            item
+            for item in listings
+            if (item.features or {}).get("_external_id") == "X1"
+        ),
+        None,
+    )
+    assert updated is not None
+    assert updated.title == "Çankaya Güncel İlan"
+    assert int(updated.price) == 3_100_000
+
+    settings = service.get_or_create_settings(tenant.id)
+    google_cfg = settings.listings_source.get("google_sheets") or {}
+    assert google_cfg.get("enabled") is True
+    assert google_cfg.get("last_sync_at")
+
+    db.close()
+
+
+def test_remax_sync_deactivates_missing_and_encrypts_api_key():
+    db = _build_session()
+    service = RealEstateService(db)
+
+    owner = User(
+        email="owner-remax@test.com",
+        password_hash="hash",
+        full_name="Owner Remax",
+        is_admin=False,
+        is_active=True,
+    )
+    db.add(owner)
+    db.flush()
+
+    tenant = Tenant(name="Remax Tenant", owner_id=owner.id, settings={})
+    db.add(tenant)
+    db.flush()
+
+    listing_a = RealEstateListing(
+        tenant_id=tenant.id,
+        created_by=owner.id,
+        title="A İlan",
+        sale_rent="sale",
+        property_type="daire",
+        location_text="Ankara",
+        price=4_000_000,
+        currency="TRY",
+        rooms="3+1",
+        m2=135,
+        features={"_source": "remax_connector", "_external_id": "A"},
+        media=[],
+        url="https://example.com/a",
+        is_active=True,
+    )
+    listing_b = RealEstateListing(
+        tenant_id=tenant.id,
+        created_by=owner.id,
+        title="B İlan",
+        sale_rent="sale",
+        property_type="daire",
+        location_text="Ankara",
+        price=4_200_000,
+        currency="TRY",
+        rooms="3+1",
+        m2=138,
+        features={"_source": "remax_connector", "_external_id": "B"},
+        media=[],
+        url="https://example.com/b",
+        is_active=True,
+    )
+    db.add(listing_a)
+    db.add(listing_b)
+    db.commit()
+
+    service._http_get_json = lambda url, headers=None: {  # type: ignore[assignment]
+        "data": {
+            "listings": [
+                {
+                    "id": "A",
+                    "title": "A İlan Güncel",
+                    "sale_rent": "sale",
+                    "property_type": "daire",
+                    "location_text": "Ankara Çankaya",
+                    "price": 4_300_000,
+                    "currency": "TRY",
+                    "m2": 140,
+                    "rooms": "3+1",
+                    "url": "https://example.com/a",
+                }
+            ]
+        }
+    }
+
+    result = service.sync_listings_from_remax_connector(
+        tenant_id=tenant.id,
+        user_id=owner.id,
+        config={
+            "endpoint_url": "https://remax.example.com/api/listings",
+            "response_path": "data.listings",
+            "api_key": "secret-key-123",
+            "deactivate_missing": True,
+            "save_to_settings": True,
+        },
+    )
+
+    assert result["source"] == "remax_connector"
+    assert result["stats"]["updated"] == 1
+    assert result["stats"]["deactivated"] == 1
+
+    refreshed_a = db.query(RealEstateListing).filter(RealEstateListing.id == listing_a.id).first()
+    refreshed_b = db.query(RealEstateListing).filter(RealEstateListing.id == listing_b.id).first()
+    assert refreshed_a is not None and refreshed_a.is_active is True
+    assert refreshed_a.title == "A İlan Güncel"
+    assert refreshed_b is not None and refreshed_b.is_active is False
+
+    settings = service.get_or_create_settings(tenant.id)
+    remax_cfg = settings.listings_source.get("remax_connector") or {}
+    encrypted = remax_cfg.get("api_key_encrypted") or ""
+    assert encrypted
+    assert decrypt_token(encrypted) == "secret-key-123"
+    assert not remax_cfg.get("api_key")
 
     db.close()

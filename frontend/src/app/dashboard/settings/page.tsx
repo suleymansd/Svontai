@@ -428,7 +428,7 @@ export default function SettingsPage() {
                         {profileData.full_name?.charAt(0).toUpperCase() || user?.full_name?.charAt(0).toUpperCase() || 'U'}
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Profil fotoğrafı özelliği yakında!</p>
+                        <p className="text-sm text-muted-foreground">Profil avatarı ad soyad baş harfinden otomatik üretilir.</p>
                       </div>
                     </div>
 
@@ -515,7 +515,7 @@ export default function SettingsPage() {
                       {companyData.name?.charAt(0).toUpperCase() || tenant?.name?.charAt(0).toUpperCase() || 'İ'}
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Logo yükleme özelliği yakında!</p>
+                      <p className="text-sm text-muted-foreground">Marka rozeti işletme adının baş harfinden otomatik oluşturulur.</p>
                     </div>
                   </div>
 

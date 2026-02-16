@@ -225,12 +225,40 @@ class ListingSummaryPdfResponse(BaseModel):
     summary: dict
 
 
+class GoogleSheetsSyncRequest(BaseModel):
+    sheet_url: str | None = None
+    gid: str | None = None
+    csv_url: str | None = None
+    mapping: dict[str, str] = Field(default_factory=dict)
+    deactivate_missing: bool = False
+    save_to_settings: bool = True
+
+
+class RemaxSyncRequest(BaseModel):
+    endpoint_url: str | None = None
+    response_path: str = "data.listings"
+    auth_header: str = "Authorization"
+    auth_scheme: str = "Bearer"
+    api_key: str | None = None
+    mapping: dict[str, str] = Field(default_factory=dict)
+    deactivate_missing: bool = False
+    save_to_settings: bool = True
+
+
 class AvailableSlotResponse(BaseModel):
     start_at: str
     end_at: str
 
 
 def _settings_to_response(settings: RealEstatePackSettings) -> RealEstateSettingsResponse:
+    listing_source = dict(settings.listings_source or {})
+    remax_cfg = listing_source.get("remax_connector")
+    if isinstance(remax_cfg, dict):
+        remax_safe = dict(remax_cfg)
+        remax_safe.pop("api_key_encrypted", None)
+        remax_safe.pop("api_key", None)
+        listing_source["remax_connector"] = remax_safe
+
     return RealEstateSettingsResponse(
         enabled=settings.enabled,
         persona=settings.persona,
@@ -241,7 +269,7 @@ def _settings_to_response(settings: RealEstatePackSettings) -> RealEstateSetting
         followup_attempts=settings.followup_attempts,
         question_flow_buyer=settings.question_flow_buyer or {},
         question_flow_seller=settings.question_flow_seller or {},
-        listings_source=settings.listings_source or {},
+        listings_source=listing_source,
         manual_availability=settings.manual_availability or [],
         google_calendar_enabled=settings.google_calendar_enabled,
         google_calendar_email=settings.google_calendar_email,
@@ -512,6 +540,74 @@ async def import_real_estate_listings_csv(
         user_agent=request.headers.get("User-Agent") if request else None
     )
     return {"imported": imported, "skipped": skipped}
+
+
+@router.post("/listings/sync/google-sheets", response_model=dict)
+async def sync_real_estate_listings_google_sheets(
+    payload: GoogleSheetsSyncRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["dashboard:edit"]))
+) -> dict[str, Any]:
+    service = RealEstateService(db)
+    try:
+        result = service.sync_listings_from_google_sheets(
+            tenant_id=current_tenant.id,
+            user_id=current_user.id,
+            config=payload.model_dump(exclude_none=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google Sheets sync başarısız: {exc}")
+
+    AuditLogService(db).log(
+        action="real_estate.listing.sync_google_sheets",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="real_estate_listing",
+        resource_id=str(current_tenant.id),
+        payload=result,
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
+    return result
+
+
+@router.post("/listings/sync/remax", response_model=dict)
+async def sync_real_estate_listings_remax(
+    payload: RemaxSyncRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["dashboard:edit"]))
+) -> dict[str, Any]:
+    service = RealEstateService(db)
+    try:
+        result = service.sync_listings_from_remax_connector(
+            tenant_id=current_tenant.id,
+            user_id=current_user.id,
+            config=payload.model_dump(exclude_none=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Remax sync başarısız: {exc}")
+
+    AuditLogService(db).log(
+        action="real_estate.listing.sync_remax",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="real_estate_listing",
+        resource_id=str(current_tenant.id),
+        payload=result,
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None
+    )
+    return result
 
 
 @router.get("/templates", response_model=list[TemplateResponse])

@@ -66,6 +66,8 @@ Tenant panel:
 - `PATCH /real-estate/listings/{listing_id}`
 - `DELETE /real-estate/listings/{listing_id}`
 - `POST /real-estate/listings/import/csv`
+- `POST /real-estate/listings/sync/google-sheets`
+- `POST /real-estate/listings/sync/remax`
 - `GET /real-estate/templates`
 - `POST /real-estate/templates`
 - `PATCH /real-estate/templates/{template_id}`
@@ -86,6 +88,13 @@ Tenant panel:
 - `POST /real-estate/leads/{lead_id}/seller-service-report`
 - `POST /real-estate/reports/weekly/send`
 - `GET /real-estate/reports/weekly/download`
+
+### Listings Source Connectors
+- `google_sheets`: `sheet_url` veya `csv_url` üzerinden CSV çekip tenant listing havuzuna upsert yapar.
+- `remax_connector`: JSON endpoint + `response_path` ile kayıtları okur, mapping’e göre upsert yapar.
+- `deactivate_missing=true` verildiğinde sync sonucunda kaynakta bulunmayan önceki kayıtlar pasife çekilir.
+- `save_to_settings=true` iken connector ayarları tenant `listings_source` içine yazılır.
+- Remax API key düz metin saklanmaz, `api_key_encrypted` olarak tutulur.
 
 Super admin:
 - `GET /admin/tenants/{tenant_id}/real-estate-pack`

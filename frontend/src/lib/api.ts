@@ -490,6 +490,24 @@ export const realEstateApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  syncListingsFromGoogleSheets: (data: {
+    sheet_url?: string
+    gid?: string
+    csv_url?: string
+    mapping?: Record<string, string>
+    deactivate_missing?: boolean
+    save_to_settings?: boolean
+  }) => api.post('/real-estate/listings/sync/google-sheets', data),
+  syncListingsFromRemax: (data: {
+    endpoint_url?: string
+    response_path?: string
+    auth_header?: string
+    auth_scheme?: string
+    api_key?: string
+    mapping?: Record<string, string>
+    deactivate_missing?: boolean
+    save_to_settings?: boolean
+  }) => api.post('/real-estate/listings/sync/remax', data),
   listTemplates: () => api.get('/real-estate/templates'),
   createTemplate: (data: {
     name: string

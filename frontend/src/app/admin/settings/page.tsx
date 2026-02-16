@@ -203,7 +203,7 @@ export default function SettingsPage() {
           <Button 
             variant="outline" 
             className="h-auto py-4 border-border/70 hover:bg-muted justify-start"
-            onClick={() => toast({ title: 'Bilgi', description: 'Cache temizleme özelliği yakında eklenecek' })}
+            onClick={() => toast({ title: 'Bakım', description: 'Cache temizliği yalnızca sunucu CLI üzerinden çalıştırılır.' })}
           >
             <div className="text-left">
               <p className="text-foreground font-medium">Cache Temizle</p>
@@ -214,7 +214,7 @@ export default function SettingsPage() {
           <Button 
             variant="outline" 
             className="h-auto py-4 border-border/70 hover:bg-muted justify-start"
-            onClick={() => toast({ title: 'Bilgi', description: 'Log indirme özelliği yakında eklenecek' })}
+            onClick={() => toast({ title: 'Bakım', description: 'Log export için Railway/hosting log ekranını kullanın.' })}
           >
             <div className="text-left">
               <p className="text-foreground font-medium">Log İndir</p>
@@ -225,7 +225,7 @@ export default function SettingsPage() {
           <Button 
             variant="outline" 
             className="h-auto py-4 border-border/70 hover:bg-muted justify-start"
-            onClick={() => toast({ title: 'Bilgi', description: 'Yedekleme özelliği yakında eklenecek' })}
+            onClick={() => toast({ title: 'Bakım', description: 'Yedekleme işlemi veritabanı sağlayıcısı üzerinden yönetilir.' })}
           >
             <div className="text-left">
               <p className="text-foreground font-medium">Yedekleme</p>

@@ -404,7 +404,7 @@ export default function DashboardLayout({
                   {tenant?.name || 'Tenant'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Tenant değiştir (yakında)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.location.assign('/admin/tenants')}>Tenant yönetimine git</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 

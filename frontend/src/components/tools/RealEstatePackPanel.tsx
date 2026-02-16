@@ -40,6 +40,22 @@ export function RealEstatePackPanel() {
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [leadId, setLeadId] = useState('')
   const [listingIdsCsv, setListingIdsCsv] = useState('')
+  const [googleSyncConfig, setGoogleSyncConfig] = useState({
+    sheet_url: '',
+    gid: '',
+    csv_url: '',
+    deactivate_missing: false,
+    save_to_settings: true,
+  })
+  const [remaxSyncConfig, setRemaxSyncConfig] = useState({
+    endpoint_url: '',
+    response_path: 'data.listings',
+    auth_header: 'Authorization',
+    auth_scheme: 'Bearer',
+    api_key: '',
+    deactivate_missing: false,
+    save_to_settings: true,
+  })
   const popupRef = useRef<Window | null>(null)
 
   const settingsQuery = useQuery({
@@ -68,6 +84,7 @@ export function RealEstatePackPanel() {
   })
 
   const settings = useMemo(() => settingsDraft || settingsQuery.data, [settingsDraft, settingsQuery.data])
+  const listingSource = useMemo(() => (settings?.listings_source || {}) as any, [settings])
 
   const saveSettingsMutation = useMutation({
     mutationFn: (payload: any) => realEstateApi.updateSettings(payload),
@@ -114,6 +131,47 @@ export function RealEstatePackPanel() {
     },
     onError: () => {
       toast({ title: 'Hata', description: 'CSV içe aktarılamadı.', variant: 'destructive' })
+    },
+  })
+
+  const syncGoogleSheetsMutation = useMutation({
+    mutationFn: (payload: typeof googleSyncConfig) => realEstateApi.syncListingsFromGoogleSheets(payload),
+    onSuccess: ({ data }) => {
+      setSettingsDraft(null)
+      queryClient.invalidateQueries({ queryKey: ['real-estate-listings'] })
+      queryClient.invalidateQueries({ queryKey: ['real-estate-settings'] })
+      toast({
+        title: 'Google Sheets senkronizasyonu tamamlandı',
+        description: `Yeni: ${data?.stats?.created || 0} • Güncellenen: ${data?.stats?.updated || 0} • Pasif: ${data?.stats?.deactivated || 0}`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Google Sheets senkronizasyonu başarısız',
+        description: error.response?.data?.detail || 'Lütfen bağlantı bilgilerini kontrol edin.',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const syncRemaxMutation = useMutation({
+    mutationFn: (payload: typeof remaxSyncConfig) => realEstateApi.syncListingsFromRemax(payload),
+    onSuccess: ({ data }) => {
+      setSettingsDraft(null)
+      queryClient.invalidateQueries({ queryKey: ['real-estate-listings'] })
+      queryClient.invalidateQueries({ queryKey: ['real-estate-settings'] })
+      toast({
+        title: 'Remax senkronizasyonu tamamlandı',
+        description: `Yeni: ${data?.stats?.created || 0} • Güncellenen: ${data?.stats?.updated || 0} • Pasif: ${data?.stats?.deactivated || 0}`,
+      })
+      setRemaxSyncConfig((prev) => ({ ...prev, api_key: '' }))
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Remax senkronizasyonu başarısız',
+        description: error.response?.data?.detail || 'Endpoint/response path bilgilerini kontrol edin.',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -239,6 +297,34 @@ export function RealEstatePackPanel() {
   })
 
   useEffect(() => {
+    const googleRaw = listingSource?.google_sheets
+    const googleCfg = typeof googleRaw === 'object' && googleRaw !== null
+      ? googleRaw
+      : { enabled: Boolean(googleRaw) }
+    setGoogleSyncConfig((prev) => ({
+      ...prev,
+      sheet_url: String(googleCfg.sheet_url || ''),
+      gid: String(googleCfg.gid || ''),
+      csv_url: String(googleCfg.csv_url || ''),
+      deactivate_missing: Boolean(googleCfg.deactivate_missing),
+    }))
+
+    const remaxRaw = listingSource?.remax_connector
+    const remaxCfg = typeof remaxRaw === 'object' && remaxRaw !== null
+      ? remaxRaw
+      : { enabled: Boolean(remaxRaw) }
+    setRemaxSyncConfig((prev) => ({
+      ...prev,
+      endpoint_url: String(remaxCfg.endpoint_url || ''),
+      response_path: String(remaxCfg.response_path || 'data.listings'),
+      auth_header: String(remaxCfg.auth_header || 'Authorization'),
+      auth_scheme: String(remaxCfg.auth_scheme || 'Bearer'),
+      deactivate_missing: Boolean(remaxCfg.deactivate_missing),
+      api_key: '',
+    }))
+  }, [listingSource])
+
+  useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type !== 'GOOGLE_CALENDAR_CONNECTED') return
       if (popupRef.current && !popupRef.current.closed) popupRef.current.close()
@@ -340,6 +426,58 @@ export function RealEstatePackPanel() {
                   />
                 </div>
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Google Sheets kaynağı</p>
+                    <p className="text-xs text-muted-foreground">Sheets üzerinden listing senkronizasyonu</p>
+                  </div>
+                  <Switch
+                    checked={Boolean(
+                      typeof listingSource?.google_sheets === 'object'
+                        ? listingSource?.google_sheets?.enabled
+                        : listingSource?.google_sheets
+                    )}
+                    onCheckedChange={(checked) =>
+                      setSettingsDraft({
+                        ...settings,
+                        listings_source: {
+                          ...listingSource,
+                          google_sheets: {
+                            ...(typeof listingSource?.google_sheets === 'object' ? listingSource?.google_sheets : {}),
+                            enabled: checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Remax connector</p>
+                    <p className="text-xs text-muted-foreground">Harici CRM listing sync</p>
+                  </div>
+                  <Switch
+                    checked={Boolean(
+                      typeof listingSource?.remax_connector === 'object'
+                        ? listingSource?.remax_connector?.enabled
+                        : listingSource?.remax_connector
+                    )}
+                    onCheckedChange={(checked) =>
+                      setSettingsDraft({
+                        ...settings,
+                        listings_source: {
+                          ...listingSource,
+                          remax_connector: {
+                            ...(typeof listingSource?.remax_connector === 'object' ? listingSource?.remax_connector : {}),
+                            enabled: checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
               <Button
                 type="button"
                 onClick={() => saveSettingsMutation.mutate(settings)}
@@ -436,6 +574,145 @@ export function RealEstatePackPanel() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Listings Connectors</CardTitle>
+          <CardDescription>Google Sheets ve Remax kaynaklarından toplu listing senkronizasyonu.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3 rounded-xl border border-border/70 p-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">Google Sheets Sync</p>
+                <p className="text-xs text-muted-foreground">Public veya publish edilmiş sheet üzerinden CSV çekerek listing günceller.</p>
+              </div>
+              <Input
+                className="h-10 border-border/70 bg-muted/20"
+                placeholder="Sheet URL"
+                value={googleSyncConfig.sheet_url}
+                onChange={(event) => setGoogleSyncConfig({ ...googleSyncConfig, sheet_url: event.target.value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="gid (opsiyonel)"
+                  value={googleSyncConfig.gid}
+                  onChange={(event) => setGoogleSyncConfig({ ...googleSyncConfig, gid: event.target.value })}
+                />
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="CSV URL (opsiyonel)"
+                  value={googleSyncConfig.csv_url}
+                  onChange={(event) => setGoogleSyncConfig({ ...googleSyncConfig, csv_url: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    checked={googleSyncConfig.deactivate_missing}
+                    onCheckedChange={(checked) => setGoogleSyncConfig({ ...googleSyncConfig, deactivate_missing: checked })}
+                  />
+                  Eksik kayıtları pasifleştir
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    checked={googleSyncConfig.save_to_settings}
+                    onCheckedChange={(checked) => setGoogleSyncConfig({ ...googleSyncConfig, save_to_settings: checked })}
+                  />
+                  Ayarları tenant profiline kaydet
+                </label>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => syncGoogleSheetsMutation.mutate(googleSyncConfig)}
+                disabled={syncGoogleSheetsMutation.isPending || (!googleSyncConfig.sheet_url && !googleSyncConfig.csv_url)}
+              >
+                <UploadCloud className="mr-2 h-4 w-4" />
+                Google Sheets Senkronize Et
+              </Button>
+              {typeof listingSource?.google_sheets === 'object' && listingSource?.google_sheets?.last_sync_at && (
+                <p className="text-xs text-muted-foreground">
+                  Son sync: {new Date(String(listingSource.google_sheets.last_sync_at)).toLocaleString('tr-TR')}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/70 p-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">Remax Connector Sync</p>
+                <p className="text-xs text-muted-foreground">JSON endpoint&apos;ten listing çekerek tenant havuzunu günceller.</p>
+              </div>
+              <Input
+                className="h-10 border-border/70 bg-muted/20"
+                placeholder="Endpoint URL"
+                value={remaxSyncConfig.endpoint_url}
+                onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, endpoint_url: event.target.value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="Response Path (örn: data.listings)"
+                  value={remaxSyncConfig.response_path}
+                  onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, response_path: event.target.value })}
+                />
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="API Key (opsiyonel)"
+                  value={remaxSyncConfig.api_key}
+                  onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, api_key: event.target.value })}
+                  type="password"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="Auth Header"
+                  value={remaxSyncConfig.auth_header}
+                  onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, auth_header: event.target.value })}
+                />
+                <Input
+                  className="h-10 border-border/70 bg-muted/20"
+                  placeholder="Auth Scheme (Bearer)"
+                  value={remaxSyncConfig.auth_scheme}
+                  onChange={(event) => setRemaxSyncConfig({ ...remaxSyncConfig, auth_scheme: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    checked={remaxSyncConfig.deactivate_missing}
+                    onCheckedChange={(checked) => setRemaxSyncConfig({ ...remaxSyncConfig, deactivate_missing: checked })}
+                  />
+                  Eksik kayıtları pasifleştir
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    checked={remaxSyncConfig.save_to_settings}
+                    onCheckedChange={(checked) => setRemaxSyncConfig({ ...remaxSyncConfig, save_to_settings: checked })}
+                  />
+                  Ayarları tenant profiline kaydet
+                </label>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => syncRemaxMutation.mutate(remaxSyncConfig)}
+                disabled={syncRemaxMutation.isPending || !remaxSyncConfig.endpoint_url}
+              >
+                <UploadCloud className="mr-2 h-4 w-4" />
+                Remax Senkronize Et
+              </Button>
+              {typeof listingSource?.remax_connector === 'object' && listingSource?.remax_connector?.last_sync_at && (
+                <p className="text-xs text-muted-foreground">
+                  Son sync: {new Date(String(listingSource.remax_connector.last_sync_at)).toLocaleString('tr-TR')}
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
