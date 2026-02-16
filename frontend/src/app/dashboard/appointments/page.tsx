@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { appointmentsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Appointment {
   id: string
@@ -118,6 +119,7 @@ export default function AppointmentsPage() {
         <PageHeader
           title="Randevular"
           description="Randevu planlayıcı tool’u ile oluşturulan kayıtları yönetin."
+          icon={<Icon3DBadge icon={CalendarCheck} from="from-emerald-500" to="to-teal-500" />}
           actions={(
             <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-blue-600 to-violet-600 btn-shimmer shadow-lg shadow-blue-500/25">
               <Plus className="mr-2 h-4 w-4" />

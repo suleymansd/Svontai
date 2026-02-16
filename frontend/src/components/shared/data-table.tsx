@@ -45,11 +45,11 @@ export function DataTable<T>({
     : undefined
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/95 shadow-soft overflow-hidden">
+    <div className="rounded-2xl border border-border/70 bg-card/95 shadow-soft overflow-hidden gradient-border-animated">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-muted/60 to-muted/30">
+            <TableRow className="bg-gradient-to-r from-muted/70 to-muted/30">
               {columns.map((column) => (
                 <TableHead key={column.key} className={cn('text-xs font-semibold uppercase tracking-wide', column.className)}>
                   {column.header}
@@ -80,7 +80,7 @@ export function DataTable<T>({
               <TableRow
                 key={index}
                 className={cn(
-                  'row-hover transition-colors duration-200',
+                  'row-hover transition-all duration-200 hover:bg-primary/5',
                   onRowClick ? 'cursor-pointer' : undefined
                 )}
                 onClick={() => onRowClick?.(row)}

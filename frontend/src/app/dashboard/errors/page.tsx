@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function ErrorsPage() {
   const { toast } = useToast()
@@ -95,6 +96,7 @@ export default function ErrorsPage() {
         <PageHeader
           title="Hata Merkezi"
           description="Sistemdeki hata ve uyarıları takip edin."
+          icon={<Icon3DBadge icon={AlertTriangle} from="from-rose-500" to="to-orange-500" />}
           actions={(
             <Button variant="outline" size="sm" onClick={() => { setLevel(undefined); setSource(undefined) }}>
               <Filter className="h-4 w-4 mr-2" />

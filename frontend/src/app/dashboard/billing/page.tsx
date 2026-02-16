@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Plan {
   id: string
@@ -154,6 +155,7 @@ export default function BillingPage() {
         <PageHeader
           title="Abonelik & Faturalandırma"
           description="Planınızı yönetin ve özelliklerinizi genişletin."
+          icon={<Icon3DBadge icon={CreditCard} from="from-blue-500" to="to-violet-500" />}
         />
 
         <div className="flex justify-end">

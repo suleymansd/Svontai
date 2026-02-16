@@ -40,6 +40,7 @@ import { FilterBar } from '@/components/shared/filter-bar'
 import { DataTable, DataColumn } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { getApiErrorMessage } from '@/lib/api-error'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function LeadsPage() {
   const { toast } = useToast()
@@ -240,6 +241,7 @@ export default function LeadsPage() {
         <PageHeader
           title="Leadler"
           description="Potansiyel müşterilerinizi yönetin ve takip edin."
+          icon={<Icon3DBadge icon={Users} from="from-amber-500" to="to-orange-500" />}
           actions={
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleExport}>

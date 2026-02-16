@@ -39,6 +39,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ToolGuideAssistant } from '@/components/shared/tool-guide'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function BotsPage() {
   const queryClient = useQueryClient()
@@ -118,6 +119,7 @@ export default function BotsPage() {
         <PageHeader
           title="Botlarım"
           description="AI asistanlarınızı yönetin ve performanslarını takip edin."
+          icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />}
           actions={(
             <Button onClick={() => setIsCreateOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />

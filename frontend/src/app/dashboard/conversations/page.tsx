@@ -23,6 +23,7 @@ import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function ConversationsPage() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
@@ -56,6 +57,7 @@ export default function ConversationsPage() {
         <PageHeader
           title="Konuşmalar"
           description="Müşteri konuşmalarını görüntüleyin ve yönetin."
+          icon={<Icon3DBadge icon={MessageSquare} from="from-primary" to="to-violet-500" />}
         />
 
         <div className="grid gap-4 sm:grid-cols-4">

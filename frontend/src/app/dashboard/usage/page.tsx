@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/empty-state'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import Link from 'next/link'
 
 const featureLabels: Record<string, string> = {
@@ -58,6 +59,7 @@ export default function UsagePage() {
         <PageHeader
           title="Kullanım"
           description="Plan limitleri, kalan kullanım ve özellik durumlarını inceleyin."
+          icon={<Icon3DBadge icon={Gauge} from="from-cyan-500" to="to-blue-500" />}
           actions={(
             <Link href="/dashboard/billing">
               <Button variant="outline">Planları Yönet</Button>

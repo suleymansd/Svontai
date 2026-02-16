@@ -19,6 +19,7 @@ import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 export default function DashboardPage() {
   const { data: bots, isLoading: botsLoading } = useQuery({
@@ -43,6 +44,7 @@ export default function DashboardPage() {
         <PageHeader
           title="Hoş Geldiniz"
           description="İşletmenizin performansını ve müşterilerinizin etkileşimini takip edin."
+          icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />}
           actions={(
             <Link href="/dashboard/bots">
               <Button>

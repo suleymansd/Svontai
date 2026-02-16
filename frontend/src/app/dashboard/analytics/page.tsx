@@ -23,6 +23,7 @@ import Link from 'next/link'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface DashboardStats {
   today: {
@@ -203,6 +204,7 @@ export default function AnalyticsPage() {
         <PageHeader
           title="Analitikler"
           description={analyticsLocked ? "Temel metrikleri görüntüleyin (detaylı grafikler ücretli planda)." : "İşletmenizin performansını detaylı inceleyin."}
+          icon={<Icon3DBadge icon={BarChart3} from="from-indigo-500" to="to-violet-500" />}
           actions={(
             analyticsLocked ? (
               <Badge variant="outline" className="gap-1">

@@ -38,6 +38,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { apiKeysApi, authApi, automationApi, subscriptionApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import Link from 'next/link'
 
 const tabs = [
@@ -287,6 +288,7 @@ export default function SettingsPage() {
         <PageHeader
           title="Ayarlar"
           description="Hesap ve işletme ayarlarınızı yönetin."
+          icon={<Icon3DBadge icon={Settings} from="from-slate-600" to="to-zinc-500" />}
         />
 
         <div className="grid lg:grid-cols-4 gap-8">
@@ -299,13 +301,23 @@ export default function SettingsPage() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                      'group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                       activeTab === tab.id
                         ? 'nav-active-glow text-primary'
                         : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                     )}
                   >
-                    <tab.icon className="w-4 h-4" />
+                    <Icon3DBadge
+                      icon={tab.icon}
+                      size="sm"
+                      active
+                      from={activeTab === tab.id ? 'from-primary' : 'from-slate-200 dark:from-slate-800'}
+                      to={activeTab === tab.id ? 'to-violet-500' : 'to-slate-50 dark:to-slate-700'}
+                      className={cn(
+                        'transition-transform duration-200 group-hover:-translate-y-0.5',
+                        activeTab === tab.id && 'ring-2 ring-primary/25'
+                      )}
+                    />
                     {tab.label}
                   </button>
                 ))}

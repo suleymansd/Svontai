@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getApiErrorMessage } from '@/lib/api-error'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 
 interface Ticket {
   id: string
@@ -104,6 +105,7 @@ export default function TicketsPage() {
         <PageHeader
           title="Destek Talepleri"
           description="Ticket'larınızı yönetin ve destek ekibiyle iletişimde kalın."
+          icon={<Icon3DBadge icon={LifeBuoy} from="from-cyan-500" to="to-blue-500" />}
           actions={(
             <Button type="button" onClick={() => setIsCreateOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
