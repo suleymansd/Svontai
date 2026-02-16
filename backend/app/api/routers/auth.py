@@ -29,6 +29,7 @@ from app.models.user import User
 from app.models.session import UserSession
 from app.models.password_reset import PasswordResetCode
 from app.models.email_verification import EmailVerificationCode
+from app.models.onboarding import AuditLog
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -125,6 +126,38 @@ def _require_valid_two_factor_code(user: User, incoming_code: str | None) -> Non
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "TWO_FACTOR_INVALID", "message": "İki faktör doğrulama kodu geçersiz."},
         )
+
+
+def _validate_super_admin_login(user: User, credentials: LoginRequest) -> str | None:
+    if credentials.portal != "super_admin":
+        return None
+
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "ADMIN_PORTAL_FORBIDDEN", "message": "Süper admin giriş yetkiniz bulunmuyor."}
+        )
+
+    session_note = (credentials.admin_session_note or "").strip()
+    if len(session_note) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "ADMIN_SESSION_NOTE_REQUIRED",
+                "message": "Süper admin girişi için en az 8 karakterlik oturum notu zorunludur."
+            }
+        )
+
+    if settings.SUPER_ADMIN_REQUIRE_2FA and not user.two_factor_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "SUPER_ADMIN_2FA_SETUP_REQUIRED",
+                "message": "Süper admin girişi için önce 2FA etkinleştirmelisiniz."
+            }
+        )
+
+    return session_note
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -282,6 +315,8 @@ async def login(
             detail="E-posta adresinizi doğrulayın. Lütfen e-postanıza gelen kodu onaylayın."
         )
 
+    admin_session_note = _validate_super_admin_login(user, credentials)
+
     if user.failed_login_attempts or user.locked_until:
         user.failed_login_attempts = 0
         user.locked_until = None
@@ -301,6 +336,25 @@ async def login(
     )
     refresh_token = create_refresh_token(data={"sub": str(user.id)}, session_id=str(session.id))
     session_service.rotate_session(session, refresh_token)
+
+    if credentials.portal == "super_admin":
+        db.add(
+            AuditLog(
+                tenant_id=None,
+                user_id=user.id,
+                action="super_admin_login",
+                resource_type="auth",
+                resource_id=str(user.id),
+                payload_json={
+                    "portal": credentials.portal,
+                    "session_note": admin_session_note,
+                    "two_factor_enabled": user.two_factor_enabled,
+                    "super_admin_2fa_enforced": settings.SUPER_ADMIN_REQUIRE_2FA
+                },
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("User-Agent")
+            )
+        )
 
     user.last_login = datetime.utcnow()
     db.commit()

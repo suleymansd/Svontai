@@ -2,23 +2,28 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { Loader2, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Loader2, Mail, Lock, ArrowRight, Sparkles, ShieldCheck, UserCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi, meApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
-import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
+import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [portalMode, setPortalMode] = useState<'tenant' | 'super_admin'>(
+    searchParams.get('portal') === 'super_admin' ? 'super_admin' : 'tenant'
+  )
+  const [adminSessionNote, setAdminSessionNote] = useState('')
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -30,8 +35,13 @@ export default function LoginPage() {
     setError('')
 
     try {
+      if (portalMode === 'super_admin') {
+        clearAdminTenantContext()
+      }
       const loginResponse = await authApi.login({
         ...formData,
+        portal: portalMode,
+        admin_session_note: portalMode === 'super_admin' ? adminSessionNote.trim() : undefined,
         two_factor_code: twoFactorRequired ? twoFactorCode : undefined,
       })
       const { access_token, refresh_token } = loginResponse.data
@@ -54,7 +64,12 @@ export default function LoginPage() {
 
       setTwoFactorRequired(false)
       setTwoFactorCode('')
-      router.push(user?.is_admin ? '/admin' : '/dashboard')
+      const adminTenantContext = getAdminTenantContext()
+      if (user?.is_admin) {
+        router.push(portalMode === 'super_admin' || !adminTenantContext?.id ? '/admin' : '/dashboard')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err: any) {
       const detail = err.response?.data?.detail
       const detailCode = detail?.code
@@ -66,6 +81,12 @@ export default function LoginPage() {
       } else if (detailCode === 'TWO_FACTOR_INVALID') {
         setTwoFactorRequired(true)
         setError(detailMessage || 'Doğrulama kodu geçersiz.')
+      } else if (detailCode === 'ADMIN_PORTAL_FORBIDDEN') {
+        setError(detailMessage || 'Bu hesap süper admin paneline erişemez.')
+      } else if (detailCode === 'ADMIN_SESSION_NOTE_REQUIRED') {
+        setError(detailMessage || 'Süper admin giriş notu zorunlu.')
+      } else if (detailCode === 'SUPER_ADMIN_2FA_SETUP_REQUIRED') {
+        setError(detailMessage || 'Süper admin için 2FA etkinleştirilmeli.')
       } else {
         setError(detailMessage || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
       }
@@ -94,6 +115,27 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="rounded-2xl border border-border/70 bg-card/60 p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPortalMode('tenant')}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${portalMode === 'tenant' ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:bg-muted/60'}`}
+                >
+                  <UserCircle2 className="h-4 w-4" />
+                  Kullanıcı Paneli
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPortalMode('super_admin')}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${portalMode === 'super_admin' ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:bg-muted/60'}`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Super Admin
+                </button>
+              </div>
+            </div>
+
             {error && (
               <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />
@@ -143,6 +185,25 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {portalMode === 'super_admin' && (
+              <div className="space-y-2">
+                <Label htmlFor="admin_session_note" className="text-sm font-medium">Oturum Notu</Label>
+                <Input
+                  id="admin_session_note"
+                  type="text"
+                  placeholder="Örn: Tenant denetimi / destek müdahalesi"
+                  className="h-12 rounded-xl"
+                  value={adminSessionNote}
+                  onChange={(e) => setAdminSessionNote(e.target.value)}
+                  required={portalMode === 'super_admin'}
+                  minLength={8}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Güvenlik audit kaydı için bu alan zorunludur.
+                </p>
+              </div>
+            )}
+
             {twoFactorRequired && (
               <div className="space-y-2">
                 <Label htmlFor="two_factor_code" className="text-sm font-medium">Doğrulama Kodu</Label>
@@ -172,7 +233,7 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  Giriş Yap
+                  {portalMode === 'super_admin' ? 'Super Admin Girişi' : 'Giriş Yap'}
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </>
               )}

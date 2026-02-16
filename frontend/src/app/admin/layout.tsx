@@ -59,7 +59,7 @@ export default function AdminLayout({
       try {
         const token = localStorage.getItem('access_token')
         if (!token) {
-          router.push('/login')
+          router.push('/admin/login')
           return
         }
 
@@ -75,7 +75,7 @@ export default function AdminLayout({
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         clearAdminTenantContext()
-        router.push('/login')
+        router.push('/admin/login')
       }
     }
 

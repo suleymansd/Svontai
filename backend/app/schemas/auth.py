@@ -2,6 +2,8 @@
 Pydantic schemas for authentication.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -10,6 +12,8 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
     two_factor_code: str | None = None
+    portal: Literal["tenant", "super_admin"] = "tenant"
+    admin_session_note: str | None = None
 
 
 class TokenResponse(BaseModel):

@@ -225,6 +225,7 @@ web: cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 -
 ENVIRONMENT=prod
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 JWT_SECRET_KEY=change-this-to-a-secure-random-string
+SUPER_ADMIN_REQUIRE_2FA=true
 
 # URLs
 FRONTEND_URL=https://<your-vercel-domain>
@@ -274,6 +275,8 @@ USE_N8N=false
 SVONTAI_TO_N8N_SECRET=change-this-to-a-secure-random-string-svontai-to-n8n
 N8N_TO_SVONTAI_SECRET=change-this-to-a-secure-random-string-n8n-to-svontai
 ```
+
+`SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
 
 ### Frontend (Vercel)
 1. Connect GitHub repository

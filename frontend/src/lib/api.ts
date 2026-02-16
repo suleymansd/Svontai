@@ -82,7 +82,13 @@ export const authApi = {
   register: (data: { email: string; password: string; full_name: string }) =>
     api.post('/auth/register', data),
   
-  login: (data: { email: string; password: string; two_factor_code?: string }) =>
+  login: (data: {
+    email: string
+    password: string
+    two_factor_code?: string
+    portal?: 'tenant' | 'super_admin'
+    admin_session_note?: string
+  }) =>
     api.post('/auth/login', data),
   
   refresh: (refresh_token: string) =>
