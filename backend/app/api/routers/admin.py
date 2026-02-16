@@ -25,11 +25,13 @@ from app.models.incident import Incident
 from app.models.plan import Plan
 from app.models.tool import Tool
 from app.models.onboarding import AuditLog
+from app.models.real_estate import RealEstatePackSettings
 from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
 from app.schemas.tool import ToolCreate, ToolUpdate, ToolResponse
 from app.core.security import get_password_hash
+from app.services.real_estate_service import RealEstateService
 
 from pydantic import BaseModel, EmailStr
 
@@ -169,6 +171,24 @@ class ToolListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class RealEstatePackAdminUpdate(BaseModel):
+    enabled: bool
+    lead_limit_monthly: int = 300
+    pdf_limit_monthly: int = 200
+    followup_limit_monthly: int = 600
+
+
+class RealEstatePackAdminResponse(BaseModel):
+    tenant_id: str
+    enabled: bool
+    lead_limit_monthly: int
+    pdf_limit_monthly: int
+    followup_limit_monthly: int
+    followup_days: int
+    followup_attempts: int
+    persona: str
 
 
 # Helper function to check admin
@@ -660,6 +680,82 @@ async def unsuspend_tenant(
     )
     db.commit()
     return {"status": "active"}
+
+
+@router.get("/tenants/{tenant_id}/real-estate-pack", response_model=RealEstatePackAdminResponse)
+async def get_tenant_real_estate_pack(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    service = RealEstateService(db)
+    settings = service.get_or_create_settings(tenant.id)
+    enabled = settings.enabled or bool(db.query(FeatureFlag).filter(
+        FeatureFlag.tenant_id == tenant.id,
+        FeatureFlag.key == "real_estate_pack",
+        FeatureFlag.enabled.is_(True)
+    ).first())
+
+    return RealEstatePackAdminResponse(
+        tenant_id=str(tenant.id),
+        enabled=enabled,
+        lead_limit_monthly=settings.lead_limit_monthly,
+        pdf_limit_monthly=settings.pdf_limit_monthly,
+        followup_limit_monthly=settings.followup_limit_monthly,
+        followup_days=settings.followup_days,
+        followup_attempts=settings.followup_attempts,
+        persona=settings.persona,
+    )
+
+
+@router.put("/tenants/{tenant_id}/real-estate-pack", response_model=RealEstatePackAdminResponse)
+async def update_tenant_real_estate_pack(
+    tenant_id: UUID,
+    payload: RealEstatePackAdminUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    service = RealEstateService(db)
+    settings = service.upsert_settings(
+        tenant.id,
+        {
+            "enabled": payload.enabled,
+            "lead_limit_monthly": payload.lead_limit_monthly,
+            "pdf_limit_monthly": payload.pdf_limit_monthly,
+            "followup_limit_monthly": payload.followup_limit_monthly,
+        }
+    )
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.real_estate_pack.update",
+        "tenant",
+        str(tenant.id),
+        payload.model_dump(),
+        request=request
+    )
+    db.commit()
+
+    return RealEstatePackAdminResponse(
+        tenant_id=str(tenant.id),
+        enabled=settings.enabled,
+        lead_limit_monthly=settings.lead_limit_monthly,
+        pdf_limit_monthly=settings.pdf_limit_monthly,
+        followup_limit_monthly=settings.followup_limit_monthly,
+        followup_days=settings.followup_days,
+        followup_attempts=settings.followup_attempts,
+        persona=settings.persona,
+    )
 
 
 @router.get("/audit", response_model=list[AuditLogResponse])

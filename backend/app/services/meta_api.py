@@ -523,6 +523,143 @@ class MetaAPIService:
                 )
             
             return data
+
+    async def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        to: str,
+        template_name: str,
+        language_code: str = "tr",
+        components: list[dict] | None = None
+    ) -> Dict[str, Any]:
+        """
+        Send an approved template message via WhatsApp.
+        """
+        url = f"{self.graph_base}/{phone_number_id}/messages"
+
+        payload: dict[str, Any] = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code}
+            }
+        }
+
+        if components:
+            payload["template"]["components"] = components
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=payload
+            )
+            data = response.json()
+
+            if "error" in data:
+                raise MetaAPIError(
+                    message=data["error"].get("message", "Failed to send template message"),
+                    error_code=data["error"].get("code"),
+                    details=data["error"]
+                )
+
+            return data
+
+    async def upload_media(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        filename: str,
+        content_bytes: bytes,
+        mime_type: str = "application/pdf",
+    ) -> Dict[str, Any]:
+        """
+        Upload media to WhatsApp and return media id.
+        """
+        url = f"{self.graph_base}/{phone_number_id}/media"
+        files = {
+            "file": (filename, content_bytes, mime_type),
+        }
+        form_data = {
+            "messaging_product": "whatsapp",
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                data=form_data,
+                files=files,
+            )
+            data = response.json()
+            if "error" in data or not data.get("id"):
+                raise MetaAPIError(
+                    message=data.get("error", {}).get("message", "Failed to upload media"),
+                    error_code=data.get("error", {}).get("code"),
+                    details=data.get("error", data),
+                )
+            return data
+
+    async def send_document_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        to: str,
+        *,
+        media_id: str | None = None,
+        link: str | None = None,
+        filename: str | None = None,
+        caption: str | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Send WhatsApp document message by media id or public link.
+        """
+        if not media_id and not link:
+            raise MetaAPIError("Document send requires media_id or link")
+
+        url = f"{self.graph_base}/{phone_number_id}/messages"
+        document_payload: dict[str, Any] = {}
+        if media_id:
+            document_payload["id"] = media_id
+        if link:
+            document_payload["link"] = link
+        if filename:
+            document_payload["filename"] = filename
+        if caption:
+            document_payload["caption"] = caption
+
+        payload: dict[str, Any] = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "document",
+            "document": document_payload,
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            data = response.json()
+            if "error" in data:
+                raise MetaAPIError(
+                    message=data["error"].get("message", "Failed to send document message"),
+                    error_code=data["error"].get("code"),
+                    details=data["error"],
+                )
+            return data
     
     def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """

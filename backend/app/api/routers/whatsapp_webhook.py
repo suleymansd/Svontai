@@ -286,6 +286,7 @@ async def process_message_event(
                 message_content=content,
                 message_type=message_type,
                 message_id=message_id,
+                correlation_id=correlation_id,
                 db=db,
                 timestamp=timestamp,
                 raw_payload=value,  # Pass raw payload for n8n
@@ -333,6 +334,7 @@ async def handle_incoming_message(
     message_content: str,
     message_type: str,
     message_id: str,
+    correlation_id: Optional[str],
     db: Session,
     timestamp: Optional[str] = None,
     raw_payload: Optional[dict] = None,
@@ -351,12 +353,15 @@ async def handle_incoming_message(
     IMPORTANT: n8n triggering is done via BackgroundTasks to ensure
     the webhook returns HTTP 200 quickly (Meta requires response within 20s).
     """
+    correlation_id = correlation_id or str(uuid.uuid4())
+
     from app.models.bot import Bot
     from app.models.conversation import Conversation, ConversationSource, ConversationStatus
     from app.models.message import Message, MessageSender
     from app.models.knowledge import BotKnowledgeItem
     from app.services.ai_service import ai_service
     from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
+    from app.services.real_estate_service import RealEstateService
     from app.models.automation import AutomationChannel, AutomationRunStatus
     
     # Find a bot for this tenant
@@ -412,6 +417,64 @@ async def handle_incoming_message(
             f"AI paused for conversation {conversation.id}; "
             f"skipping auto-reply for WhatsApp message {message_id}"
         )
+        return
+
+    # ===========================================
+    # REAL ESTATE PACK ROUTING (MVP)
+    # ===========================================
+    # Runs before n8n/legacy and only handles messages when tenant pack is enabled.
+    try:
+        re_result = RealEstateService(db).handle_inbound_whatsapp_message(
+            tenant_id=account.tenant_id,
+            bot=bot,
+            conversation=conversation,
+            from_number=from_number,
+            contact_name=contact_name,
+            text=message_content,
+        )
+    except Exception as exc:
+        re_result = None
+        logger.error("Real Estate Pack handling failed: %s", exc, exc_info=True)
+        SystemEventService(db).log(
+            tenant_id=str(account.tenant_id),
+            source="real_estate_pack",
+            level="error",
+            code="RE_PACK_HANDLE_ERROR",
+            message=str(exc)[:500],
+            meta_json={"conversation_id": str(conversation.id), "message_id": message_id},
+            correlation_id=correlation_id,
+        )
+
+    if re_result and re_result.handled:
+        if re_result.response_text:
+            access_token = decrypt_token(account.access_token_encrypted)
+            if access_token:
+                try:
+                    await meta_api_service.send_text_message(
+                        access_token=access_token,
+                        phone_number_id=account.phone_number_id,
+                        to=from_number,
+                        text=re_result.response_text
+                    )
+                    db.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            sender=MessageSender.BOT.value,
+                            content=re_result.response_text,
+                        )
+                    )
+                    db.commit()
+                except Exception as exc:
+                    logger.error("Real Estate Pack response send failed: %s", exc, exc_info=True)
+                    SystemEventService(db).log(
+                        tenant_id=str(account.tenant_id),
+                        source="real_estate_pack",
+                        level="error",
+                        code="RE_PACK_SEND_FAILED",
+                        message=str(exc)[:500],
+                        meta_json={"conversation_id": str(conversation.id), "message_id": message_id},
+                        correlation_id=correlation_id,
+                    )
         return
     
     # ===========================================

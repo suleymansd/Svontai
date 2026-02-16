@@ -22,6 +22,7 @@ import { useToolStore } from '@/lib/store'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import { ToolIcon3D } from '@/components/tools/ToolIcon3D'
+import { RealEstatePackPanel } from '@/components/tools/RealEstatePackPanel'
 
 interface WorkspaceNote {
   id: string
@@ -64,6 +65,7 @@ export default function ToolWorkspacePage() {
   const storedConfig = toolId ? toolConfigs[toolId] : undefined
   const isInstalled = toolId ? installedToolIds.includes(toolId) : false
   const isNoteTool = toolId === 'tool-note'
+  const isRealEstateTool = toolId === 'tool-real-estate-pack'
 
   useEffect(() => {
     if (!catalogTool) {
@@ -233,6 +235,7 @@ export default function ToolWorkspacePage() {
             <TabsTrigger value="customization">Genel</TabsTrigger>
             <TabsTrigger value="integration">Entegrasyon</TabsTrigger>
             <TabsTrigger value="internal">İç Düzenleme</TabsTrigger>
+            {isRealEstateTool && <TabsTrigger value="real-estate">Real Estate Pack</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="customization">
@@ -540,6 +543,12 @@ export default function ToolWorkspacePage() {
               </div>
             )}
           </TabsContent>
+
+          {isRealEstateTool && (
+            <TabsContent value="real-estate">
+              <RealEstatePackPanel />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </ContentContainer>

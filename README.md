@@ -163,6 +163,15 @@ SvontAi uses the official **Embedded Signup** flow:
 
 See `docs/WHATSAPP_EMBEDDED_SIGNUP.md` for details.
 
+## 🏠 Real Estate Pack (MVP)
+
+Real Estate Pack adds sector-specific automation for real estate teams on top of the existing Tool Engine:
+- WhatsApp lead segmentation + buyer/seller intent flow
+- Listing matching + follow-up jobs + appointment flow
+- Tenant-scoped settings/templates/analytics endpoints
+
+Technical design and endpoint list: `docs/real_estate_pack.md`
+
 ## 🔒 Security
 
 - JWT-based authentication with refresh tokens
@@ -248,6 +257,17 @@ META_APP_SECRET=...
 META_CONFIG_ID=...
 META_REDIRECT_URI=https://<your-railway-domain>/api/onboarding/whatsapp/callback
 GRAPH_API_VERSION=v18.0
+
+# Optional: Real Estate Pack automation
+REAL_ESTATE_AUTOMATION_ENABLED=true
+REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS=300
+REAL_ESTATE_WEEKLY_REPORT_DAY=0
+REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC=8
+
+# Optional: Google Calendar OAuth (Real Estate Pack)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://<your-railway-domain>/real-estate/calendar/google/callback
 
 # Optional: n8n
 USE_N8N=false

@@ -29,6 +29,17 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.appointment import Appointment
 from app.models.note import WorkspaceNote
 from app.models.api_key import TenantApiKey
+from app.models.real_estate import (
+    RealEstatePackSettings,
+    RealEstateGoogleCalendarIntegration,
+    RealEstateListing,
+    RealEstateConversationState,
+    RealEstateLeadListingEvent,
+    RealEstateAppointment,
+    RealEstateFollowUpJob,
+    RealEstateTemplateRegistry,
+    RealEstateWeeklyReport,
+)
 
 __all__ = [
     # Core models
@@ -92,5 +103,14 @@ __all__ = [
     "EmailVerificationCode",
     "Appointment",
     "WorkspaceNote",
-    "TenantApiKey"
+    "TenantApiKey",
+    "RealEstatePackSettings",
+    "RealEstateGoogleCalendarIntegration",
+    "RealEstateListing",
+    "RealEstateConversationState",
+    "RealEstateLeadListingEvent",
+    "RealEstateAppointment",
+    "RealEstateFollowUpJob",
+    "RealEstateTemplateRegistry",
+    "RealEstateWeeklyReport",
 ]

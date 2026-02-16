@@ -210,6 +210,14 @@ export const adminApi = {
   getTenant: (id: string) => api.get(`/admin/tenants/${id}`),
   updateTenantFeatureFlags: (id: string, enabled_flags: string[]) =>
     api.patch(`/admin/tenants/${id}/feature-flags`, { enabled_flags }),
+  getTenantRealEstatePack: (id: string) =>
+    api.get(`/admin/tenants/${id}/real-estate-pack`),
+  updateTenantRealEstatePack: (id: string, data: {
+    enabled: boolean
+    lead_limit_monthly: number
+    pdf_limit_monthly: number
+    followup_limit_monthly: number
+  }) => api.put(`/admin/tenants/${id}/real-estate-pack`, data),
   suspendTenant: (id: string) => api.post(`/admin/tenants/${id}/suspend`),
   unsuspendTenant: (id: string) => api.post(`/admin/tenants/${id}/unsuspend`),
   deleteTenant: (id: string) => api.delete(`/admin/tenants/${id}`),
@@ -399,6 +407,131 @@ export const apiKeysApi = {
   list: (params?: { include_revoked?: boolean }) => api.get('/api-keys', { params }),
   create: (data: { name: string; current_password: string }) => api.post('/api-keys', data),
   revoke: (id: string, data: { current_password: string }) => api.delete(`/api-keys/${id}`, { data }),
+}
+
+// Real Estate Pack API
+export const realEstateApi = {
+  getSettings: () => api.get('/real-estate/settings'),
+  updateSettings: (data: Partial<{
+    enabled: boolean
+    persona: 'luxury' | 'pro' | 'warm'
+    lead_limit_monthly: number
+    pdf_limit_monthly: number
+    followup_limit_monthly: number
+    followup_days: number
+    followup_attempts: number
+    question_flow_buyer: Record<string, unknown>
+    question_flow_seller: Record<string, unknown>
+    listings_source: Record<string, unknown>
+    manual_availability: unknown[]
+    google_calendar_enabled: boolean
+    google_calendar_email: string
+    report_logo_url: string
+    report_brand_color: string
+    report_footer: string
+  }>) => api.put('/real-estate/settings', data),
+  listListings: (params?: { search?: string; sale_rent?: 'sale' | 'rent'; active_only?: boolean }) =>
+    api.get('/real-estate/listings', { params }),
+  createListing: (data: {
+    title: string
+    description?: string
+    sale_rent: 'sale' | 'rent'
+    property_type: string
+    location_text: string
+    lat?: number
+    lng?: number
+    price: number
+    currency?: string
+    m2?: number
+    rooms?: string
+    features?: Record<string, unknown>
+    media?: unknown[]
+    url?: string
+    is_active?: boolean
+  }) => api.post('/real-estate/listings', data),
+  updateListing: (id: string, data: Partial<{
+    title: string
+    description: string
+    sale_rent: 'sale' | 'rent'
+    property_type: string
+    location_text: string
+    lat: number
+    lng: number
+    price: number
+    currency: string
+    m2: number
+    rooms: string
+    features: Record<string, unknown>
+    media: unknown[]
+    url: string
+    is_active: boolean
+  }>) => api.patch(`/real-estate/listings/${id}`, data),
+  deleteListing: (id: string) => api.delete(`/real-estate/listings/${id}`),
+  importListingsCsv: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/real-estate/listings/import/csv', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  listTemplates: () => api.get('/real-estate/templates'),
+  createTemplate: (data: {
+    name: string
+    category: string
+    language?: string
+    meta_template_id?: string
+    variables_schema?: Record<string, unknown>
+    status?: string
+    content_preview?: string
+    is_approved?: boolean
+  }) => api.post('/real-estate/templates', data),
+  updateTemplate: (id: string, data: Partial<{
+    name: string
+    category: string
+    language: string
+    meta_template_id: string
+    variables_schema: Record<string, unknown>
+    status: string
+    content_preview: string
+    is_approved: boolean
+  }>) => api.patch(`/real-estate/templates/${id}`, data),
+  suggestListingsForLead: (leadId: string) => api.post(`/real-estate/leads/${leadId}/suggest-listings`),
+  bookAppointment: (data: {
+    lead_id: string
+    agent_id?: string
+    listing_id?: string
+    start_at: string
+    end_at?: string
+    meeting_mode?: string
+    notes?: string
+  }) => api.post('/real-estate/appointments/book', data),
+  runFollowups: () => api.post('/real-estate/followups/run'),
+  getWeeklyAnalytics: () => api.get('/real-estate/analytics/weekly'),
+  listAgents: () => api.get('/real-estate/agents'),
+  getAiSuggestedListings: (leadId: string, params?: { limit?: number }) =>
+    api.get(`/real-estate/leads/${leadId}/ai-suggested-listings`, { params }),
+  recordListingEvent: (leadId: string, data: {
+    listing_id: string
+    event: 'sent' | 'clicked' | 'saved' | 'ignored' | 'viewed' | 'offer'
+    meta_json?: Record<string, unknown>
+  }) => api.post(`/real-estate/leads/${leadId}/listing-events`, data),
+  startGoogleCalendarOAuth: (params?: { agent_id?: string }) =>
+    api.get('/real-estate/calendar/google/start', { params }),
+  getGoogleCalendarStatus: (params?: { agent_id?: string }) =>
+    api.get('/real-estate/calendar/google/status', { params }),
+  disconnectGoogleCalendar: (params?: { agent_id?: string }) =>
+    api.delete('/real-estate/calendar/google/disconnect', { params }),
+  generateListingSummaryPdf: (data: {
+    listing_ids: string[]
+    lead_id?: string
+    send_whatsapp?: boolean
+  }) => api.post('/real-estate/pdf/generate', data),
+  downloadListingSummaryPdf: (data: {
+    listing_ids: string[]
+    lead_id?: string
+  }) => api.post('/real-estate/pdf/download', data, { responseType: 'blob' }),
+  sendSellerServiceReport: (leadId: string) => api.post(`/real-estate/leads/${leadId}/seller-service-report`),
+  sendWeeklyReportNow: () => api.post('/real-estate/reports/weekly/send'),
 }
 
 // Automation API (n8n Integration)

@@ -101,6 +101,17 @@ class Settings(BaseSettings):
     APPOINTMENT_REMINDER_ENABLED: bool = True
     APPOINTMENT_REMINDER_INTERVAL_SECONDS: int = 60
 
+    # Real Estate automation scheduler
+    REAL_ESTATE_AUTOMATION_ENABLED: bool = True
+    REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS: int = 300
+    REAL_ESTATE_WEEKLY_REPORT_DAY: int = 0  # Monday=0 ... Sunday=6
+    REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC: int = 8
+
+    # Google Calendar OAuth (Real Estate Pack)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/real-estate/calendar/google/callback"
+
     # Payments
     PAYMENTS_ENABLED: bool = False
     PAYMENTS_PROVIDER: Literal["stripe"] = "stripe"

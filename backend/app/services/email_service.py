@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import base64
 from email.message import EmailMessage
 from typing import Sequence
 
@@ -30,7 +31,8 @@ class EmailService:
     def send_email(
         recipients: str | Sequence[str],
         subject: str,
-        text_body: str
+        text_body: str,
+        attachments: Sequence[dict] | None = None,
     ) -> bool:
         """Send an email. Returns False when disabled or on failure."""
         normalized = EmailService._normalize_recipients(recipients)
@@ -48,20 +50,23 @@ class EmailService:
             return EmailService._send_via_resend(
                 recipients=normalized,
                 subject=subject,
-                text_body=text_body
+                text_body=text_body,
+                attachments=attachments,
             )
 
         return EmailService._send_via_smtp(
             recipients=normalized,
             subject=subject,
-            text_body=text_body
+            text_body=text_body,
+            attachments=attachments,
         )
 
     @staticmethod
     def _send_via_resend(
         recipients: list[str],
         subject: str,
-        text_body: str
+        text_body: str,
+        attachments: Sequence[dict] | None = None,
     ) -> bool:
         api_key = settings.RESEND_API_KEY.strip()
         if not api_key:
@@ -78,6 +83,15 @@ class EmailService:
             "subject": subject,
             "text": text_body,
         }
+        if attachments:
+            payload["attachments"] = [
+                {
+                    "filename": item.get("filename", "attachment.bin"),
+                    "content": base64.b64encode(item.get("content", b"")).decode("ascii"),
+                }
+                for item in attachments
+                if item.get("content")
+            ]
 
         try:
             response = httpx.post(
@@ -105,7 +119,8 @@ class EmailService:
     def _send_via_smtp(
         recipients: list[str],
         subject: str,
-        text_body: str
+        text_body: str,
+        attachments: Sequence[dict] | None = None,
     ) -> bool:
         message = EmailMessage()
         from_name = settings.SMTP_FROM_NAME.strip()
@@ -114,6 +129,19 @@ class EmailService:
         message["To"] = ", ".join(recipients)
         message["Subject"] = subject
         message.set_content(text_body)
+        for item in attachments or []:
+            raw_content = item.get("content")
+            if not raw_content:
+                continue
+            filename = item.get("filename", "attachment.bin")
+            mime_type = item.get("mime_type", "application/octet-stream")
+            main_type, _, sub_type = mime_type.partition("/")
+            message.add_attachment(
+                raw_content,
+                maintype=main_type or "application",
+                subtype=sub_type or "octet-stream",
+                filename=filename,
+            )
 
         try:
             if settings.SMTP_USE_SSL:
@@ -272,3 +300,36 @@ class EmailService:
             "SvontAI"
         )
         return EmailService.send_email(email, subject, text)
+
+    @staticmethod
+    def send_real_estate_weekly_report_email(
+        recipients: str | Sequence[str],
+        tenant_name: str,
+        week_start: str,
+        metrics: dict,
+        pdf_bytes: bytes | None = None,
+    ) -> bool:
+        subject = f"{tenant_name} • Haftalık Real Estate Raporu ({week_start})"
+        text = (
+            f"Merhaba,\n\n"
+            f"{tenant_name} için haftalık rapor hazırlandı.\n"
+            f"Hafta başlangıcı: {week_start}\n\n"
+            f"Lead: {metrics.get('lead_count', 0)}\n"
+            f"Aktif konuşma: {metrics.get('active_conversations', 0)}\n"
+            f"Randevu: {metrics.get('appointment_count', 0)}\n"
+            f"Dönüşüm: %{metrics.get('conversion_rate_percent', 0)}\n\n"
+            "SvontAI"
+        )
+        attachments = None
+        if pdf_bytes:
+            attachments = [{
+                "filename": f"real-estate-weekly-{week_start}.pdf",
+                "mime_type": "application/pdf",
+                "content": pdf_bytes,
+            }]
+        return EmailService.send_email(
+            recipients=recipients,
+            subject=subject,
+            text_body=text,
+            attachments=attachments,
+        )

@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   Bot,
   Brain,
+  Building2,
   CalendarCheck,
   Contact,
   CreditCard,
@@ -25,6 +26,16 @@ export interface ToolCatalogItem {
 }
 
 export const TOOL_CATALOG: ToolCatalogItem[] = [
+  {
+    id: 'tool-real-estate-pack',
+    name: 'Real Estate Pack',
+    category: 'Industry',
+    description: 'Gayrimenkul lead segmentasyonu, eşleştirme, randevu ve follow-up otomasyonu.',
+    icon: 'RE',
+    tags: ['Real Estate', 'WhatsApp', 'Lead'],
+    menuIcon: Building2,
+    accent: { from: 'from-amber-500', to: 'to-orange-500' },
+  },
   {
     id: 'tool-whatsapp-crm',
     name: 'WhatsApp CRM',

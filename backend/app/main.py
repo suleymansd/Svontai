@@ -39,7 +39,9 @@ from app.api.routers import (
     appointments_router,
     notes_router,
     payments_router,
-    api_keys_router
+    api_keys_router,
+    real_estate_router,
+    webhooks_alias_router,
 )
 
 # Configure logging
@@ -69,6 +71,30 @@ async def _appointment_reminder_loop() -> None:
         await asyncio.sleep(settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS)
 
 
+async def _real_estate_automation_loop() -> None:
+    from app.db.session import SessionLocal
+    from app.services.real_estate_service import RealEstateService
+
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                result = await RealEstateService(db).run_automation_cycle()
+                if result.get("tenant_count", 0) > 0:
+                    logger.info(
+                        "Real Estate automation cycle completed: tenants=%s followups_sent=%s weekly_sent=%s",
+                        result.get("tenant_count", 0),
+                        result.get("followups", {}).get("sent", 0),
+                        result.get("weekly_reports_sent", 0),
+                    )
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning("Real Estate automation loop error: %s", exc)
+
+        await asyncio.sleep(settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
@@ -77,8 +103,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.ENVIRONMENT}")
 
     reminder_task: asyncio.Task | None = None
+    real_estate_task: asyncio.Task | None = None
     if settings.APPOINTMENT_REMINDER_ENABLED and settings.EMAIL_ENABLED:
         reminder_task = asyncio.create_task(_appointment_reminder_loop())
+    if settings.REAL_ESTATE_AUTOMATION_ENABLED:
+        real_estate_task = asyncio.create_task(_real_estate_automation_loop())
     
     # Initialize default plans if needed
     from app.db.session import SessionLocal
@@ -102,6 +131,10 @@ async def lifespan(app: FastAPI):
         reminder_task.cancel()
         with suppress(asyncio.CancelledError):
             await reminder_task
+    if real_estate_task:
+        real_estate_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await real_estate_task
     logger.info("SvontAi API shutting down...")
 
 
@@ -185,6 +218,8 @@ app.include_router(appointments_router)
 app.include_router(notes_router)
 app.include_router(payments_router)
 app.include_router(api_keys_router)
+app.include_router(real_estate_router)
+app.include_router(webhooks_alias_router)
 
 
 @app.get("/")

@@ -43,6 +43,11 @@ class Message(Base):
         Text,
         nullable=False
     )
+    external_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True
+    )
     raw_payload: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True
