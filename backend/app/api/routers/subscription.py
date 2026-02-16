@@ -3,7 +3,7 @@ Subscription API router for managing plans and subscriptions.
 """
 
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.models.subscription import TenantSubscription
 from app.services.subscription_service import SubscriptionService
 from app.services.audit_log_service import AuditLogService
 from app.services.email_service import EmailService
+from app.services.payment_service import PaymentService
 
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
@@ -77,6 +78,7 @@ class UsageStatsResponse(BaseModel):
 
 class UpgradeRequest(BaseModel):
     plan_name: str
+    interval: Literal["monthly", "yearly"] = "monthly"
 
 
 # Endpoints
@@ -169,13 +171,6 @@ async def upgrade_subscription(
 ):
     """
     Upgrade to a new plan.
-    
-    NOTE: This is a stub for payment integration.
-    In production, this would:
-    1. Create a checkout session with payment provider (Stripe, Iyzico, etc.)
-    2. Redirect user to payment page
-    3. Handle webhook for successful payment
-    4. Then upgrade the subscription
     """
     service = SubscriptionService(db)
     
@@ -187,14 +182,48 @@ async def upgrade_subscription(
             detail="Plan bulunamadı"
         )
 
-    if (float(plan.price_monthly) > 0 or float(plan.price_yearly) > 0) and not settings.ALLOW_UNPAID_PLAN_UPGRADES:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Bu plan için ödeme gerekli. Lütfen ödeme sayfasından checkout başlatın."
+    requires_payment = float(plan.price_monthly) > 0 or float(plan.price_yearly) > 0
+    if requires_payment and not settings.ALLOW_UNPAID_PLAN_UPGRADES:
+        if not settings.PAYMENTS_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Ödeme altyapısı aktif değil. Lütfen yöneticiyle iletişime geçin."
+            )
+
+        checkout = PaymentService(db).create_checkout_session(
+            tenant_id=tenant.id,
+            user_id=current_user.id,
+            user_email=current_user.email,
+            tenant_name=tenant.name,
+            plan=plan,
+            interval=request.interval,
         )
-    
-    # For demo/development: Direct upgrade
-    # TODO: Integrate with payment provider
+
+        AuditLogService(db).log(
+            action="subscription.upgrade.checkout",
+            tenant_id=str(tenant.id),
+            user_id=str(current_user.id),
+            resource_type="subscription",
+            resource_id=str(tenant.id),
+            payload={
+                "plan_name": request.plan_name,
+                "interval": request.interval,
+                "provider": checkout.provider,
+            },
+            ip_address=request_meta.client.host if request_meta else None,
+            user_agent=request_meta.headers.get("User-Agent") if request_meta else None
+        )
+
+        return {
+            "success": True,
+            "message": "Ödeme oturumu oluşturuldu. Yönlendiriliyorsunuz.",
+            "subscription_id": None,
+            "plan": plan.display_name,
+            "checkout_url": checkout.checkout_url,
+            "requires_payment": True,
+            "payment_provider": checkout.provider,
+        }
+
     subscription = service.upgrade_plan(tenant.id, request.plan_name)
     AuditLogService(db).log(
         action="subscription.upgrade",
@@ -220,9 +249,8 @@ async def upgrade_subscription(
         "message": f"{plan.display_name} planına yükseltildi!",
         "subscription_id": str(subscription.id),
         "plan": plan.display_name,
-        # In production, return checkout URL
         "checkout_url": None,
-        "requires_payment": plan.price_monthly > 0
+        "requires_payment": requires_payment
     }
 
 
