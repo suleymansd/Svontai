@@ -34,6 +34,7 @@ from app.api.routers.telephony import router as telephony_router
 from app.api.routers.voice_intent import router as voice_intent_router
 from app.api.routers.voice_call_summary import router as voice_call_summary_router
 from app.api.routers.n8n_tools import router as n8n_tools_router
+from app.api.routers.debug import router as debug_router
 
 __all__ = [
     "auth_router",
@@ -71,4 +72,5 @@ __all__ = [
     "voice_intent_router",
     "voice_call_summary_router",
     "n8n_tools_router",
+    "debug_router",
 ]

@@ -50,6 +50,7 @@ from app.api.routers import (
     telephony_router,
     voice_intent_router,
     voice_call_summary_router,
+    debug_router,
 )
 
 # Configure logging
@@ -269,6 +270,10 @@ app.include_router(voice_intent_router)
 app.include_router(voice_call_summary_router)
 app.include_router(calls_router)
 app.include_router(telephony_router)
+
+# Temporary debug endpoints (development only)
+if settings.ENVIRONMENT == "dev":
+    app.include_router(debug_router)
 
 
 @app.get("/")

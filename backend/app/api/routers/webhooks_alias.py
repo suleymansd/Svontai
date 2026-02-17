@@ -17,10 +17,13 @@ from app.api.routers.whatsapp_webhook import webhook_events, webhook_verificatio
 
 router = APIRouter(prefix="/webhooks", tags=["Webhook Alias"])
 
-_WEBHOOK_USERNAME = (os.getenv("WEBHOOK_USERNAME") or "").strip()
-_WEBHOOK_PASSWORD = (os.getenv("WEBHOOK_PASSWORD") or "").strip()
+def _get_webhook_credentials() -> tuple[str, str]:
+    username = (os.getenv("WEBHOOK_USERNAME") or "").strip()
+    password = (os.getenv("WEBHOOK_PASSWORD") or "").strip()
+    return username, password
 
-if not _WEBHOOK_USERNAME or not _WEBHOOK_PASSWORD:
+_startup_username, _startup_password = _get_webhook_credentials()
+if not _startup_username or not _startup_password:
     raise RuntimeError(
         "Missing webhook credentials. Set WEBHOOK_USERNAME and WEBHOOK_PASSWORD "
         "environment variables to secure POST /webhooks/whatsapp."
@@ -35,8 +38,9 @@ def _verify_webhook_basic_auth(
     username = credentials.username if credentials else ""
     password = credentials.password if credentials else ""
 
-    username_ok = secrets.compare_digest(username or "", _WEBHOOK_USERNAME)
-    password_ok = secrets.compare_digest(password or "", _WEBHOOK_PASSWORD)
+    expected_username, expected_password = _get_webhook_credentials()
+    username_ok = secrets.compare_digest(username or "", expected_username)
+    password_ok = secrets.compare_digest(password or "", expected_password)
     if not (username_ok and password_ok):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
