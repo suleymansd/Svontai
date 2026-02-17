@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
 from app.core.n8n_security import generate_svontai_to_n8n_headers, create_n8n_jwt_token
 from app.services.system_event_service import SystemEventService
+from app.services.usage_counter_service import UsageCounterService
 from app.models.automation import (
     AutomationRun,
     AutomationRunStatus,
@@ -486,6 +487,14 @@ class N8NClient:
                 
                 run.mark_success(response_data)
                 self.db.commit()
+
+                # Billing-aware metering: a successful webhook trigger counts as a workflow run.
+                # (Tool calls are metered separately via /api/v1/n8n/usage/increment or internal services.)
+                try:
+                    UsageCounterService(self.db).increment_workflow_runs(tenant_id, 1)
+                except Exception:
+                    # Never fail the workflow due to metering.
+                    pass
                 
                 logger.info(
                     f"n8n workflow triggered successfully. "
