@@ -33,6 +33,7 @@ from app.api.routers import (
     operator_router,
     channels_router,
     n8n_tools_router,
+    n8n_reply_router,
     automation_router,
     me_router,
     feature_flags_router,
@@ -251,6 +252,7 @@ app.include_router(admin_router)
 # Include routers - n8n Channel Callbacks
 app.include_router(channels_router)
 app.include_router(n8n_tools_router)
+app.include_router(n8n_reply_router)
 
 # Include routers - Automation Settings
 app.include_router(automation_router)
