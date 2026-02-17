@@ -1,0 +1,663 @@
+{
+  "name": "SvontAI - Router v3 (OpenAI Template)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-router",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "svontai-router"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $input.first().json;\n\nlet body = req.body;\nif (typeof body === 'string') {\n  try { body = JSON.parse(body); } catch { body = { raw: req.body }; }\n}\n\nconst headers = req.headers || {};\n\n// Keep full normalized payload; SvontAI already sends canonical structure.\nreturn [{ json: { ...body, headers, originalBody: body } }];"
+      },
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfunction getHeader(headers, name) {\n  if (!headers) return undefined;\n  const lower = name.toLowerCase();\n  const direct = headers[name];\n  if (direct !== undefined) return direct;\n  for (const k of Object.keys(headers)) {\n    if (String(k).toLowerCase() === lower) return headers[k];\n  }\n  return undefined;\n}\n\nfunction stable(obj) {\n  if (obj === null || obj === undefined) return obj;\n  if (Array.isArray(obj)) return obj.map(stable);\n  if (typeof obj !== 'object') return obj;\n  const out = {};\n  for (const k of Object.keys(obj).sort()) out[k] = stable(obj[k]);\n  return out;\n}\n\nconst input = $input.first().json;\nconst headers = input.headers || {};\n\nconst tsRaw = getHeader(headers, 'X-SvontAI-Timestamp');\nconst sig = getHeader(headers, 'X-SvontAI-Signature');\n\nconst secret = process.env.SVONTAI_TO_N8N_SECRET || '';\n\nlet authOk = false;\nlet error = '';\n\nif (!secret) {\n  error = 'Missing SVONTAI_TO_N8N_SECRET in n8n env';\n} else if (!tsRaw || !sig) {\n  error = 'Missing signature headers';\n} else {\n  const ts = parseInt(String(tsRaw), 10);\n  if (!Number.isFinite(ts)) {\n    error = 'Invalid timestamp';\n  } else {\n    const now = Math.floor(Date.now() / 1000);\n    if (Math.abs(now - ts) > 300) {\n      error = 'Signature expired';\n    } else {\n      const payload = JSON.stringify(stable(input.originalBody || {}));\n      const message = `${ts}.${payload}`;\n      const expected = crypto.createHmac('sha256', secret).update(message, 'utf8').digest('hex');\n      const sigBuf = Buffer.from(String(sig));\n      const expBuf = Buffer.from(expected);\n      if (sigBuf.length !== expBuf.length) {\n        authOk = false;\n        error = 'Invalid signature';\n      } else {\n        authOk = crypto.timingSafeEqual(sigBuf, expBuf);\n        if (!authOk) error = 'Invalid signature';\n      }\n    }\n  }\n}\n\nreturn [{ json: { ...input, authOk, authError: error } }];"
+      },
+      "id": "verify",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.authOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "isEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "auth-ok",
+      "name": "Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst responseText = `Authentication failed: ${input.authError || 'unknown'}`;\nreturn [{ json: { ...input, ok: false, responseText, endCall: true } }];"
+      },
+      "id": "auth-fail",
+      "name": "Auth Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "voice_call_intent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-call-intent",
+      "name": "Is Call Intent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.leads_upsert }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={\"Authorization\":\"Bearer \" + $json.svontai.token}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"phone\":$json.from,\"source\":\"call\",\"status\":\"new\",\"callProvider\":($json.metadata.call && $json.metadata.call.provider) || \"unknown\",\"callProviderCallId\":($json.metadata.call && ($json.metadata.call.provider_call_id || $json.metadata.call.providerCallId)) || \"\"}"
+      },
+      "id": "call-lead-upsert",
+      "name": "Call Lead Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1180,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst responseText = 'Merhaba! Size yard\u0131mc\u0131 olabilmem i\u00e7in hangi b\u00f6lgede ve hangi b\u00fct\u00e7ede ev ar\u0131yorsunuz? (Sat\u0131l\u0131k m\u0131 kiral\u0131k m\u0131?)';\nreturn [{ json: { ...input, ok: true, responseText, endCall: false } }];"
+      },
+      "id": "call-reply",
+      "name": "Call Reply (MVP)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "voice_call_completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-call-completed",
+      "name": "Is Call Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.calls_transcript }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={\"Authorization\":\"Bearer \" + $json.svontai.token}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"provider\":($json.metadata.call && $json.metadata.call.provider) || \"unknown\",\"providerCallId\":($json.metadata.call && ($json.metadata.call.provider_call_id || $json.metadata.call.providerCallId)) || \"\"}"
+      },
+      "id": "call-transcript",
+      "name": "Call Transcript",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst items = input.items || [];\nconst lines = items.map((x) => `${x.speaker}: ${x.text}`);\nconst summary = lines.slice(0, 30).join('\\n');\nreturn [{ json: { tenantId: $json.tenantId, provider: ($json.metadata.call && $json.metadata.call.provider) || 'unknown', providerCallId: ($json.metadata.call && ($json.metadata.call.provider_call_id || $json.metadata.call.providerCallId)) || '', summaryText: summary || '(no transcript)' } }];"
+      },
+      "id": "call-summary-build",
+      "name": "Build Call Summary (MVP)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.voice_call_summary }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={\"Authorization\":\"Bearer \" + $node[\"Normalize\"].json.svontai.token}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"provider\":$json.provider,\"providerCallId\":$json.providerCallId,\"summary\":$json.summaryText,\"labelsJson\":{},\"actionItemsJson\":{},\"createLeadNote\":true}"
+      },
+      "id": "call-summary-persist",
+      "name": "Persist Call Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1840,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-whatsapp",
+      "name": "Is WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.leads_upsert }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={\"Authorization\":\"Bearer \" + $json.svontai.token}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"phone\":$json.from,\"source\":\"whatsapp\",\"status\":\"new\"}"
+      },
+      "id": "wa-lead-upsert",
+      "name": "WA Lead Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.whatsapp_send }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={\"Authorization\":\"Bearer \" + $json.svontai.token}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"to\":$json.from,\"text\":($json.waReply || \"\"),\"meta\":{\"runId\":$json.runId}}"
+      },
+      "id": "wa-send",
+      "name": "WA Send (MVP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1620,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nreturn [{ json: { ...input, ok: true, responseText: '', endCall: false } }];"
+      },
+      "id": "default-ok",
+      "name": "Default OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":$json.ok !== false,\"runId\":$json.runId,\"eventType\":$json.eventType,\"channel\":$json.channel,\"responseText\":$json.responseText || \"\",\"endCall\":$json.endCall || false}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2060,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{\"Authorization\":\"Bearer \" + $env.OPENAI_API_KEY, \"Content-Type\":\"application/json\"}}",
+        "bodyParametersJson": "={\"model\":($env.OPENAI_MODEL || \"gpt-4o-mini\"),\"temperature\":0.3,\"messages\":[{\"role\":\"system\",\"content\":\"You are SvontAI Voice Agent. Speak Turkish. Be concise. Goal: qualify lead for real estate / appointment. Ask 1 question at a time.\"},{\"role\":\"user\",\"content\":$json.text}]}"
+      },
+      "id": "openai-call",
+      "name": "OpenAI Call Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        -220
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst raw = input.body || input;\nlet text = '';\ntry { text = (raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content) || ''; } catch {}\ntext = String(text || '').trim();\nif (!text) text = 'Merhaba! Size yard\u0131mc\u0131 olabilmem i\u00e7in hangi b\u00f6lgede ve hangi b\u00fct\u00e7ede ev ar\u0131yorsunuz? (Sat\u0131l\u0131k m\u0131 kiral\u0131k m\u0131?)';\nreturn [{ json: { ...$node['Normalize'].json, ok: true, responseText: text, endCall: false } }];"
+      },
+      "id": "extract-call",
+      "name": "Extract Call Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{\"Authorization\":\"Bearer \" + $env.OPENAI_API_KEY, \"Content-Type\":\"application/json\"}}",
+        "bodyParametersJson": "={\"model\":($env.OPENAI_MODEL || \"gpt-4o-mini\"),\"temperature\":0.4,\"messages\":[{\"role\":\"system\",\"content\":\"You are SvontAI WhatsApp Agent. Turkish. Short, helpful. Ask for missing details. Never promise. If user says \"Durdur\", confirm opt-out.\"},{\"role\":\"user\",\"content\":($json.text || \"\")}]}"
+      },
+      "id": "openai-wa",
+      "name": "OpenAI WA Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1620,
+        140
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst raw = resp.body || resp;\nlet text='';\ntry { text = raw.choices?.[0]?.message?.content || ''; } catch {}\ntext=String(text||'').trim();\nif(!text) text='Mesaj\u0131n\u0131z\u0131 ald\u0131m. Size yard\u0131mc\u0131 olabilmem i\u00e7in ihtiyac\u0131n\u0131z\u0131 k\u0131saca yazar m\u0131s\u0131n\u0131z?';\nreturn [{json:{...$node['Normalize'].json, waReply:text}}];"
+      },
+      "id": "extract-wa",
+      "name": "Extract WA Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Is Call Intent?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auth Fail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth Fail": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Intent?": {
+      "main": [
+        [
+          {
+            "node": "Call Lead Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Call Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Lead Upsert": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Call Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Reply (MVP)": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Completed?": {
+      "main": [
+        [
+          {
+            "node": "Call Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Transcript": {
+      "main": [
+        [
+          {
+            "node": "Build Call Summary (MVP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Call Summary (MVP)": {
+      "main": [
+        [
+          {
+            "node": "Persist Call Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Call Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "WA Lead Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Default OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Lead Upsert": {
+      "main": [
+        [
+          {
+            "node": "OpenAI WA Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Send (MVP)": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default OK": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Call Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract Call Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call Reply": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI WA Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract WA Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract WA Reply": {
+      "main": [
+        [
+          {
+            "node": "WA Send (MVP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "versionId": "router-v3-openai",
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

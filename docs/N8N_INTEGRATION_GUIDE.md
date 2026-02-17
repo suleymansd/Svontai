@@ -66,6 +66,12 @@ SvontAI, n8n webhook’larını HMAC ile imzalar:
 `n8n/workflows/SvontAI_Router_v2.json` template’i bunları doğrulamak için n8n instance’ında şu env’i bekler:
 - `SVONTAI_TO_N8N_SECRET` (SvontAI backend’deki `SVONTAI_TO_N8N_SECRET` ile aynı)
 
+### 2.2) OpenAI (opsiyonel)
+
+`n8n/workflows/SvontAI_Router_v3_openai.json` template’i OpenAI üzerinden cevap üretir. n8n instance’ında:
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (opsiyonel, default: `gpt-4o-mini`)
+
 ## 3) Tool Endpoints (n8n → SvontAI)
 
 ### 3.1) Lead Upsert
