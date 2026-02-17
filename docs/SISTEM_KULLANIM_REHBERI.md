@@ -48,6 +48,9 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
   - `META_REDIRECT_URI`
 - Voice Gateway:
   - `VOICE_GATEWAY_TO_SVONTAI_SECRET`
+  - Voice Gateway deploy için:
+    - `VOICE_GATEWAY_PUBLIC_URL`
+    - `SVONTAI_BACKEND_URL`
 - Vercel:
   - `NEXT_PUBLIC_BACKEND_URL`
 - Güvenlik:

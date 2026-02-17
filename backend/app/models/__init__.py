@@ -31,6 +31,7 @@ from app.models.note import WorkspaceNote
 from app.models.api_key import TenantApiKey
 from app.models.call import Call, CallTranscript, CallSummary
 from app.models.usage_counter import TenantUsageCounter
+from app.models.telephony import TelephonyNumber
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -110,6 +111,7 @@ __all__ = [
     "CallTranscript",
     "CallSummary",
     "TenantUsageCounter",
+    "TelephonyNumber",
     "RealEstatePackSettings",
     "RealEstateGoogleCalendarIntegration",
     "RealEstateListing",

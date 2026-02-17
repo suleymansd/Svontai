@@ -30,6 +30,7 @@ from app.api.routers.real_estate import router as real_estate_router
 from app.api.routers.webhooks_alias import router as webhooks_alias_router
 from app.api.routers.voice_events import router as voice_events_router
 from app.api.routers.calls import router as calls_router
+from app.api.routers.telephony import router as telephony_router
 
 __all__ = [
     "auth_router",
@@ -63,4 +64,5 @@ __all__ = [
     "webhooks_alias_router",
     "voice_events_router",
     "calls_router",
+    "telephony_router",
 ]
