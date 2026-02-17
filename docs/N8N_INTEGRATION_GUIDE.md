@@ -170,3 +170,20 @@ n8n webhook response body örneği:
 Minimum zorunlu alanlar:
 - `responseText` (string)
 - `endCall` (bool, default false)
+
+## 5) Workflow Templates (Repo)
+
+Repo içinde hazır n8n workflow template’leri:
+- `n8n/workflows/SvontAI_WhatsApp_Agent_v1.json` → webhook path: `svontai-wa-agent`
+- `n8n/workflows/SvontAI_Voice_Agent_v1.json` → webhook path: `svontai-voice-agent`
+
+SvontAI panelde tenant bazlı ayar:
+- WhatsApp workflow id: `svontai-wa-agent`
+- Call workflow id: `svontai-voice-agent`
+
+Gerekli n8n env:
+- `SVONTAI_TO_N8N_SECRET` (SvontAI backend ile aynı)
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (opsiyonel, default: `gpt-4o-mini`)
+- `WA_FALLBACK_TEMPLATE_NAME` (opsiyonel; 24h pencere dışı için)
+- `WA_FALLBACK_TEMPLATE_LANG` (opsiyonel; default `tr`)

@@ -1,0 +1,567 @@
+{
+  "name": "SvontAI - Voice Agent v1 (OpenAI + Summary Persist)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-voice-agent",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "svontai-voice-agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $input.first().json;\n\nlet body = req.body;\nif (typeof body === 'string') {\n  try { body = JSON.parse(body); } catch { body = { raw: req.body }; }\n}\n\nconst headers = req.headers || {};\n\nreturn [{ json: { ...body, headers, originalBody: body } }];"
+      },
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfunction getHeader(headers, name) {\n  if (!headers) return undefined;\n  const lower = name.toLowerCase();\n  const direct = headers[name];\n  if (direct !== undefined) return direct;\n  for (const k of Object.keys(headers)) {\n    if (String(k).toLowerCase() === lower) return headers[k];\n  }\n  return undefined;\n}\n\nfunction stable(obj) {\n  if (obj === null || obj === undefined) return obj;\n  if (Array.isArray(obj)) return obj.map(stable);\n  if (typeof obj !== 'object') return obj;\n  const out = {};\n  for (const k of Object.keys(obj).sort()) out[k] = stable(obj[k]);\n  return out;\n}\n\nconst input = $input.first().json;\nconst headers = input.headers || {};\n\nconst tsRaw = getHeader(headers, 'X-SvontAI-Timestamp');\nconst sig = getHeader(headers, 'X-SvontAI-Signature');\n\nconst secret = process.env.SVONTAI_TO_N8N_SECRET || '';\n\nlet authOk = false;\nlet error = '';\n\nif (!secret) {\n  error = 'Missing SVONTAI_TO_N8N_SECRET in n8n env';\n} else if (!tsRaw || !sig) {\n  error = 'Missing signature headers';\n} else {\n  const ts = parseInt(String(tsRaw), 10);\n  if (!Number.isFinite(ts)) {\n    error = 'Invalid timestamp';\n  } else {\n    const now = Math.floor(Date.now() / 1000);\n    if (Math.abs(now - ts) > 300) {\n      error = 'Signature expired';\n    } else {\n      const payload = JSON.stringify(stable(input.originalBody || {}));\n      const message = `${ts}.${payload}`;\n      const expected = crypto.createHmac('sha256', secret).update(message, 'utf8').digest('hex');\n      const sigBuf = Buffer.from(String(sig));\n      const expBuf = Buffer.from(expected);\n      if (sigBuf.length !== expBuf.length) {\n        authOk = false;\n        error = 'Invalid signature';\n      } else {\n        authOk = crypto.timingSafeEqual(sigBuf, expBuf);\n        if (!authOk) error = 'Invalid signature';\n      }\n    }\n  }\n}\n\nreturn [{ json: { ...input, authOk, authError: error } }];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.authOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "isEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "auth-ok?",
+      "name": "Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$input.first().json; return [{json:{ok:false,error:input.authError||'auth_failed', responseText:'', endCall:true}}];"
+      },
+      "id": "auth-fail",
+      "name": "Auth Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "voice_call_intent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-call-intent?",
+      "name": "Is Call Intent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.leads_upsert }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"phone\":$json.from,\"source\":\"call\",\"status\":\"new\",\"callProvider\":($json.metadata.call && $json.metadata.call.provider) || \"unknown\",\"callProviderCallId\":($json.metadata.call && ($json.metadata.call.provider_call_id || $json.metadata.call.providerCallId)) || \"\"}"
+      },
+      "id": "lead-upsert",
+      "name": "Lead Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1180,
+        -160
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.calls_transcript }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $node[\"Normalize\"].json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"provider\":($node[\"Normalize\"].json.metadata.call && $node[\"Normalize\"].json.metadata.call.provider) || \"unknown\",\"providerCallId\":($node[\"Normalize\"].json.metadata.call && ($node[\"Normalize\"].json.metadata.call.provider_call_id || $node[\"Normalize\"].json.metadata.call.providerCallId)) || \"\"}"
+      },
+      "id": "call-transcript-(intent)",
+      "name": "Call Transcript (Intent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        -160
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json.items || []; const last = items.slice(-10).map(x=>`${x.speaker}: ${x.text}`).join('\\n'); return [{json:{...$node['Normalize'].json, transcript:last}}];"
+      },
+      "id": "build-prompt",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $env.OPENAI_API_KEY, \"Content-Type\":\"application/json\"} }}",
+        "bodyParametersJson": "={\"model\":($env.OPENAI_MODEL || \"gpt-4o-mini\"),\"temperature\":0.3,\"messages\":[{\"role\":\"system\",\"content\":\"You are SvontAI Voice Agent. Turkish. Natural, short. Ask 1 question. Goal: qualify and book appointment if possible.\"},{\"role\":\"user\",\"content\":\"Transcript so far:\\n\" + ($json.transcript || \"\") + \"\\n\\nUser said now: \" + ($json.text || \"\") }]}"
+      },
+      "id": "openai-reply",
+      "name": "OpenAI Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1840,
+        -160
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=($input.first().json.body)||$input.first().json; let text=''; try{text=raw.choices?.[0]?.message?.content||'';}catch{} text=String(text||'').trim(); if(!text) text='Merhaba! Size nas\u0131l yard\u0131mc\u0131 olabilirim?'; return [{json:{...$node['Normalize'].json, ok:true, responseText:text, endCall:false}}];"
+      },
+      "id": "extract-reply",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "voice_call_completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-call-completed?",
+      "name": "Is Call Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.calls_transcript }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $node[\"Normalize\"].json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"provider\":($node[\"Normalize\"].json.metadata.call && $node[\"Normalize\"].json.metadata.call.provider) || \"unknown\",\"providerCallId\":($node[\"Normalize\"].json.metadata.call && ($node[\"Normalize\"].json.metadata.call.provider_call_id || $node[\"Normalize\"].json.metadata.call.providerCallId)) || \"\"}"
+      },
+      "id": "call-transcript-(completed)",
+      "name": "Call Transcript (Completed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items=$json.items||[]; const text=items.map(x=>`${x.speaker}: ${x.text}`).join('\\n'); return [{json:{...$node['Normalize'].json, transcript:text}}];"
+      },
+      "id": "build-summary-prompt",
+      "name": "Build Summary Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $env.OPENAI_API_KEY, \"Content-Type\":\"application/json\"} }}",
+        "bodyParametersJson": "={\"model\":($env.OPENAI_MODEL || \"gpt-4o-mini\"),\"temperature\":0.2,\"messages\":[{\"role\":\"system\",\"content\":\"Summarize this phone call in Turkish. Output JSON with keys: intent (string|null), summary (string), labelsJson (object), actionItemsJson (object). No markdown.\"},{\"role\":\"user\",\"content\":($json.transcript || \"\")}]}"
+      },
+      "id": "openai-summary",
+      "name": "OpenAI Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1840,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=($input.first().json.body)||$input.first().json; let content=''; try{content=raw.choices?.[0]?.message?.content||'';}catch{} content=String(content||'').trim(); let obj=null; try{obj=JSON.parse(content);}catch{obj={intent:null,summary:content||'(no summary)',labelsJson:{},actionItemsJson:{}}} return [{json:{...$node['Normalize'].json, ok:true, responseText:'', endCall:false, sum:obj}}];"
+      },
+      "id": "parse-summary",
+      "name": "Parse Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.voice_call_summary }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"provider\":($json.metadata.call && $json.metadata.call.provider) || \"unknown\",\"providerCallId\":($json.metadata.call && ($json.metadata.call.provider_call_id || $json.metadata.call.providerCallId)) || \"\",\"intent\":($json.sum.intent || null),\"summary\":($json.sum.summary || \"\"),\"labelsJson\":($json.sum.labelsJson || {}),\"actionItemsJson\":($json.sum.actionItemsJson || {}),\"createLeadNote\":true}"
+      },
+      "id": "persist-call-summary",
+      "name": "Persist Call Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2280,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":$json.ok !== false,\"responseText\":$json.responseText || \"\",\"endCall\":$json.endCall || false,\"eventType\":$json.eventType,\"runId\":$json.runId}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2500,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Is Call Intent?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auth Fail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth Fail": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Intent?": {
+      "main": [
+        [
+          {
+            "node": "Lead Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Call Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Upsert": {
+      "main": [
+        [
+          {
+            "node": "Call Transcript (Intent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Transcript (Intent)": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Completed?": {
+      "main": [
+        [
+          {
+            "node": "Call Transcript (Completed)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Transcript (Completed)": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Summary": {
+      "main": [
+        [
+          {
+            "node": "Parse Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Summary": {
+      "main": [
+        [
+          {
+            "node": "Persist Call Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Call Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "versionId": "voice-agent-v1",
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -83,6 +83,194 @@ class LeadUpsertResponse(BaseModel):
         populate_by_name = True
 
 
+class LeadGetRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    lead_id: str | None = Field(default=None, alias="leadId")
+    phone: str | None = None
+    email: str | None = None
+
+    class Config:
+        populate_by_name = True
+
+
+class LeadGetResponse(BaseModel):
+    ok: bool = True
+    lead_id: str = Field(..., alias="leadId")
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    company: str | None = None
+    status: str
+    source: str
+    tags: list[str]
+    notes: str | None = None
+    extra_data: dict = Field(default_factory=dict, alias="extraData")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/leads/get", response_model=LeadGetResponse)
+async def get_lead(
+    request: Request,
+    body: LeadGetRequest,
+    db: Session = Depends(get_db),
+) -> LeadGetResponse:
+    await _verify_tenant(request, body.tenant_id)
+    tenant_uuid = UUID(body.tenant_id)
+
+    lead: Lead | None = None
+    if body.lead_id:
+        try:
+            lead_uuid = UUID(body.lead_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid leadId")
+        lead = db.query(Lead).filter(Lead.id == lead_uuid, Lead.tenant_id == tenant_uuid, Lead.is_deleted == False).first()
+    else:
+        phone_norm = _normalize_phone(body.phone)
+        email_norm = (body.email or "").strip().lower() or None
+        if not phone_norm and not email_norm:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="leadId or phone/email required")
+        query = db.query(Lead).filter(Lead.tenant_id == tenant_uuid, Lead.is_deleted == False)
+        if phone_norm:
+            query = query.filter(Lead.phone == phone_norm)
+        else:
+            query = query.filter(Lead.email == email_norm)
+        lead = query.first()
+
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "leads_get"})
+    return LeadGetResponse(
+        leadId=str(lead.id),
+        name=lead.name,
+        email=lead.email,
+        phone=lead.phone,
+        company=lead.company,
+        status=lead.status,
+        source=lead.source,
+        tags=list(lead.tags or []),
+        notes=lead.notes,
+        extraData=dict(lead.extra_data or {}),
+    )
+
+
+class LeadPatchRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    lead_id: str | None = Field(default=None, alias="leadId")
+    phone: str | None = None
+    email: str | None = None
+
+    name: str | None = None
+    company: str | None = None
+    status: str | None = None
+    source: str | None = None
+
+    tags_add: list[str] | None = Field(default=None, alias="tagsAdd")
+    tags_remove: list[str] | None = Field(default=None, alias="tagsRemove")
+    extra_data_merge: dict | None = Field(default=None, alias="extraDataMerge")
+    notes_append: str | None = Field(default=None, alias="notesAppend")
+
+    class Config:
+        populate_by_name = True
+
+
+class LeadPatchResponse(BaseModel):
+    ok: bool = True
+    lead_id: str = Field(..., alias="leadId")
+    updated: bool
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/leads/patch", response_model=LeadPatchResponse)
+async def patch_lead(
+    request: Request,
+    body: LeadPatchRequest,
+    db: Session = Depends(get_db),
+) -> LeadPatchResponse:
+    await _verify_tenant(request, body.tenant_id)
+    tenant_uuid = UUID(body.tenant_id)
+
+    lead: Lead | None = None
+    if body.lead_id:
+        try:
+            lead_uuid = UUID(body.lead_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid leadId")
+        lead = db.query(Lead).filter(Lead.id == lead_uuid, Lead.tenant_id == tenant_uuid, Lead.is_deleted == False).first()
+    else:
+        phone_norm = _normalize_phone(body.phone)
+        email_norm = (body.email or "").strip().lower() or None
+        if not phone_norm and not email_norm:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="leadId or phone/email required")
+        query = db.query(Lead).filter(Lead.tenant_id == tenant_uuid, Lead.is_deleted == False)
+        if phone_norm:
+            query = query.filter(Lead.phone == phone_norm)
+        else:
+            query = query.filter(Lead.email == email_norm)
+        lead = query.first()
+
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    updated = False
+    if body.name is not None and body.name != lead.name:
+        lead.name = body.name
+        updated = True
+    if body.company is not None and body.company != lead.company:
+        lead.company = body.company
+        updated = True
+    if body.status is not None and body.status != lead.status:
+        lead.status = body.status
+        updated = True
+    if body.source is not None and body.source != lead.source:
+        lead.source = body.source
+        updated = True
+
+    tags = list(lead.tags or [])
+    if body.tags_add:
+        for t in body.tags_add:
+            if t not in tags:
+                tags.append(t)
+        updated = True
+    if body.tags_remove:
+        tags = [t for t in tags if t not in set(body.tags_remove)]
+        updated = True
+    if updated:
+        lead.tags = tags
+
+    if body.extra_data_merge is not None:
+        lead.extra_data = {**(lead.extra_data or {}), **dict(body.extra_data_merge)}
+        updated = True
+
+    if body.notes_append:
+        existing = (lead.notes or "").strip()
+        append = body.notes_append.strip()
+        lead.notes = f"{existing}\n{append}".strip() if existing else append
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(lead)
+
+    AuditLogService(db).safe_log(
+        action="n8n.leads.patch",
+        tenant_id=body.tenant_id,
+        user_id=None,
+        resource_type="lead",
+        resource_id=str(lead.id),
+        payload={"updated": updated},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
+    )
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "leads_patch"})
+    return LeadPatchResponse(leadId=str(lead.id), updated=updated)
+
+
 @router.post("/leads/upsert", response_model=LeadUpsertResponse)
 async def upsert_lead(
     request: Request,

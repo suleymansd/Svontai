@@ -358,6 +358,8 @@ class N8NClient:
                     "automation_status": f"{base_url}/api/v1/channels/automation/status",
                     "voice_call_summary": f"{base_url}/api/v1/voice/calls/summary",
                     "leads_upsert": f"{base_url}/api/v1/n8n/leads/upsert",
+                    "leads_get": f"{base_url}/api/v1/n8n/leads/get",
+                    "leads_patch": f"{base_url}/api/v1/n8n/leads/patch",
                     "notes_create": f"{base_url}/api/v1/n8n/notes/create",
                     "usage_increment": f"{base_url}/api/v1/n8n/usage/increment",
                     "audit_log": f"{base_url}/api/v1/n8n/audit/log",

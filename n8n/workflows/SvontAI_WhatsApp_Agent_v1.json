@@ -1,0 +1,571 @@
+{
+  "name": "SvontAI - WhatsApp Agent v1 (OpenAI + Fallback Template)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-wa-agent",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "svontai-wa-agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $input.first().json;\n\nlet body = req.body;\nif (typeof body === 'string') {\n  try { body = JSON.parse(body); } catch { body = { raw: req.body }; }\n}\n\nconst headers = req.headers || {};\n\nreturn [{ json: { ...body, headers, originalBody: body } }];"
+      },
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfunction getHeader(headers, name) {\n  if (!headers) return undefined;\n  const lower = name.toLowerCase();\n  const direct = headers[name];\n  if (direct !== undefined) return direct;\n  for (const k of Object.keys(headers)) {\n    if (String(k).toLowerCase() === lower) return headers[k];\n  }\n  return undefined;\n}\n\nfunction stable(obj) {\n  if (obj === null || obj === undefined) return obj;\n  if (Array.isArray(obj)) return obj.map(stable);\n  if (typeof obj !== 'object') return obj;\n  const out = {};\n  for (const k of Object.keys(obj).sort()) out[k] = stable(obj[k]);\n  return out;\n}\n\nconst input = $input.first().json;\nconst headers = input.headers || {};\n\nconst tsRaw = getHeader(headers, 'X-SvontAI-Timestamp');\nconst sig = getHeader(headers, 'X-SvontAI-Signature');\n\nconst secret = process.env.SVONTAI_TO_N8N_SECRET || '';\n\nlet authOk = false;\nlet error = '';\n\nif (!secret) {\n  error = 'Missing SVONTAI_TO_N8N_SECRET in n8n env';\n} else if (!tsRaw || !sig) {\n  error = 'Missing signature headers';\n} else {\n  const ts = parseInt(String(tsRaw), 10);\n  if (!Number.isFinite(ts)) {\n    error = 'Invalid timestamp';\n  } else {\n    const now = Math.floor(Date.now() / 1000);\n    if (Math.abs(now - ts) > 300) {\n      error = 'Signature expired';\n    } else {\n      const payload = JSON.stringify(stable(input.originalBody || {}));\n      const message = `${ts}.${payload}`;\n      const expected = crypto.createHmac('sha256', secret).update(message, 'utf8').digest('hex');\n      const sigBuf = Buffer.from(String(sig));\n      const expBuf = Buffer.from(expected);\n      if (sigBuf.length !== expBuf.length) {\n        authOk = false;\n        error = 'Invalid signature';\n      } else {\n        authOk = crypto.timingSafeEqual(sigBuf, expBuf);\n        if (!authOk) error = 'Invalid signature';\n      }\n    }\n  }\n}\n\nreturn [{ json: { ...input, authOk, authError: error } }];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.authOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "isEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "auth-ok?",
+      "name": "Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$input.first().json; return [{json:{ok:false,error:input.authError||'auth_failed'}}];"
+      },
+      "id": "auth-fail",
+      "name": "Auth Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-whatsapp?",
+      "name": "Is WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text=String($json.text||'').toLowerCase(); const optOut=/(^|\\s)(durdur|stop|iptal|unsubscribe)(\\s|$)/.test(text); return [{json:{...$json,optOut}}];"
+      },
+      "id": "detect-opt-out",
+      "name": "Detect Opt-out",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.optOut }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "isEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-opt-out?",
+      "name": "Is Opt-out?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.leads_patch }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"phone\":$json.from,\"extraDataMerge\":{\"optOut\":true},\"tagsAdd\":[\"optout\"]}"
+      },
+      "id": "lead-patch-opt-out",
+      "name": "Lead Patch Opt-out",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1620,
+        -140
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{...$json, replyText:'Tamamd\u0131r. Art\u0131k size mesaj g\u00f6ndermeyece\u011fim. Tekrar ba\u015flamak isterseniz yazman\u0131z yeterli.'}}];"
+      },
+      "id": "opt-out-reply",
+      "name": "Opt-out Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.whatsapp_send }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"to\":$json.from,\"text\":$json.replyText,\"meta\":{\"runId\":$json.runId}}"
+      },
+      "id": "send-opt-out",
+      "name": "Send Opt-out",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2060,
+        -140
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.leads_upsert }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"phone\":$json.from,\"source\":\"whatsapp\",\"status\":\"new\"}"
+      },
+      "id": "lead-upsert",
+      "name": "Lead Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1620,
+        120
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $env.OPENAI_API_KEY, \"Content-Type\":\"application/json\"} }}",
+        "bodyParametersJson": "={\"model\":($env.OPENAI_MODEL || \"gpt-4o-mini\"),\"temperature\":0.4,\"messages\":[{\"role\":\"system\",\"content\":\"You are SvontAI WhatsApp Agent. Turkish. Short, natural. Ask 1 question. If user says opt-out, confirm and stop.\"},{\"role\":\"user\",\"content\":($json.text || \"\")}]}"
+      },
+      "id": "openai-reply",
+      "name": "OpenAI Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1840,
+        120
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=($input.first().json.body)||$input.first().json; let text=''; try{text=raw.choices?.[0]?.message?.content||'';}catch{} text=String(text||'').trim(); if(!text) text='Mesaj\u0131n\u0131z\u0131 ald\u0131m. Size yard\u0131mc\u0131 olabilmem i\u00e7in ihtiyac\u0131n\u0131z\u0131 k\u0131saca yazar m\u0131s\u0131n\u0131z?'; return [{json:{...$node['Detect Opt-out'].json, replyText:text}}];"
+      },
+      "id": "extract-reply",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.svontai.endpoints.whatsapp_send }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$json.tenantId,\"to\":$json.from,\"text\":$json.replyText,\"meta\":{\"runId\":$json.runId}}"
+      },
+      "id": "send-text",
+      "name": "Send Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2280,
+        120
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "isEqual"
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-ok?",
+      "name": "Send OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Detect Opt-out\"].json.svontai.endpoints.whatsapp_send_template }}",
+        "authentication": "none",
+        "jsonParameters": true,
+        "options": {},
+        "headerParametersJson": "={{ {\"Authorization\":\"Bearer \" + $node[\"Detect Opt-out\"].json.svontai.token} }}",
+        "bodyParametersJson": "={\"tenantId\":$node[\"Detect Opt-out\"].json.tenantId,\"to\":$node[\"Detect Opt-out\"].json.from,\"templateName\":($env.WA_FALLBACK_TEMPLATE_NAME || \"svontai_fallback\"),\"languageCode\":($env.WA_FALLBACK_TEMPLATE_LANG || \"tr\"),\"meta\":{\"runId\":$node[\"Detect Opt-out\"].json.runId}}"
+      },
+      "id": "send-template-fallback",
+      "name": "Send Template Fallback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2720,
+        220
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2940,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Is WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auth Fail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth Fail": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Detect Opt-out",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Opt-out": {
+      "main": [
+        [
+          {
+            "node": "Is Opt-out?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Opt-out?": {
+      "main": [
+        [
+          {
+            "node": "Lead Patch Opt-out",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Patch Opt-out": {
+      "main": [
+        [
+          {
+            "node": "Opt-out Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opt-out Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Opt-out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Opt-out": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Upsert": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Text": {
+      "main": [
+        [
+          {
+            "node": "Send OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Template Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Template Fallback": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "versionId": "wa-agent-v1",
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
