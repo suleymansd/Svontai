@@ -98,6 +98,8 @@ cp .env.example .env
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/smartwa
 JWT_SECRET_KEY=your-secret-key-change-this
 OPENAI_API_KEY=sk-your-openai-key
+WEBHOOK_USERNAME=your-webhook-username
+WEBHOOK_PASSWORD=your-webhook-password
 ```
 
 6. Create database:
@@ -208,6 +210,11 @@ Technical design and endpoint list: `docs/real_estate_pack.md`
 ### WhatsApp Webhook
 - `GET /whatsapp/webhook` - Webhook verification
 - `POST /whatsapp/webhook` - Receive messages
+- `POST /webhooks/whatsapp` - Compatibility alias (HTTP Basic Auth required)
+
+For `POST /webhooks/whatsapp` you must set:
+- `WEBHOOK_USERNAME`
+- `WEBHOOK_PASSWORD`
 
 ## 🚀 Deployment
 
