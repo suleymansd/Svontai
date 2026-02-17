@@ -176,10 +176,16 @@ Minimum zorunlu alanlar:
 Repo içinde hazır n8n workflow template’leri:
 - `n8n/workflows/SvontAI_WhatsApp_Agent_v1.json` → webhook path: `svontai-wa-agent`
 - `n8n/workflows/SvontAI_Voice_Agent_v1.json` → webhook path: `svontai-voice-agent`
+- `n8n/workflows/SvontAI_RealEstate_WhatsApp_v1.json` → webhook path: `svontai-re-wa`
+- `n8n/workflows/SvontAI_RealEstate_Voice_v1.json` → webhook path: `svontai-re-voice`
 
 SvontAI panelde tenant bazlı ayar:
 - WhatsApp workflow id: `svontai-wa-agent`
 - Call workflow id: `svontai-voice-agent`
+
+Real Estate Pack (n8n-first) için:
+- WhatsApp workflow id: `svontai-re-wa`
+- Call workflow id: `svontai-re-voice`
 
 Gerekli n8n env:
 - `SVONTAI_TO_N8N_SECRET` (SvontAI backend ile aynı)

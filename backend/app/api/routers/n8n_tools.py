@@ -22,6 +22,7 @@ from app.models.call import Call
 from app.models.call import CallTranscript
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
+from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
 
@@ -715,3 +716,132 @@ async def get_call_transcript(
             for r in rows
         ],
     )
+
+
+class RealEstateListingSearchRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    sale_rent: str | None = Field(default=None, alias="saleRent")
+    property_type: str | None = Field(default=None, alias="propertyType")
+    location_text: str | None = Field(default=None, alias="locationText")
+    budget_max: int | None = Field(default=None, alias="budgetMax")
+    budget_min: int | None = Field(default=None, alias="budgetMin")
+    rooms: str | None = None
+    m2_min: int | None = Field(default=None, alias="m2Min")
+    limit: int = Field(default=3, ge=1, le=20)
+
+    class Config:
+        populate_by_name = True
+
+
+class RealEstateListingSearchItem(BaseModel):
+    id: str
+    title: str
+    sale_rent: str = Field(..., alias="saleRent")
+    property_type: str = Field(..., alias="propertyType")
+    location_text: str = Field(..., alias="locationText")
+    price: int
+    currency: str
+    m2: int | None = None
+    rooms: str | None = None
+    url: str | None = None
+    media: list = Field(default_factory=list)
+
+    class Config:
+        populate_by_name = True
+
+
+class RealEstateListingSearchResponse(BaseModel):
+    ok: bool = True
+    count: int
+    items: list[RealEstateListingSearchItem]
+
+
+@router.post("/real-estate/listings/search", response_model=RealEstateListingSearchResponse)
+async def real_estate_search_listings(
+    request: Request,
+    body: RealEstateListingSearchRequest,
+    db: Session = Depends(get_db),
+) -> RealEstateListingSearchResponse:
+    await _verify_tenant(request, body.tenant_id)
+    tenant_uuid = UUID(body.tenant_id)
+
+    query = db.query(RealEstateListing).filter(
+        RealEstateListing.tenant_id == tenant_uuid,
+        RealEstateListing.is_active == True,
+    )
+    if body.sale_rent:
+        query = query.filter(RealEstateListing.sale_rent == body.sale_rent)
+    if body.property_type:
+        query = query.filter(RealEstateListing.property_type.ilike(f"%{body.property_type.strip()}%"))
+    if body.location_text:
+        query = query.filter(RealEstateListing.location_text.ilike(f"%{body.location_text.strip()}%"))
+    if body.budget_min is not None:
+        query = query.filter(RealEstateListing.price >= int(body.budget_min))
+    if body.budget_max is not None:
+        query = query.filter(RealEstateListing.price <= int(body.budget_max))
+    if body.m2_min is not None:
+        query = query.filter(RealEstateListing.m2.isnot(None)).filter(RealEstateListing.m2 >= int(body.m2_min))
+    if body.rooms:
+        # best-effort string contains match
+        query = query.filter(RealEstateListing.rooms.ilike(f"%{body.rooms.strip()}%"))
+
+    rows = query.order_by(RealEstateListing.updated_at.desc()).limit(int(body.limit)).all()
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "re_listings_search"})
+
+    items = [
+        RealEstateListingSearchItem(
+            id=str(r.id),
+            title=r.title,
+            saleRent=r.sale_rent,
+            propertyType=r.property_type,
+            locationText=r.location_text,
+            price=int(r.price or 0),
+            currency=r.currency or "TRY",
+            m2=r.m2,
+            rooms=r.rooms,
+            url=r.url,
+            media=list(r.media or []),
+        )
+        for r in rows
+    ]
+    return RealEstateListingSearchResponse(count=len(items), items=items)
+
+
+class RealEstateListingEventRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    lead_id: str = Field(..., alias="leadId")
+    listing_id: str = Field(..., alias="listingId")
+    event: str
+    meta_json: dict | None = Field(default=None, alias="metaJson")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/real-estate/listing-events")
+async def real_estate_listing_event(
+    request: Request,
+    body: RealEstateListingEventRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    await _verify_tenant(request, body.tenant_id)
+    tenant_uuid = UUID(body.tenant_id)
+    try:
+        lead_uuid = UUID(body.lead_id)
+        listing_uuid = UUID(body.listing_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid leadId/listingId")
+
+    row = RealEstateLeadListingEvent(
+        tenant_id=tenant_uuid,
+        lead_id=lead_uuid,
+        listing_id=listing_uuid,
+        event=body.event,
+        meta_json=dict(body.meta_json or {}),
+    )
+    db.add(row)
+    db.commit()
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "re_listing_event"})
+    return {"ok": True, "id": str(row.id)}

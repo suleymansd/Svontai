@@ -365,6 +365,8 @@ class N8NClient:
                     "audit_log": f"{base_url}/api/v1/n8n/audit/log",
                     "calls_resolve": f"{base_url}/api/v1/n8n/calls/resolve",
                     "calls_transcript": f"{base_url}/api/v1/n8n/calls/transcript",
+                    "re_listings_search": f"{base_url}/api/v1/n8n/real-estate/listings/search",
+                    "re_listing_event": f"{base_url}/api/v1/n8n/real-estate/listing-events",
                 },
             },
         }

@@ -472,8 +472,12 @@ async def handle_incoming_message(
     # ===========================================
     # REAL ESTATE PACK ROUTING (MVP)
     # ===========================================
-    # Runs before n8n/legacy and only handles messages when tenant pack is enabled.
+    # Runs before legacy AI and only handles messages when tenant pack is enabled.
+    # NOTE: In n8n-first mode, Real Estate Pack should be orchestrated via n8n workflows,
+    # so we skip this path when n8n is enabled for this tenant.
     try:
+        n8n_client = get_n8n_client(db)
+        n8n_enabled_for_tenant = n8n_client.should_use_n8n(account.tenant_id)
         re_result = RealEstateService(db).handle_inbound_whatsapp_message(
             tenant_id=account.tenant_id,
             bot=bot,
@@ -481,7 +485,7 @@ async def handle_incoming_message(
             from_number=from_number,
             contact_name=contact_name,
             text=message_content,
-        )
+        ) if not n8n_enabled_for_tenant else None
     except Exception as exc:
         re_result = None
         logger.error("Real Estate Pack handling failed: %s", exc, exc_info=True)
