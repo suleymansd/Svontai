@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, get_access_token_payload
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
@@ -192,12 +192,22 @@ class RealEstatePackAdminResponse(BaseModel):
 
 
 # Helper function to check admin
-async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+    token_payload: dict = Depends(get_access_token_payload),
+) -> User:
     """Require admin privileges."""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
+        )
+
+    portal = (token_payload.get("portal") or "tenant").strip()
+    if portal != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin paneline erişmek için Super Admin girişi yapın."
         )
     return current_user
 

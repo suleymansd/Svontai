@@ -4,6 +4,7 @@ Authentication dependencies for FastAPI.
 
 from uuid import UUID
 from datetime import datetime
+from typing import Any
 
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -18,6 +19,43 @@ from app.services.rbac_service import RbacService
 
 # HTTP Bearer scheme for JWT authentication
 security = HTTPBearer()
+
+def _decode_and_validate_access_token(token: str) -> dict[str, Any]:
+    payload = decode_token(token)
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token geçersiz veya süresi dolmuş",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Geçersiz token türü",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("sub") is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token'da kullanıcı bilgisi bulunamadı",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return payload
+
+
+async def get_access_token_payload(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict[str, Any]:
+    """
+    Dependency to get the current access token payload.
+
+    Used for portal/session gating without duplicating JWT parsing logic in routers.
+    """
+    return _decode_and_validate_access_token(credentials.credentials)
 
 
 async def get_current_user(
@@ -38,30 +76,9 @@ async def get_current_user(
         HTTPException: If token is invalid or user not found.
     """
     token = credentials.credentials
-    payload = decode_token(token)
-    
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token geçersiz veya süresi dolmuş",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-    
-    # Check token type
-    if payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Geçersiz token türü",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-    
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token'da kullanıcı bilgisi bulunamadı",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
+
+    payload = _decode_and_validate_access_token(token)
+    user_id = payload["sub"]
     
     user = db.query(User).filter(User.id == UUID(user_id)).first()
     

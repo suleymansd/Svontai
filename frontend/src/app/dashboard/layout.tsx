@@ -27,7 +27,8 @@ import {
   Plus,
   Gauge,
   Boxes,
-  Building2
+  Building2,
+  BookOpen
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,7 @@ import { getToolMenuItems } from '@/components/tools/registry'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { ToolIcon3D } from '@/components/tools/ToolIcon3D'
+import { decodeJwtPayload } from '@/lib/jwt'
 
 const sidebarItems = [
   { name: 'Genel Bakış', href: '/dashboard', icon: LayoutDashboard },
@@ -56,6 +58,7 @@ const sidebarItems = [
 ]
 
 const secondaryItems = [
+  { name: 'Nasıl Kullanılır', href: '/dashboard/help', icon: BookOpen },
   { name: 'WhatsApp Kurulum', href: '/dashboard/setup/whatsapp', icon: Smartphone },
   { name: 'Kullanım', href: '/dashboard/usage', icon: Gauge },
   { name: 'Abonelik', href: '/dashboard/billing', icon: CreditCard },
@@ -96,8 +99,12 @@ export default function DashboardLayout({
       return
     }
 
-    if (user?.is_admin && !getAdminTenantContext()?.id) {
-      router.push('/admin')
+    if (user?.is_admin) {
+      const token = localStorage.getItem('access_token') || ''
+      const portal = (decodeJwtPayload(token)?.portal || 'tenant') as string
+      if (portal === 'super_admin' && !getAdminTenantContext()?.id) {
+        router.push('/admin')
+      }
     }
   }, [isAuthenticated, user?.is_admin, router])
 

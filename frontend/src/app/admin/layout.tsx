@@ -8,6 +8,7 @@ import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
 import { userApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
+import { decodeJwtPayload } from '@/lib/jwt'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import {
   LayoutDashboard,
@@ -24,7 +25,8 @@ import {
   Boxes,
   Package,
   LifeBuoy,
-  AlertTriangle
+  AlertTriangle,
+  BookOpen
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -37,6 +39,7 @@ const navigation = [
   { name: 'Araçlar', href: '/admin/tools', icon: Boxes },
   { name: 'Tickets', href: '/admin/tickets', icon: LifeBuoy },
   { name: 'Hata Merkezi', href: '/admin/errors', icon: AlertTriangle },
+  { name: 'Kullanım Rehberi', href: '/admin/help', icon: BookOpen },
   { name: 'Incidents', href: '/admin/incidents', icon: Activity },
   { name: 'Audit Logs', href: '/admin/audit', icon: Shield },
   { name: 'Ayarlar', href: '/admin/settings', icon: Settings },
@@ -59,6 +62,16 @@ export default function AdminLayout({
       try {
         const token = localStorage.getItem('access_token')
         if (!token) {
+          router.push('/admin/login')
+          return
+        }
+
+        const payload = decodeJwtPayload(token)
+        const portal = (payload?.portal || 'tenant') as string
+        if (portal !== 'super_admin') {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          clearAdminTenantContext()
           router.push('/admin/login')
           return
         }

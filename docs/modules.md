@@ -4,6 +4,7 @@
 Routes under `/dashboard`:
 - Dashboard overview + widgets
 - Tools catalog + tool detail
+- In-app usage guide (`/dashboard/help`)
 - Automations run history
 - Tickets
 - Team management
@@ -14,6 +15,7 @@ Routes under `/dashboard`:
 Routes under `/admin`:
 - Admin dashboard
 - Tenants management
+- Super admin usage guide (`/admin/help`)
 - Plans & packages
 - Tools catalog management
 - Tickets ops
@@ -35,6 +37,7 @@ Docs:
 - `/docs/tool_catalog.md`
 - `/docs/n8n_workflow_guide.md`
 - `/docs/admin_panel_architecture.md`
+- `/docs/SISTEM_KULLANIM_REHBERI.md`
 - `/docs/prompts/animation_guide_prompt.md`
 - `/docs/prompts/admin_panel_prompt.md`
 

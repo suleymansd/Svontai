@@ -325,8 +325,8 @@ async def login(
         _require_valid_two_factor_code(user, credentials.two_factor_code)
     
     # Create tokens + session
-    access_token = create_access_token(data={"sub": str(user.id)})
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    portal_value = credentials.portal or "tenant"
+    refresh_token = create_refresh_token(data={"sub": str(user.id), "portal": portal_value, "mfa": bool(user.two_factor_enabled)})
     session_service = SessionService(db)
     session = session_service.create_session(
         user_id=user.id,
@@ -334,8 +334,14 @@ async def login(
         ip_address=request.client.host,
         user_agent=request.headers.get("User-Agent")
     )
-    refresh_token = create_refresh_token(data={"sub": str(user.id)}, session_id=str(session.id))
+    refresh_token = create_refresh_token(
+        data={"sub": str(user.id), "portal": portal_value, "mfa": bool(user.two_factor_enabled)},
+        session_id=str(session.id),
+    )
     session_service.rotate_session(session, refresh_token)
+    access_token = create_access_token(
+        data={"sub": str(user.id), "portal": portal_value, "sid": str(session.id), "mfa": bool(user.two_factor_enabled)}
+    )
 
     if credentials.portal == "super_admin":
         db.add(
@@ -348,6 +354,7 @@ async def login(
                 payload_json={
                     "portal": credentials.portal,
                     "session_note": admin_session_note,
+                    "session_id": str(session.id),
                     "two_factor_enabled": user.two_factor_enabled,
                     "super_admin_2fa_enforced": settings.SUPER_ADMIN_REQUIRE_2FA
                 },
@@ -430,6 +437,8 @@ async def refresh_token(
     session_service = SessionService(db)
     refresh_token_value = token_data.refresh_token
     session_id = payload.get("sid")
+    portal_value = (payload.get("portal") or "tenant").strip()
+    mfa_value = bool(payload.get("mfa"))
 
     if session_id:
         try:
@@ -454,18 +463,31 @@ async def refresh_token(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token geçersiz"
             )
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)}, session_id=str(session.id))
+        refresh_token_value = create_refresh_token(
+            data={"sub": str(user.id), "portal": portal_value, "mfa": mfa_value},
+            session_id=str(session.id),
+        )
         session_service.rotate_session(session, refresh_token_value)
     else:
         session = session_service.create_session(
             user_id=user.id,
             refresh_token=refresh_token_value
         )
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)}, session_id=str(session.id))
+        refresh_token_value = create_refresh_token(
+            data={"sub": str(user.id), "portal": portal_value, "mfa": mfa_value},
+            session_id=str(session.id),
+        )
         session_service.rotate_session(session, refresh_token_value)
 
     # Create new access token
-    access_token = create_access_token(data={"sub": str(user.id)})
+    access_token = create_access_token(
+        data={
+            "sub": str(user.id),
+            "portal": portal_value,
+            "sid": str(session.id),
+            "mfa": mfa_value,
+        }
+    )
     
     return TokenResponse(access_token=access_token, refresh_token=refresh_token_value)
 

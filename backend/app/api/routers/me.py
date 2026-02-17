@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_user, get_current_tenant, get_current_membership
+from app.dependencies.auth import get_current_user, get_current_tenant, get_current_membership, get_access_token_payload
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
@@ -62,6 +62,7 @@ def _resolve_admin_tenant_context(
 @router.get("", response_model=MeResponse)
 async def get_context(
     current_user: User = Depends(get_current_user),
+    token_payload: dict = Depends(get_access_token_payload),
     db: Session = Depends(get_db),
     x_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-ID")
 ) -> MeResponse:
@@ -74,7 +75,12 @@ async def get_context(
     membership: TenantMembership | None
 
     if current_user.is_admin:
-        current_tenant, membership = _resolve_admin_tenant_context(current_user, db, x_tenant_id)
+        portal = (token_payload.get("portal") or "tenant").strip()
+        # Super admin portal: do not auto-pick a tenant unless explicitly selected.
+        if portal == "super_admin" and x_tenant_id is None:
+            current_tenant, membership = None, None
+        else:
+            current_tenant, membership = _resolve_admin_tenant_context(current_user, db, x_tenant_id)
     else:
         current_tenant = await get_current_tenant(
             current_user=current_user,
