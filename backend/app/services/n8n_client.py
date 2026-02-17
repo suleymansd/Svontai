@@ -346,6 +346,16 @@ class N8NClient:
                 "url": f"{base_url}{callback_path}",
                 "token": callback_token,
             },
+            "svontai": {
+                "baseUrl": base_url,
+                "tenantId": str(tenant_id),
+                "token": callback_token,
+                "endpoints": {
+                    "whatsapp_send": f"{base_url}/api/v1/channels/whatsapp/send",
+                    "automation_status": f"{base_url}/api/v1/channels/automation/status",
+                    "voice_call_summary": f"{base_url}/api/v1/voice/calls/summary",
+                },
+            },
         }
 
         if raw_payload is not None:

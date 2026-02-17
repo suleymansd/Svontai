@@ -48,6 +48,7 @@ from app.api.routers import (
     calls_router,
     telephony_router,
     voice_intent_router,
+    voice_call_summary_router,
 )
 
 # Configure logging
@@ -263,6 +264,7 @@ app.include_router(real_estate_router)
 app.include_router(webhooks_alias_router)
 app.include_router(voice_events_router)
 app.include_router(voice_intent_router)
+app.include_router(voice_call_summary_router)
 app.include_router(calls_router)
 app.include_router(telephony_router)
 
