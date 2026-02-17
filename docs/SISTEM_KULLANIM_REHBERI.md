@@ -51,6 +51,10 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
   - Voice Gateway deploy için:
     - `VOICE_GATEWAY_PUBLIC_URL`
     - `SVONTAI_BACKEND_URL`
+  - Twilio:
+    - Voice webhook: `POST /twilio/voice/inbound`
+    - Gather action: `POST /twilio/voice/intent`
+    - Status callback (opsiyonel): `POST /twilio/voice/status`
 - Vercel:
   - `NEXT_PUBLIC_BACKEND_URL`
 - Güvenlik:

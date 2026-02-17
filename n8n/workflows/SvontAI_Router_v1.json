@@ -91,7 +91,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"ok\":true,\"runId\":$json.runId,\"eventType\":$json.eventType,\"channel\":$json.channel}",
+        "responseBody": "={\"ok\":true,\"runId\":$json.runId,\"eventType\":$json.eventType,\"channel\":$json.channel,\"responseText\":$json.responseText || \"\" ,\"endCall\":$json.endCall || false}",
         "options": {}
       },
       "id": "respond",
@@ -174,4 +174,3 @@
     "executionOrder": "v1"
   }
 }
-

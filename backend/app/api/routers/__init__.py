@@ -31,6 +31,7 @@ from app.api.routers.webhooks_alias import router as webhooks_alias_router
 from app.api.routers.voice_events import router as voice_events_router
 from app.api.routers.calls import router as calls_router
 from app.api.routers.telephony import router as telephony_router
+from app.api.routers.voice_intent import router as voice_intent_router
 
 __all__ = [
     "auth_router",
@@ -65,4 +66,5 @@ __all__ = [
     "voice_events_router",
     "calls_router",
     "telephony_router",
+    "voice_intent_router",
 ]

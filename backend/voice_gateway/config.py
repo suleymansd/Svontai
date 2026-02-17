@@ -16,7 +16,12 @@ class VoiceGatewaySettings(BaseSettings):
     # Resolve endpoint + ingest endpoint paths (backend)
     SVONTAI_TELEPHONY_RESOLVE_PATH: str = "/api/v1/telephony/resolve"
     SVONTAI_VOICE_INGEST_PATH: str = "/api/v1/voice/events"
+    SVONTAI_VOICE_INTENT_PATH: str = "/api/v1/voice/intent"
+
+    # Twilio voice mode:
+    # - gather: IVR-style STT via Twilio <Gather input="speech"> (production friendly, low complexity)
+    # - stream: Media Streams websocket (skeleton exists; realtime STT/TTS will be added later)
+    TWILIO_VOICE_MODE: str = "gather"
 
 
 settings = VoiceGatewaySettings()
-

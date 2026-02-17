@@ -4,7 +4,8 @@ Telephony registry + resolution endpoints.
 Voice Gateway uses /api/v1/telephony/resolve to map inbound "To" number -> tenant_id.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.voice_security import verify_voice_gateway_request_dependency
@@ -22,6 +23,9 @@ from app.schemas.telephony import (
 from app.services.audit_log_service import AuditLogService
 
 router = APIRouter(prefix="/api/v1/telephony", tags=["Telephony"])
+
+class TelephonyResolveRequest(BaseModel):
+    to: str = Field(..., min_length=6, max_length=60)
 
 
 @router.get("/numbers", response_model=list[TelephonyNumberResponse])
@@ -74,14 +78,14 @@ async def create_number(
     return number
 
 
-@router.get("/resolve", response_model=TelephonyResolveResponse)
+@router.post("/resolve", response_model=TelephonyResolveResponse)
 async def resolve_tenant_by_number(
     request: Request,
-    to: str = Query(..., min_length=6, max_length=60),
+    payload: TelephonyResolveRequest,
     db: Session = Depends(get_db),
     _: dict = Depends(verify_voice_gateway_request_dependency),
 ):
-    normalized = to.strip()
+    normalized = payload.to.strip()
     record = db.query(TelephonyNumber).filter(
         TelephonyNumber.phone_number == normalized,
         TelephonyNumber.is_active.is_(True),
@@ -91,4 +95,3 @@ async def resolve_tenant_by_number(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No tenant mapping for this number")
 
     return TelephonyResolveResponse(tenantId=str(record.tenant_id), provider=record.provider, phoneNumber=record.phone_number)
-
