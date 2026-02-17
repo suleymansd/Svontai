@@ -1,0 +1,177 @@
+{
+  "name": "SvontAI - Router v1 (Normalized Events)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-router",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "svontai-router"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalized SvontAI event payload (svontai_event)\n// This workflow is a template; extend routing per tenant needs.\n\nconst body = $input.first().json.body;\n\nconst normalized = {\n  event: body.event,\n  eventType: body.eventType,\n  runId: body.runId,\n  correlationId: body.correlationId,\n  tenantId: body.tenantId,\n  channel: body.channel,\n  externalEventId: body.externalEventId,\n  from: body.from,\n  to: body.to,\n  text: body.text,\n  timestamp: body.timestamp,\n  metadata: body.metadata || {},\n  callback: body.callback || {}\n};\n\nconsole.log('[SvontAI Router] eventType:', normalized.eventType, 'channel:', normalized.channel);\n\nreturn [{ json: normalized }];"
+      },
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-call",
+      "name": "Is Call?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Placeholder response for voice/call events\n// In production: route to tool workflows (calendar, crm, notes, messaging)\n\nconst responseText = `Merhaba! (Voice Router MVP) İsteğinizi aldım. Şu an çağrı akışını kuruyoruz.`;\n\nreturn [{ json: { ...input, responseText } }];"
+      },
+      "id": "call-placeholder",
+      "name": "Call Placeholder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Placeholder for WhatsApp or other channels\nconst responseText = `Mesajınız alındı. (Router v1 template)`;\n\nreturn [{ json: { ...input, responseText } }];"
+      },
+      "id": "default-placeholder",
+      "name": "Default Placeholder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":true,\"runId\":$json.runId,\"eventType\":$json.eventType,\"channel\":$json.channel}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        960,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Is Call?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call?": {
+      "main": [
+        [
+          {
+            "node": "Call Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Default Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Placeholder": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Placeholder": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "versionId": "router-v1",
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+

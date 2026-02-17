@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 INSECURE_DEFAULT_SECRETS = [
     "change-this-to-a-secure-random-string-svontai-to-n8n",
     "change-this-to-a-secure-random-string-n8n-to-svontai",
+    "change-this-to-a-secure-random-string-voice-gateway-to-svontai",
     "your-super-secret-jwt-key-change-in-production",
 ]
 
@@ -151,6 +152,11 @@ class Settings(BaseSettings):
     # Used for HMAC signature verification
     SVONTAI_TO_N8N_SECRET: str = "change-this-to-a-secure-random-string-svontai-to-n8n"
     N8N_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-n8n-to-svontai"
+
+    # ===========================================
+    # Voice Gateway Integration (HMAC)
+    # ===========================================
+    VOICE_GATEWAY_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-voice-gateway-to-svontai"
     
     # Default workflow ID for incoming WhatsApp messages
     N8N_INCOMING_WORKFLOW_ID: str = ""

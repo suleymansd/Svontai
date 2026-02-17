@@ -43,6 +43,7 @@ class AutomationSettingsResponse(BaseModel):
     default_workflow_id: Optional[str] = None
     whatsapp_workflow_id: Optional[str] = None
     widget_workflow_id: Optional[str] = None
+    call_workflow_id: Optional[str] = None
     custom_n8n_url: Optional[str] = None
     enable_auto_retry: bool = True
     max_retries: int = 2
@@ -62,6 +63,7 @@ class AutomationSettingsUpdate(BaseModel):
     default_workflow_id: Optional[str] = None
     whatsapp_workflow_id: Optional[str] = None
     widget_workflow_id: Optional[str] = None
+    call_workflow_id: Optional[str] = None
     custom_n8n_url: Optional[str] = None
     enable_auto_retry: Optional[bool] = None
     max_retries: Optional[int] = Field(default=None, ge=0, le=10)
@@ -146,6 +148,7 @@ async def get_automation_settings(
         default_workflow_id=automation_settings.default_workflow_id,
         whatsapp_workflow_id=automation_settings.whatsapp_workflow_id,
         widget_workflow_id=automation_settings.widget_workflow_id,
+        call_workflow_id=getattr(automation_settings, "call_workflow_id", None),
         custom_n8n_url=automation_settings.custom_n8n_url,
         enable_auto_retry=automation_settings.enable_auto_retry,
         max_retries=automation_settings.max_retries,
@@ -213,6 +216,7 @@ async def update_automation_settings(
         default_workflow_id=automation_settings.default_workflow_id,
         whatsapp_workflow_id=automation_settings.whatsapp_workflow_id,
         widget_workflow_id=automation_settings.widget_workflow_id,
+        call_workflow_id=getattr(automation_settings, "call_workflow_id", None),
         custom_n8n_url=automation_settings.custom_n8n_url,
         enable_auto_retry=automation_settings.enable_auto_retry,
         max_retries=automation_settings.max_retries,

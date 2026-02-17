@@ -657,6 +657,18 @@ export default function SettingsPage() {
                         WhatsApp mesajları için özel workflow (boş bırakılırsa varsayılan kullanılır)
                       </p>
                     </div>
+
+                    <div className="space-y-2">
+                      <Label>Voice / Call Workflow ID (Opsiyonel)</Label>
+                      <Input
+                        placeholder="Voice eventleri için workflow (örn: svontai-router)"
+                        value={(automationData as any).call_workflow_id || ''}
+                        onChange={(e) => setAutomationData({ ...(automationData as any), call_workflow_id: e.target.value } as any)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Voice Gateway eventleri için workflow path&apos;i (boş bırakılırsa varsayılan kullanılır)
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
 

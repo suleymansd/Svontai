@@ -594,6 +594,7 @@ export const automationApi = {
     default_workflow_id?: string
     whatsapp_workflow_id?: string
     widget_workflow_id?: string
+    call_workflow_id?: string
     custom_n8n_url?: string
     enable_auto_retry?: boolean
     max_retries?: number

@@ -30,6 +30,7 @@ class AutomationChannel(str, Enum):
     """Supported automation channels."""
     WHATSAPP = "whatsapp"
     WEB_WIDGET = "web_widget"
+    CALL = "call"
 
 
 class AutomationRun(Base):
@@ -261,6 +262,12 @@ class TenantAutomationSettings(Base):
         String(255),
         nullable=True
     )
+
+    # Voice call-specific workflow
+    call_workflow_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True
+    )
     
     # Custom n8n webhook URL (if tenant has own n8n instance)
     custom_n8n_url: Mapped[Optional[str]] = mapped_column(
@@ -325,4 +332,6 @@ class TenantAutomationSettings(Base):
             return self.whatsapp_workflow_id
         if channel == AutomationChannel.WEB_WIDGET.value and self.widget_workflow_id:
             return self.widget_workflow_id
+        if channel == AutomationChannel.CALL.value and self.call_workflow_id:
+            return self.call_workflow_id
         return self.default_workflow_id

@@ -301,6 +301,116 @@ class N8NClient:
             payload["rawPayload"] = raw_payload
         
         return payload
+
+    def build_event_payload(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: str,
+        event_type: str,
+        channel: str,
+        external_event_id: str | None,
+        from_id: str,
+        to_id: str | None,
+        text: str | None = None,
+        timestamp: str | None = None,
+        correlation_id: Optional[str] = None,
+        contact_name: Optional[str] = None,
+        raw_payload: Optional[dict] = None,
+        metadata: Optional[dict] = None,
+        callback_path: str = "/api/v1/channels/whatsapp/send",
+    ) -> dict:
+        """
+        Build a normalized SvontAI event payload for n8n-first orchestration.
+
+        This is the forward-compatible format used by WhatsApp/Web/Voice events.
+        """
+        callback_token = create_n8n_jwt_token(str(tenant_id))
+        base_url = (settings.BACKEND_URL or "").rstrip("/")
+
+        payload: dict = {
+            "event": "svontai_event",
+            "eventType": event_type,
+            "runId": run_id,
+            "correlationId": correlation_id,
+            "tenantId": str(tenant_id),
+            "channel": channel,
+            "externalEventId": external_event_id,
+            "from": from_id,
+            "to": to_id,
+            "text": text,
+            "timestamp": timestamp,
+            "contactName": contact_name,
+            "metadata": metadata or {},
+            "callback": {
+                "url": f"{base_url}{callback_path}",
+                "token": callback_token,
+            },
+        }
+
+        if raw_payload is not None:
+            payload["rawPayload"] = raw_payload
+
+        return payload
+
+    async def trigger_event(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        channel: str,
+        workflow_id: str,
+        event_type: str,
+        external_event_id: str | None,
+        from_id: str,
+        to_id: str | None,
+        text: str | None = None,
+        timestamp: str | None = None,
+        correlation_id: Optional[str] = None,
+        contact_name: Optional[str] = None,
+        raw_payload: Optional[dict] = None,
+        metadata: Optional[dict] = None,
+    ) -> AutomationRun:
+        """
+        Generic entry point for triggering n8n on normalized SvontAI events.
+
+        Creates an AutomationRun idempotently using external_event_id (stored in message_id field for now).
+        """
+        # NOTE: For backward compatibility, we store external_event_id into message_id.
+        # This keeps the existing unique index (tenant_id, message_id) effective.
+        run, is_new = self.create_automation_run(
+            tenant_id=tenant_id,
+            channel=channel,
+            from_number=from_id,
+            to_number=to_id,
+            message_id=external_event_id,
+            message_content=text,
+            workflow_id=workflow_id,
+            correlation_id=correlation_id,
+        )
+
+        if not is_new:
+            return run
+
+        payload = self.build_event_payload(
+            tenant_id=tenant_id,
+            run_id=str(run.id),
+            event_type=event_type,
+            channel=channel,
+            external_event_id=external_event_id,
+            from_id=from_id,
+            to_id=to_id,
+            text=text,
+            timestamp=timestamp,
+            correlation_id=correlation_id,
+            contact_name=contact_name,
+            raw_payload=raw_payload,
+            metadata=metadata,
+        )
+
+        # Fire-and-forget semantics are handled by the caller (background task),
+        # but we keep trigger_with_retry for reuse.
+        await self.trigger_with_retry(workflow_id, payload, tenant_id, run)
+        return run
     
     async def trigger_workflow(
         self,
