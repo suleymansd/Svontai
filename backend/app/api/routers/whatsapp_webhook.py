@@ -19,6 +19,8 @@ from app.db.session import get_db
 from app.services.onboarding_service import OnboardingService
 from app.services.meta_api import meta_api_service
 from app.services.system_event_service import SystemEventService
+from app.services.subscription_service import SubscriptionService
+from app.services.usage_counter_service import UsageCounterService
 from app.core.encryption import decrypt_token
 from app.core.config import settings
 from app.models.whatsapp_account import WhatsAppAccount
@@ -448,6 +450,16 @@ async def handle_incoming_message(
     )
     db.add(user_message)
     db.commit()
+
+    # Billing-aware metering (inbound message)
+    try:
+        SubscriptionService(db).increment_message_count(account.tenant_id)
+    except Exception:
+        pass
+    try:
+        UsageCounterService(db).increment_message_count(account.tenant_id, 1)
+    except Exception:
+        pass
     
     # Check if AI/automation is paused for this conversation
     if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
@@ -502,6 +514,15 @@ async def handle_incoming_message(
                         )
                     )
                     db.commit()
+                    # Billing-aware metering (outbound message)
+                    try:
+                        SubscriptionService(db).increment_message_count(account.tenant_id)
+                    except Exception:
+                        pass
+                    try:
+                        UsageCounterService(db).increment_message_count(account.tenant_id, 1)
+                    except Exception:
+                        pass
                 except Exception as exc:
                     logger.error("Real Estate Pack response send failed: %s", exc, exc_info=True)
                     SystemEventService(db).log(

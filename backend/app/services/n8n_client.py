@@ -353,12 +353,16 @@ class N8NClient:
                 "token": callback_token,
                 "endpoints": {
                     "whatsapp_send": f"{base_url}/api/v1/channels/whatsapp/send",
+                    "whatsapp_send_template": f"{base_url}/api/v1/channels/whatsapp/send-template",
+                    "whatsapp_send_document": f"{base_url}/api/v1/channels/whatsapp/send-document",
                     "automation_status": f"{base_url}/api/v1/channels/automation/status",
                     "voice_call_summary": f"{base_url}/api/v1/voice/calls/summary",
                     "leads_upsert": f"{base_url}/api/v1/n8n/leads/upsert",
                     "notes_create": f"{base_url}/api/v1/n8n/notes/create",
                     "usage_increment": f"{base_url}/api/v1/n8n/usage/increment",
                     "audit_log": f"{base_url}/api/v1/n8n/audit/log",
+                    "calls_resolve": f"{base_url}/api/v1/n8n/calls/resolve",
+                    "calls_transcript": f"{base_url}/api/v1/n8n/calls/transcript",
                 },
             },
         }
@@ -692,21 +696,24 @@ class N8NClient:
             )
             return run
         
-        # Build payload
-        payload = self.build_incoming_message_payload(
+        # Build normalized payload (svontai_event) for n8n-first orchestration.
+        # This is now the canonical contract across WhatsApp/Web/Voice.
+        payload = self.build_event_payload(
             tenant_id=tenant_id,
-            channel=channel,
-            from_number=from_number,
-            to_number=to_number,
-            text=text,
-            message_id=message_id,
-            timestamp=timestamp,
             run_id=str(run.id),
+            event_type="incoming_message",
+            channel=channel,
+            external_event_id=message_id,
+            from_id=from_number,
+            to_id=to_number,
+            text=text,
+            timestamp=timestamp,
             correlation_id=correlation_id,
             contact_name=contact_name,
             raw_payload=raw_payload,
-            extra_data=extra_data
+            metadata=extra_data or {},
         )
+        payload["messageId"] = message_id
         
         # Trigger workflow (fire and forget - don't block webhook response)
         try:

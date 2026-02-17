@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.n8n_security import verify_n8n_bearer_token
 from app.db.session import get_db
 from app.models.call import Call
+from app.models.call import CallTranscript
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
 from app.services.audit_log_service import AuditLogService
@@ -399,3 +400,130 @@ async def append_audit_log(
     UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "audit_log"})
 
     return {"ok": True}
+
+
+class CallResolveRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    provider: str
+    provider_call_id: str = Field(..., alias="providerCallId")
+
+    class Config:
+        populate_by_name = True
+
+
+class CallResolveResponse(BaseModel):
+    ok: bool = True
+    call_id: str = Field(..., alias="callId")
+    lead_id: str | None = Field(default=None, alias="leadId")
+    from_number: str = Field(..., alias="from")
+    to_number: str | None = Field(default=None, alias="to")
+    status: str
+    duration_seconds: int = Field(..., alias="durationSeconds")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/calls/resolve", response_model=CallResolveResponse)
+async def resolve_call(
+    request: Request,
+    body: CallResolveRequest,
+    db: Session = Depends(get_db),
+) -> CallResolveResponse:
+    await _verify_tenant(request, body.tenant_id)
+
+    tenant_uuid = UUID(body.tenant_id)
+    call = db.query(Call).filter(
+        Call.tenant_id == tenant_uuid,
+        Call.provider == body.provider,
+        Call.provider_call_id == body.provider_call_id,
+    ).first()
+    if not call:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Call not found")
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "calls_resolve"})
+    return CallResolveResponse(
+        callId=str(call.id),
+        leadId=str(call.lead_id) if call.lead_id else None,
+        from_number=call.from_number,
+        to_number=call.to_number,
+        status=call.status,
+        durationSeconds=int(call.duration_seconds or 0),
+    )
+
+
+class CallTranscriptRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    call_id: str | None = Field(default=None, alias="callId")
+    provider: str | None = None
+    provider_call_id: str | None = Field(default=None, alias="providerCallId")
+
+    class Config:
+        populate_by_name = True
+
+
+class CallTranscriptItem(BaseModel):
+    segment_index: int = Field(..., alias="segmentIndex")
+    speaker: str
+    text: str
+    ts_iso: str | None = Field(default=None, alias="tsIso")
+
+    class Config:
+        populate_by_name = True
+
+
+class CallTranscriptResponse(BaseModel):
+    ok: bool = True
+    call_id: str = Field(..., alias="callId")
+    items: list[CallTranscriptItem]
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/calls/transcript", response_model=CallTranscriptResponse)
+async def get_call_transcript(
+    request: Request,
+    body: CallTranscriptRequest,
+    db: Session = Depends(get_db),
+) -> CallTranscriptResponse:
+    await _verify_tenant(request, body.tenant_id)
+    tenant_uuid = UUID(body.tenant_id)
+
+    call: Call | None = None
+    if body.call_id:
+        try:
+            call_uuid = UUID(body.call_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid callId")
+        call = db.query(Call).filter(Call.id == call_uuid, Call.tenant_id == tenant_uuid).first()
+    elif body.provider and body.provider_call_id:
+        call = db.query(Call).filter(
+            Call.tenant_id == tenant_uuid,
+            Call.provider == body.provider,
+            Call.provider_call_id == body.provider_call_id,
+        ).first()
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="callId or (provider, providerCallId) required")
+
+    if not call:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Call not found")
+
+    rows = db.query(CallTranscript).filter(
+        CallTranscript.call_id == call.id,
+        CallTranscript.tenant_id == tenant_uuid,
+    ).order_by(CallTranscript.segment_index.asc()).all()
+
+    UsageCounterService(db).increment(tenant_id=tenant_uuid, tool_calls=1, extra={"last_tool": "calls_transcript"})
+    return CallTranscriptResponse(
+        callId=str(call.id),
+        items=[
+            CallTranscriptItem(
+                segmentIndex=int(r.segment_index or 0),
+                speaker=r.speaker,
+                text=r.text,
+                tsIso=r.ts_iso,
+            )
+            for r in rows
+        ],
+    )

@@ -40,18 +40,31 @@ SvontAI n8n’ye her zaman aşağıdaki normalize formda gönderir:
     "token": "JWT",
     "endpoints": {
       "whatsapp_send": "POST /api/v1/channels/whatsapp/send",
+      "whatsapp_send_template": "POST /api/v1/channels/whatsapp/send-template",
+      "whatsapp_send_document": "POST /api/v1/channels/whatsapp/send-document",
       "automation_status": "POST /api/v1/channels/automation/status",
       "voice_call_summary": "POST /api/v1/voice/calls/summary",
       "leads_upsert": "POST /api/v1/n8n/leads/upsert",
       "notes_create": "POST /api/v1/n8n/notes/create",
       "usage_increment": "POST /api/v1/n8n/usage/increment",
-      "audit_log": "POST /api/v1/n8n/audit/log"
+      "audit_log": "POST /api/v1/n8n/audit/log",
+      "calls_resolve": "POST /api/v1/n8n/calls/resolve",
+      "calls_transcript": "POST /api/v1/n8n/calls/transcript"
     }
   }
 }
 ```
 
 Not: SvontAI ayrıca başarılı n8n trigger’larında `workflow_runs` metriğini otomatik arttırır.
+
+### 2.1) Signature verification (SvontAI → n8n)
+
+SvontAI, n8n webhook’larını HMAC ile imzalar:
+- `X-SvontAI-Signature`
+- `X-SvontAI-Timestamp`
+
+`n8n/workflows/SvontAI_Router_v2.json` template’i bunları doğrulamak için n8n instance’ında şu env’i bekler:
+- `SVONTAI_TO_N8N_SECRET` (SvontAI backend’deki `SVONTAI_TO_N8N_SECRET` ile aynı)
 
 ## 3) Tool Endpoints (n8n → SvontAI)
 
@@ -151,4 +164,3 @@ n8n webhook response body örneği:
 Minimum zorunlu alanlar:
 - `responseText` (string)
 - `endCall` (bool, default false)
-

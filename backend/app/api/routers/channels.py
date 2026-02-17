@@ -22,6 +22,8 @@ from app.core.n8n_security import verify_n8n_request_dependency, verify_n8n_bear
 from app.core.encryption import decrypt_token
 from app.services.meta_api import meta_api_service
 from app.services.n8n_client import get_n8n_client
+from app.services.subscription_service import SubscriptionService
+from app.services.usage_counter_service import UsageCounterService
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
 from app.models.bot import Bot
@@ -63,6 +65,35 @@ class WhatsAppSendResponse(BaseModel):
     message_id: Optional[str] = None
     error: Optional[str] = None
     run_id: Optional[str] = None
+
+
+class WhatsAppTemplateSendRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
+    to: str
+    template_name: str = Field(..., alias="templateName")
+    language_code: str = Field(default="tr", alias="languageCode")
+    components: Optional[list[dict]] = None
+    meta: Optional[dict] = None
+    bot_id: Optional[str] = Field(default=None, alias="botId")
+    phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
+
+    class Config:
+        populate_by_name = True
+
+
+class WhatsAppDocumentSendRequest(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
+    to: str
+    link: Optional[str] = None
+    media_id: Optional[str] = Field(default=None, alias="mediaId")
+    filename: Optional[str] = None
+    caption: Optional[str] = None
+    meta: Optional[dict] = None
+    bot_id: Optional[str] = Field(default=None, alias="botId")
+    phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
+
+    class Config:
+        populate_by_name = True
 
 
 class AutomationStatusUpdateRequest(BaseModel):
@@ -187,6 +218,16 @@ async def send_whatsapp_message(
             await _store_bot_message(
                 db, tenant_id, body.to, body.text, wa_message_id
             )
+
+            # Billing-aware metering (outbound)
+            try:
+                SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
+            except Exception:
+                pass
+            try:
+                UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
+            except Exception:
+                pass
             
             # Update automation run status
             if run_id:
@@ -221,6 +262,142 @@ async def send_whatsapp_message(
             error=str(e),
             run_id=run_id
         )
+
+
+@router.post("/whatsapp/send-template", response_model=WhatsAppSendResponse)
+async def send_whatsapp_template(
+    request: Request,
+    body: WhatsAppTemplateSendRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        auth_result = await verify_n8n_bearer_token(request)
+        verified_tenant_id = auth_result.get("tenant_id")
+        if verified_tenant_id != body.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant ID mismatch in token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auth verification failed: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
+
+    tenant_id = body.tenant_id
+    run_id = body.meta.get("runId") if body.meta else None
+
+    account = await _get_whatsapp_account(db, tenant_id, body.phone_number_id, body.bot_id)
+    if not account:
+        error_msg = f"No WhatsApp account found for tenant {tenant_id}"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
+
+    access_token = decrypt_token(account.access_token_encrypted)
+    if not access_token:
+        error_msg = "No access token available"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
+
+    try:
+        result = await meta_api_service.send_template_message(
+            access_token=access_token,
+            phone_number_id=account.phone_number_id,
+            to=body.to,
+            template_name=body.template_name,
+            language_code=body.language_code,
+            components=body.components,
+        )
+        wa_message_id = result.get("messages", [{}])[0].get("id")
+        await _store_bot_message(db, tenant_id, body.to, f"[template:{body.template_name}]", wa_message_id)
+
+        # Billing-aware metering (outbound)
+        try:
+            SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
+        except Exception:
+            pass
+        try:
+            UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
+        except Exception:
+            pass
+
+        if run_id:
+            _update_run_success(db, run_id, {"wa_message_id": wa_message_id, "template": body.template_name})
+        return WhatsAppSendResponse(success=True, message_id=wa_message_id, run_id=run_id)
+    except Exception as e:
+        error_msg = f"Failed to send WhatsApp template: {e}"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
+
+
+@router.post("/whatsapp/send-document", response_model=WhatsAppSendResponse)
+async def send_whatsapp_document(
+    request: Request,
+    body: WhatsAppDocumentSendRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        auth_result = await verify_n8n_bearer_token(request)
+        verified_tenant_id = auth_result.get("tenant_id")
+        if verified_tenant_id != body.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant ID mismatch in token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auth verification failed: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
+
+    tenant_id = body.tenant_id
+    run_id = body.meta.get("runId") if body.meta else None
+
+    if not body.link and not body.media_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="link or mediaId is required")
+
+    account = await _get_whatsapp_account(db, tenant_id, body.phone_number_id, body.bot_id)
+    if not account:
+        error_msg = f"No WhatsApp account found for tenant {tenant_id}"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
+
+    access_token = decrypt_token(account.access_token_encrypted)
+    if not access_token:
+        error_msg = "No access token available"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
+
+    try:
+        result = await meta_api_service.send_document_message(
+            access_token=access_token,
+            phone_number_id=account.phone_number_id,
+            to=body.to,
+            media_id=body.media_id,
+            link=body.link,
+            filename=body.filename,
+            caption=body.caption,
+        )
+        wa_message_id = result.get("messages", [{}])[0].get("id")
+        await _store_bot_message(db, tenant_id, body.to, f"[document:{body.filename or ''}]", wa_message_id)
+
+        # Billing-aware metering (outbound)
+        try:
+            SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
+        except Exception:
+            pass
+        try:
+            UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
+        except Exception:
+            pass
+
+        if run_id:
+            _update_run_success(db, run_id, {"wa_message_id": wa_message_id, "document": True})
+        return WhatsAppSendResponse(success=True, message_id=wa_message_id, run_id=run_id)
+    except Exception as e:
+        error_msg = f"Failed to send WhatsApp document: {e}"
+        if run_id:
+            _update_run_failed(db, run_id, error_msg)
+        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
 
 @router.post("/automation/status")
