@@ -42,3 +42,59 @@ class UsageCounterService:
         self.db.refresh(counter)
         return counter
 
+    def increment_message_count(self, tenant_id: UUID, count: int = 1, period_key: str | None = None) -> TenantUsageCounter:
+        counter = self.get_or_create(tenant_id, period_key=period_key)
+        counter.message_count = int(counter.message_count or 0) + int(max(0, count))
+        self.db.commit()
+        self.db.refresh(counter)
+        return counter
+
+    def increment_workflow_runs(self, tenant_id: UUID, count: int = 1, period_key: str | None = None) -> TenantUsageCounter:
+        counter = self.get_or_create(tenant_id, period_key=period_key)
+        counter.workflow_runs = int(counter.workflow_runs or 0) + int(max(0, count))
+        self.db.commit()
+        self.db.refresh(counter)
+        return counter
+
+    def increment_tool_calls(self, tenant_id: UUID, count: int = 1, period_key: str | None = None) -> TenantUsageCounter:
+        counter = self.get_or_create(tenant_id, period_key=period_key)
+        counter.tool_calls = int(counter.tool_calls or 0) + int(max(0, count))
+        self.db.commit()
+        self.db.refresh(counter)
+        return counter
+
+    def increment_outbound_calls(self, tenant_id: UUID, count: int = 1, period_key: str | None = None) -> TenantUsageCounter:
+        counter = self.get_or_create(tenant_id, period_key=period_key)
+        counter.outbound_calls = int(counter.outbound_calls or 0) + int(max(0, count))
+        self.db.commit()
+        self.db.refresh(counter)
+        return counter
+
+    def increment(
+        self,
+        *,
+        tenant_id: UUID,
+        message_count: int = 0,
+        voice_seconds: int = 0,
+        workflow_runs: int = 0,
+        tool_calls: int = 0,
+        outbound_calls: int = 0,
+        period_key: str | None = None,
+        extra: dict | None = None,
+    ) -> TenantUsageCounter:
+        counter = self.get_or_create(tenant_id, period_key=period_key)
+        if message_count:
+            counter.message_count = int(counter.message_count or 0) + int(max(0, message_count))
+        if voice_seconds:
+            counter.voice_seconds = int(counter.voice_seconds or 0) + int(max(0, voice_seconds))
+        if workflow_runs:
+            counter.workflow_runs = int(counter.workflow_runs or 0) + int(max(0, workflow_runs))
+        if tool_calls:
+            counter.tool_calls = int(counter.tool_calls or 0) + int(max(0, tool_calls))
+        if outbound_calls:
+            counter.outbound_calls = int(counter.outbound_calls or 0) + int(max(0, outbound_calls))
+        if extra:
+            counter.extra_json = {**(counter.extra_json or {}), **extra}
+        self.db.commit()
+        self.db.refresh(counter)
+        return counter
