@@ -46,6 +46,8 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
   - `META_APP_SECRET`
   - `META_CONFIG_ID`
   - `META_REDIRECT_URI`
+- Voice Gateway:
+  - `VOICE_GATEWAY_TO_SVONTAI_SECRET`
 - Vercel:
   - `NEXT_PUBLIC_BACKEND_URL`
 - Güvenlik:

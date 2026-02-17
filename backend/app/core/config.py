@@ -239,6 +239,12 @@ class Settings(BaseSettings):
                     "You MUST set a secure, randomly generated secret in production. "
                     "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
                 )
+
+        if self.VOICE_GATEWAY_TO_SVONTAI_SECRET in INSECURE_DEFAULT_SECRETS:
+            raise ValueError(
+                "FATAL: VOICE_GATEWAY_TO_SVONTAI_SECRET is set to an insecure default value. "
+                "You MUST set a secure, randomly generated secret in production."
+            )
         
         return self
 

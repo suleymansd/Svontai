@@ -29,6 +29,8 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.appointment import Appointment
 from app.models.note import WorkspaceNote
 from app.models.api_key import TenantApiKey
+from app.models.call import Call, CallTranscript, CallSummary
+from app.models.usage_counter import TenantUsageCounter
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -104,6 +106,10 @@ __all__ = [
     "Appointment",
     "WorkspaceNote",
     "TenantApiKey",
+    "Call",
+    "CallTranscript",
+    "CallSummary",
+    "TenantUsageCounter",
     "RealEstatePackSettings",
     "RealEstateGoogleCalendarIntegration",
     "RealEstateListing",

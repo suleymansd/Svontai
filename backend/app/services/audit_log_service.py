@@ -59,7 +59,34 @@ class AuditLogService:
                 },
                 exc_info=True
             )
-            return None
+        return None
+
+    def safe_log(
+        self,
+        action: str,
+        tenant_id: UUID | str | None = None,
+        user_id: UUID | str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        payload: dict | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        """
+        Fire-and-forget style audit logging.
+
+        Never raises; intended for webhook/gateway paths.
+        """
+        self.log(
+            action=action,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            payload=payload,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
 
     @staticmethod
     def _parse_uuid(value: UUID | str | None) -> UUID | None:
