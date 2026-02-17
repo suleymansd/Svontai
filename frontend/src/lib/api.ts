@@ -199,6 +199,14 @@ export const leadApi = {
   delete: (id: string) => api.delete(`/leads/${id}`),
 }
 
+export const callsApi = {
+  list: (params?: { status?: string; provider?: string; skip?: number; limit?: number }) =>
+    api.get('/calls', { params }),
+  get: (id: string) => api.get(`/calls/${id}`),
+  transcript: (id: string) => api.get(`/calls/${id}/transcript`),
+  summary: (id: string) => api.get(`/calls/${id}/summary`),
+}
+
 // WhatsApp API
 export const whatsappApi = {
   getIntegration: (botId: string) =>
