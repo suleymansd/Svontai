@@ -105,7 +105,7 @@ export default function AdminLayout({
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     clearAdminTenantContext()
-    router.push('/login')
+    router.push('/admin/login')
   }
 
   const handleOpenCustomerPanel = () => {

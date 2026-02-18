@@ -3,26 +3,26 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, Mail, Lock, ArrowRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowRight, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
+
 import { Logo } from '@/components/Logo'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi, meApi } from '@/lib/api'
-import { useAuthStore } from '@/lib/store'
 import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
+import { useAuthStore } from '@/lib/store'
 
-export default function LoginPageClient() {
+export default function AdminLoginPageClient() {
   const router = useRouter()
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
+
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState('')
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  })
+  const [adminSessionNote, setAdminSessionNote] = useState('')
+  const [formData, setFormData] = useState({ email: '', password: '' })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,15 +30,16 @@ export default function LoginPageClient() {
     setError('')
 
     try {
-      // Never carry super-admin tenant context into user portal sessions.
       clearAdminTenantContext()
+
       const loginResponse = await authApi.login({
         ...formData,
-        portal: 'tenant',
+        portal: 'super_admin',
+        admin_session_note: adminSessionNote.trim(),
         two_factor_code: twoFactorRequired ? twoFactorCode : undefined,
       })
-      const { access_token, refresh_token } = loginResponse.data
 
+      const { access_token, refresh_token } = loginResponse.data
       localStorage.setItem('access_token', access_token)
       localStorage.setItem('refresh_token', refresh_token)
 
@@ -51,13 +52,10 @@ export default function LoginPageClient() {
       setEntitlements(entitlements || {})
       setFeatureFlags(feature_flags || {})
 
-      if (!user?.is_admin) {
-        clearAdminTenantContext()
-      }
-
       setTwoFactorRequired(false)
       setTwoFactorCode('')
-      router.push('/dashboard')
+
+      router.push('/admin')
     } catch (err: any) {
       const detail = err.response?.data?.detail
       const detailCode = detail?.code
@@ -69,6 +67,12 @@ export default function LoginPageClient() {
       } else if (detailCode === 'TWO_FACTOR_INVALID') {
         setTwoFactorRequired(true)
         setError(detailMessage || 'Doğrulama kodu geçersiz.')
+      } else if (detailCode === 'ADMIN_PORTAL_FORBIDDEN') {
+        setError(detailMessage || 'Bu hesap süper admin paneline erişemez.')
+      } else if (detailCode === 'ADMIN_SESSION_NOTE_REQUIRED') {
+        setError(detailMessage || 'Süper admin giriş notu zorunlu.')
+      } else if (detailCode === 'SUPER_ADMIN_2FA_SETUP_REQUIRED') {
+        setError(detailMessage || 'Süper admin için 2FA etkinleştirilmeli.')
       } else {
         setError(detailMessage || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
       }
@@ -79,23 +83,21 @@ export default function LoginPageClient() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md animate-slide-up">
-          {/* Logo */}
           <Link href="/" className="inline-flex items-center gap-3 mb-12">
             <Logo size="lg" showText={true} animated={true} />
           </Link>
 
-          {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Tekrar hoş geldiniz</h1>
-            <p className="text-muted-foreground">
-              Hesabınıza giriş yaparak devam edin
-            </p>
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium mb-4">
+              <ShieldCheck className="h-4 w-4" />
+              Super Admin Portal
+            </div>
+            <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Yönetim girişi</h1>
+            <p className="text-muted-foreground">SvontAI şirket yönetim paneline giriş yapın</p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
@@ -105,13 +107,15 @@ export default function LoginPageClient() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">E-posta</Label>
+              <Label htmlFor="email" className="text-sm font-medium">
+                E-posta
+              </Label>
               <div className="relative input-glow rounded-xl transition-all duration-300">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="ornek@email.com"
+                  placeholder="admin@svontai.com"
                   className="pl-12 h-12 rounded-xl"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -121,17 +125,9 @@ export default function LoginPageClient() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-medium">Şifre</Label>
-                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
-                  Şifremi unuttum
-                </Link>
-              </div>
-              <div className="flex items-center justify-end">
-                <Link href="/register" className="text-xs text-muted-foreground hover:underline">
-                  E-postanı doğrulamadın mı? Kayıt ekranından kod gir
-                </Link>
-              </div>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Şifre
+              </Label>
               <div className="relative input-glow rounded-xl transition-all duration-300">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
@@ -146,9 +142,28 @@ export default function LoginPageClient() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="admin_session_note" className="text-sm font-medium">
+                Oturum Notu
+              </Label>
+              <Input
+                id="admin_session_note"
+                type="text"
+                placeholder="Örn: Tenant denetimi / destek müdahalesi"
+                className="h-12 rounded-xl"
+                value={adminSessionNote}
+                onChange={(e) => setAdminSessionNote(e.target.value)}
+                required
+                minLength={8}
+              />
+              <p className="text-xs text-muted-foreground">Güvenlik audit kaydı için zorunludur.</p>
+            </div>
+
             {twoFactorRequired && (
               <div className="space-y-2">
-                <Label htmlFor="two_factor_code" className="text-sm font-medium">Doğrulama Kodu</Label>
+                <Label htmlFor="two_factor_code" className="text-sm font-medium">
+                  Doğrulama Kodu
+                </Label>
                 <Input
                   id="two_factor_code"
                   type="text"
@@ -165,7 +180,7 @@ export default function LoginPageClient() {
 
             <Button
               type="submit"
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25 btn-shimmer"
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 hover:from-slate-950 hover:to-slate-800 text-base font-medium shadow-lg shadow-slate-900/25 btn-shimmer"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -175,7 +190,7 @@ export default function LoginPageClient() {
                 </>
               ) : (
                 <>
-                  Giriş Yap
+                  Super Admin Girişi
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </>
               )}
@@ -183,29 +198,22 @@ export default function LoginPageClient() {
           </form>
 
           <div className="mt-8 text-center">
-            <span className="text-muted-foreground">Hesabınız yok mu? </span>
-            <Link href="/register" className="text-primary hover:underline font-medium">
-              Ücretsiz kayıt olun
-            </Link>
-          </div>
-
-          <div className="mt-4 text-center">
-            <Link href="/admin/login" className="text-xs text-muted-foreground hover:underline">
-              Super Admin girişi
+            <Link href="/login" className="text-xs text-muted-foreground hover:underline">
+              Kullanıcı paneline dön
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Right Panel - Visual */}
-      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-blue-600 via-violet-600 to-purple-600 overflow-hidden">
-        {/* Pattern */}
+      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 overflow-hidden">
         <div className="absolute inset-0 dot-pattern opacity-20" />
-
-        {/* Floating Elements */}
-        <div className="absolute top-20 left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-24 left-24 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute bottom-24 right-24 w-[34rem] h-[34rem] bg-slate-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: '2s' }}
+        />
       </div>
     </div>
   )
 }
+
