@@ -188,12 +188,6 @@ export default function LoginPageClient() {
               Ücretsiz kayıt olun
             </Link>
           </div>
-
-          <div className="mt-4 text-center">
-            <Link href="/admin/login" className="text-xs text-muted-foreground hover:underline">
-              Super Admin girişi
-            </Link>
-          </div>
         </div>
       </div>
 
