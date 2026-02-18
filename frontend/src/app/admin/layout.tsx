@@ -52,11 +52,13 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const isLoginRoute = (pathname || '').startsWith('/admin/login')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState<{ full_name: string; email: string; is_admin: boolean } | null>(null)
   const [tenantContext, setTenantContext] = useState<{ id: string; name?: string } | null>(null)
 
   useEffect(() => {
+    if (isLoginRoute) return
     // Check if user is admin
     const checkAuth = async () => {
       try {
@@ -93,13 +95,14 @@ export default function AdminLayout({
     }
 
     checkAuth()
-  }, [router])
+  }, [router, isLoginRoute])
 
   useEffect(() => {
+    if (isLoginRoute) return
     const syncTenantContext = () => setTenantContext(getAdminTenantContext())
     window.addEventListener('storage', syncTenantContext)
     return () => window.removeEventListener('storage', syncTenantContext)
-  }, [])
+  }, [isLoginRoute])
 
   const handleLogout = () => {
     localStorage.removeItem('access_token')
@@ -119,6 +122,10 @@ export default function AdminLayout({
   const handleClearTenantContext = () => {
     clearAdminTenantContext()
     setTenantContext(null)
+  }
+
+  if (isLoginRoute) {
+    return <>{children}</>
   }
 
   if (!user) {
