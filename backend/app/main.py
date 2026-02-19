@@ -254,6 +254,7 @@ app.include_router(admin_router)
 app.include_router(channels_router)
 app.include_router(n8n_tools_router)
 app.include_router(n8n_reply_router)
+app.include_router(n8n_dev_token_router)
 
 # Include routers - Automation Settings
 app.include_router(automation_router)
@@ -277,7 +278,6 @@ app.include_router(telephony_router)
 # Temporary debug endpoints (development only)
 if settings.ENVIRONMENT == "dev":
     app.include_router(debug_router)
-    app.include_router(n8n_dev_token_router)
 
 
 @app.get("/")
