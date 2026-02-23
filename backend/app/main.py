@@ -60,12 +60,16 @@ from app.api.routers import (
 )
 
 # TEMP runtime guard for production troubleshooting:
-# confirms missing model modules fail fast with clear log.
+# confirms missing model modules and critical columns fail fast with clear log.
 try:
     from app.models.tenant_tool import TenantTool  # noqa: F401
+    from app.models.tool import Tool  # noqa: F401
     print("TenantTool import OK")
+    print("Tool columns:", list(Tool.__table__.columns.keys()))
+    if "slug" not in Tool.__table__.columns.keys():
+        raise RuntimeError("Tool.slug column missing in model definition")
 except Exception as e:  # pragma: no cover
-    print("TenantTool import FAILED:", e)
+    print("Tool/TenantTool import FAILED:", e)
     raise
 
 # Configure logging
