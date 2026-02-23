@@ -7,7 +7,7 @@ import logging
 import asyncio
 from contextlib import asynccontextmanager, suppress
 
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -109,6 +109,42 @@ def _ensure_leads_schema_compatibility() -> None:
     finally:
         db.close()
 
+
+def _bootstrap_first_admin() -> None:
+    """
+    One-time bootstrap for first global admin user.
+    """
+    from app.db.session import SessionLocal
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        existing_admin = db.query(User.id).filter(User.is_admin.is_(True)).first()
+        if existing_admin:
+            return
+
+        bootstrap_email = (settings.BOOTSTRAP_ADMIN_EMAIL or "").strip().lower()
+        if not bootstrap_email:
+            logger.warning(
+                "Bootstrap admin skipped: no admin user exists but BOOTSTRAP_ADMIN_EMAIL is empty."
+            )
+            return
+
+        user = db.query(User).filter(func.lower(User.email) == bootstrap_email).first()
+        if not user:
+            logger.warning("Bootstrap admin skipped: user not found for %s", bootstrap_email)
+            return
+
+        user.is_admin = True
+        db.commit()
+        logger.warning("Bootstrap admin granted")
+        logger.warning("Bootstrap admin executed for %s", user.email)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 async def _appointment_reminder_loop() -> None:
     from app.db.session import SessionLocal
     from app.services.appointment_reminder_service import AppointmentReminderService
@@ -186,6 +222,11 @@ async def lifespan(app: FastAPI):
         _ensure_leads_schema_compatibility()
     except Exception as exc:
         logger.warning("Could not apply leads schema compatibility patch: %s", exc)
+
+    try:
+        _bootstrap_first_admin()
+    except Exception as exc:
+        logger.warning("Could not execute bootstrap admin flow: %s", exc)
     
     yield
     

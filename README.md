@@ -100,6 +100,7 @@ JWT_SECRET_KEY=your-secret-key-change-this
 OPENAI_API_KEY=sk-your-openai-key
 WEBHOOK_USERNAME=your-webhook-username
 WEBHOOK_PASSWORD=your-webhook-password
+BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com
 ```
 
 6. Create database:
@@ -233,6 +234,7 @@ ENVIRONMENT=prod
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 JWT_SECRET_KEY=change-this-to-a-secure-random-string
 SUPER_ADMIN_REQUIRE_2FA=true
+BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com
 
 # URLs
 FRONTEND_URL=https://<your-vercel-domain>
@@ -300,6 +302,7 @@ SUPABASE_STORAGE_BUCKET=svontai-artifacts
 ```
 
 `SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
+`BOOTSTRAP_ADMIN_EMAIL` ilk açılışta sadece admin yoksa çalışır; belirtilen kullanıcıya global admin yetkisi verir.
 
 ### Railway migration & smoke checklist (P6.1)
 
