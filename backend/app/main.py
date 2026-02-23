@@ -59,6 +59,15 @@ from app.api.routers import (
     billing_router,
 )
 
+# TEMP runtime guard for production troubleshooting:
+# confirms missing model modules fail fast with clear log.
+try:
+    from app.models.tenant_tool import TenantTool  # noqa: F401
+    print("TenantTool import OK")
+except Exception as e:  # pragma: no cover
+    print("TenantTool import FAILED:", e)
+    raise
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO if settings.ENVIRONMENT == "dev" else logging.WARNING,
