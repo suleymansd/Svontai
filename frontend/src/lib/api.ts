@@ -354,6 +354,15 @@ export const paymentsApi = {
     api.post('/payments/checkout', data),
 }
 
+export const billingApi = {
+  getPlan: () => api.get('/billing/plan'),
+  getLimits: () => api.get('/billing/limits'),
+  createStripeCheckoutSession: (data: { plan: 'pro' | 'premium'; interval?: 'monthly' | 'yearly' }) =>
+    api.post('/billing/stripe/checkout-session', data),
+  createStripePortalSession: (params?: { return_url?: string }) =>
+    api.get('/billing/stripe/portal', { params }),
+}
+
 // Tenant Onboarding API (Setup Wizard)
 export const setupOnboardingApi = {
   getStatus: () => api.get('/onboarding/setup/status'),
@@ -619,6 +628,33 @@ export const automationApi = {
   // Test
   sendTestEvent: (testMessage?: string) =>
     api.post('/automation/test', { test_message: testMessage || 'Test message' }),
+}
+
+// Tool Marketplace API
+export const toolMarketplaceApi = {
+  listTools: () => api.get('/tools'),
+  updateToolSettings: (
+    slug: string,
+    data: { enabled: boolean; rateLimitPerMinute?: number | null; config?: Record<string, unknown> }
+  ) => api.put(`/tools/${slug}/settings`, data),
+  runTool: (data: {
+    requestId?: string
+    toolSlug: string
+    toolInput: Record<string, unknown>
+    context?: {
+      locale?: string
+      timezone?: string
+      channel?: string
+      memory?: Record<string, unknown>
+    }
+  }) => api.post('/tools/run', data),
+  listRuns: (params?: { limit?: number; offset?: number }) => api.get('/tools/runs', { params }),
+  getRun: (requestId: string) => api.get(`/tools/runs/${requestId}`),
+}
+
+// Integrations API
+export const integrationsApi = {
+  getStatus: () => api.get('/integrations/status'),
 }
 
 // System Events API

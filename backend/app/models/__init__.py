@@ -23,6 +23,9 @@ from app.models.feature_flag import FeatureFlag
 from app.models.system_event import SystemEvent
 from app.models.incident import Incident
 from app.models.tool import Tool
+from app.models.tenant_tool import TenantTool
+from app.models.tool_run import ToolRun
+from app.models.artifact import Artifact
 from app.models.ticket import Ticket, TicketMessage
 from app.models.password_reset import PasswordResetCode
 from app.models.email_verification import EmailVerificationCode
@@ -33,6 +36,8 @@ from app.models.call import Call, CallTranscript, CallSummary
 from app.models.lead_note import LeadNote
 from app.models.usage_counter import TenantUsageCounter
 from app.models.telephony import TelephonyNumber
+from app.models.google_oauth_token import GoogleOAuthToken
+from app.models.stripe_webhook_event import StripeWebhookEvent
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -101,6 +106,9 @@ __all__ = [
     "SystemEvent",
     "Incident",
     "Tool",
+    "TenantTool",
+    "ToolRun",
+    "Artifact",
     "Ticket",
     "TicketMessage",
     "PasswordResetCode",
@@ -114,6 +122,8 @@ __all__ = [
     "LeadNote",
     "TenantUsageCounter",
     "TelephonyNumber",
+    "GoogleOAuthToken",
+    "StripeWebhookEvent",
     "RealEstatePackSettings",
     "RealEstateGoogleCalendarIntegration",
     "RealEstateListing",

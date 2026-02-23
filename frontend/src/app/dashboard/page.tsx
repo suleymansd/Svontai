@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   Bot,
+  BarChart3,
   MessageSquare,
   Users,
   TrendingUp,
@@ -13,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { botApi, leadApi, conversationApi } from '@/lib/api'
+import { billingApi, botApi, leadApi, conversationApi } from '@/lib/api'
 import Link from 'next/link'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -31,12 +32,21 @@ export default function DashboardPage() {
     queryKey: ['leads'],
     queryFn: () => leadApi.list({ limit: 100 }).then(res => res.data),
   })
+  const { data: billingLimits } = useQuery({
+    queryKey: ['billing-limits-widget'],
+    queryFn: () => billingApi.getLimits().then(res => res.data),
+  })
 
   const isLoading = botsLoading || leadsLoading
 
   const activeBots = bots?.filter((bot: any) => bot.is_active).length || 0
   const totalLeads = leads?.length || 0
   const totalBots = bots?.length || 0
+  const monthlyUsed = Number(billingLimits?.usage?.monthly_runs_used || 0)
+  const monthlyLimit = Number(billingLimits?.limits?.monthly_runs || 0)
+  const topTools = Object.entries(billingLimits?.usage?.by_tool || {})
+    .sort((a: any, b: any) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
 
   return (
     <ContentContainer>
@@ -81,6 +91,40 @@ export default function DashboardPage() {
             </>
           )}
         </div>
+
+        <Card className="border border-border/70 shadow-soft">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Bu Ay Kullanım</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              {monthlyUsed.toLocaleString('tr-TR')} / {monthlyLimit.toLocaleString('tr-TR')} tool run
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
+                style={{
+                  width: `${monthlyLimit > 0 ? Math.min(100, Math.round((monthlyUsed / monthlyLimit) * 100)) : 0}%`,
+                }}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Top 3 tool:{' '}
+              {topTools.length > 0
+                ? topTools.map(([slug, count]: any) => `${slug} (${count})`).join(', ')
+                : 'Henüz kullanım yok'}
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/dashboard/tools">
+                <Button size="sm" variant="outline">Marketplace</Button>
+              </Link>
+              <Link href="/dashboard/billing">
+                <Button size="sm">Yükselt</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Bots Overview */}
         <Card className="border border-border/70 shadow-soft gradient-border-animated">

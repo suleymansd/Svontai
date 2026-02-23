@@ -1,4 +1,5 @@
 import pytest
+import os
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -17,9 +18,13 @@ def client(monkeypatch):
 
     old_environment = settings.ENVIRONMENT
     old_email_enabled = settings.EMAIL_ENABLED
+    old_webhook_username = os.environ.get("WEBHOOK_USERNAME")
+    old_webhook_password = os.environ.get("WEBHOOK_PASSWORD")
 
     settings.ENVIRONMENT = "dev"
     settings.EMAIL_ENABLED = False
+    os.environ["WEBHOOK_USERNAME"] = old_webhook_username or "test-webhook"
+    os.environ["WEBHOOK_PASSWORD"] = old_webhook_password or "test-webhook-pass"
 
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -60,4 +65,11 @@ def client(monkeypatch):
     Base.metadata.drop_all(bind=engine)
     settings.ENVIRONMENT = old_environment
     settings.EMAIL_ENABLED = old_email_enabled
-
+    if old_webhook_username is None:
+        os.environ.pop("WEBHOOK_USERNAME", None)
+    else:
+        os.environ["WEBHOOK_USERNAME"] = old_webhook_username
+    if old_webhook_password is None:
+        os.environ.pop("WEBHOOK_PASSWORD", None)
+    else:
+        os.environ["WEBHOOK_PASSWORD"] = old_webhook_password

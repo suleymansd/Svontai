@@ -123,8 +123,12 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_SUCCESS_URL: str = ""
     STRIPE_CANCEL_URL: str = ""
+    STRIPE_PORTAL_RETURN_URL: str = ""
+    # Convenience envs (optional). If STRIPE_PRICE_IDS is empty these seed monthly map.
+    STRIPE_PRICE_ID_PRO: str = ""
+    STRIPE_PRICE_ID_PREMIUM: str = ""
     # Example:
-    # STRIPE_PRICE_IDS='{"starter":{"monthly":"price_...","yearly":"price_..."}}'
+    # STRIPE_PRICE_IDS='{"pro":{"monthly":"price_...","yearly":"price_..."}}'
     STRIPE_PRICE_IDS: dict[str, dict[str, str]] = {}
 
     # Security: allow upgrading to paid plans without payment (dev/demo only)
@@ -163,12 +167,35 @@ class Settings(BaseSettings):
     
     # Request timeout for n8n API calls (seconds)
     N8N_TIMEOUT_SECONDS: int = 10
+    # Tool runner specific timeout (0 = fallback to N8N_TIMEOUT_SECONDS)
+    N8N_TOOL_RUNNER_TIMEOUT_SECONDS: int = 0
     
     # Number of retries for failed n8n requests
     N8N_RETRY_COUNT: int = 2
+    # Tool runner specific retries (fallback to N8N_RETRY_COUNT when < 0)
+    N8N_TOOL_RUNNER_RETRIES: int = -1
+    # Exponential backoff base in seconds for tool runner retry
+    N8N_TOOL_RUNNER_BACKOFF_SECONDS: float = 0.5
     
     # n8n webhook path pattern (used for triggering workflows)
     N8N_WEBHOOK_PATH: str = "/webhook"
+    # Internal API endpoint template for tool runner workflow execution
+    N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE: str = "/api/v1/workflows/{workflow_id}/run"
+    # Shared runner workflow identifier (can be overridden per-tool with tools.n8n_workflow_id)
+    N8N_TOOL_RUNNER_WORKFLOW_ID: str = "svontai-tool-runner"
+
+    # ===========================================
+    # Artifact Storage (Tool outputs)
+    # ===========================================
+    ARTIFACT_STORAGE_PROVIDER: Literal["local", "supabase"] = "local"
+    ARTIFACT_STORAGE_LOCAL_BASE_PATH: str = "storage/artifacts"
+    ARTIFACT_SIGNED_URL_EXPIRES_SECONDS: int = 3600
+    ARTIFACT_SIGNING_SECRET: str = ""
+
+    # Supabase Storage (v1 real provider for Railway)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "svontai-artifacts"
 
     @model_validator(mode='after')
     def normalize_database_url(self) -> 'Settings':
@@ -202,6 +229,27 @@ class Settings(BaseSettings):
     def validate_prod_payment_settings(self) -> "Settings":
         if self.ENVIRONMENT == "prod":
             self.ALLOW_UNPAID_PLAN_UPGRADES = False
+        return self
+
+    @model_validator(mode="after")
+    def normalize_stripe_price_ids(self) -> "Settings":
+        normalized: dict[str, dict[str, str]] = {
+            str(plan).strip(): {
+                str(interval).strip(): str(price_id).strip()
+                for interval, price_id in (intervals or {}).items()
+                if str(price_id).strip()
+            }
+            for plan, intervals in (self.STRIPE_PRICE_IDS or {}).items()
+        }
+        normalized = {plan: intervals for plan, intervals in normalized.items() if intervals}
+
+        if not normalized:
+            if self.STRIPE_PRICE_ID_PRO.strip():
+                normalized["pro"] = {"monthly": self.STRIPE_PRICE_ID_PRO.strip()}
+            if self.STRIPE_PRICE_ID_PREMIUM.strip():
+                normalized["premium"] = {"monthly": self.STRIPE_PRICE_ID_PREMIUM.strip()}
+
+        self.STRIPE_PRICE_IDS = normalized
         return self
 
     @model_validator(mode='after')

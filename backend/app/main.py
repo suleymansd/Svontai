@@ -53,6 +53,10 @@ from app.api.routers import (
     voice_call_summary_router,
     debug_router,
     n8n_dev_token_router,
+    tool_runner_router,
+    assistant_router,
+    integrations_router,
+    billing_router,
 )
 
 # Configure logging
@@ -274,6 +278,10 @@ app.include_router(voice_intent_router)
 app.include_router(voice_call_summary_router)
 app.include_router(calls_router)
 app.include_router(telephony_router)
+app.include_router(tool_runner_router)
+app.include_router(assistant_router)
+app.include_router(integrations_router)
+app.include_router(billing_router)
 
 # Temporary debug endpoints (development only)
 if settings.ENVIRONMENT == "dev":

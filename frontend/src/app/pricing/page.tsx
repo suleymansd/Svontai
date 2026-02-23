@@ -2,11 +2,15 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Check, Star } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { Reveal } from '@/components/marketing/reveal'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { useToast } from '@/components/ui/use-toast'
+import { billingApi } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const plans = [
   {
@@ -15,36 +19,62 @@ const plans = [
     description: 'Temel otomasyonlar için',
     monthly: 0,
     yearly: 0,
-    highlights: ['1 bot', '100 mesaj', 'Temel raporlar'],
+    highlights: ['Aylık 300 tool run', 'Temel marketplace', 'Topluluk desteği'],
   },
   {
-    name: 'Starter',
-    key: 'starter',
+    name: 'Pro',
+    key: 'pro',
     description: 'Yeni büyüyen ekipler',
     monthly: 299,
     yearly: 2990,
-    highlights: ['2 bot', '1.000 mesaj', 'Analytics', 'Otomasyon kataloğu'],
+    highlights: ['Aylık 2.000 tool run', 'Pro tool’lar', 'Öncelikli ticket desteği'],
   },
   {
-    name: 'Growth',
-    key: 'growth',
-    description: 'Operasyon ekipleri için',
-    monthly: 799,
-    yearly: 7990,
-    highlights: ['5 bot', '5.000 mesaj', 'Error Center', 'SLA yönetimi'],
+    name: 'Premium',
+    key: 'premium',
+    description: 'Yoğun otomasyon kullanan ekipler',
+    monthly: 599,
+    yearly: 5990,
+    highlights: ['Aylık 10.000 tool run', 'Premium tool erişimi', 'Gelişmiş entegrasyonlar'],
   },
   {
-    name: 'Enterprise',
+    name: 'Kurumsal',
     key: 'enterprise',
     description: 'Kurumsal ölçekte',
     monthly: null,
     yearly: null,
-    highlights: ['Sınırsız bot', 'Özel SLA', 'Dedicated support', 'SSO + Audit'],
+    highlights: ['Aylık 50.000+ tool run', 'Özel SLA', 'Dedicated support', 'Özel güvenlik gereksinimleri'],
   },
 ]
 
 export default function PricingPage() {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const [activeCheckoutPlan, setActiveCheckoutPlan] = useState<'pro' | 'premium' | null>(null)
+  const { toast } = useToast()
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (input: { plan: 'pro' | 'premium'; interval: 'monthly' | 'yearly' }) => {
+      const response = await billingApi.createStripeCheckoutSession(input)
+      const checkoutUrl = response.data?.url
+      if (!checkoutUrl) {
+        throw new Error('Checkout URL alınamadı')
+      }
+      return checkoutUrl as string
+    },
+    onSuccess: (url) => {
+      if (typeof window !== 'undefined') {
+        window.location.href = url
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Checkout başlatılamadı',
+        description: getApiErrorMessage(error, 'Ödeme oturumu başlatılamadı.'),
+        variant: 'destructive',
+      })
+    },
+    onSettled: () => setActiveCheckoutPlan(null),
+  })
 
   const pricedPlans = useMemo(() => {
     return plans.map((plan) => {
@@ -55,6 +85,17 @@ export default function PricingPage() {
       }
     })
   }, [billing])
+
+  const handleCheckout = (plan: 'pro' | 'premium') => {
+    if (typeof window === 'undefined') return
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      window.location.href = '/login?next=/pricing'
+      return
+    }
+    setActiveCheckoutPlan(plan)
+    checkoutMutation.mutate({ plan, interval: billing })
+  }
 
   return (
     <MarketingShell>
@@ -80,7 +121,7 @@ export default function PricingPage() {
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold">{plan.name}</h3>
-                    {plan.key === 'growth' && <Badge>Popüler</Badge>}
+                    {plan.key === 'premium' && <Badge>Popüler</Badge>}
                   </div>
                   <div className="text-3xl font-semibold">
                     {plan.monthly === null ? 'Özel teklif' : `₺${plan.price}`}
@@ -95,11 +136,30 @@ export default function PricingPage() {
                       </div>
                     ))}
                   </div>
-                  <Link href="/contact" className="block">
-                    <Button className="w-full" variant={plan.key === 'growth' ? 'default' : 'outline'}>
-                      {plan.monthly === null ? 'Teklif Al' : 'Planı Seç'}
+                  {plan.key === 'free' && (
+                    <Link href="/register" className="block">
+                      <Button className="w-full" variant="outline">
+                        Başla
+                      </Button>
+                    </Link>
+                  )}
+                  {(plan.key === 'pro' || plan.key === 'premium') && (
+                    <Button
+                      className="w-full"
+                      variant={plan.key === 'premium' ? 'default' : 'outline'}
+                      onClick={() => handleCheckout(plan.key as 'pro' | 'premium')}
+                      disabled={checkoutMutation.isPending}
+                    >
+                      {checkoutMutation.isPending && activeCheckoutPlan === plan.key ? 'Yönlendiriliyor...' : 'Yükselt'}
                     </Button>
-                  </Link>
+                  )}
+                  {plan.key === 'enterprise' && (
+                    <a href="mailto:sales@svontai.com?subject=SvontAI%20Kurumsal%20Plan">
+                      <Button className="w-full" variant="outline">
+                        Satışla İletişime Geç
+                      </Button>
+                    </a>
+                  )}
                 </CardContent>
               </Card>
             </Reveal>

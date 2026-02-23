@@ -251,8 +251,13 @@ PAYMENTS_ENABLED=true
 PAYMENTS_PROVIDER=stripe
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+# Optional convenience envs (monthly)
+STRIPE_PRICE_ID_PRO=price_...
+STRIPE_PRICE_ID_PREMIUM=price_...
+# Optional billing portal return url
+STRIPE_PORTAL_RETURN_URL=https://<your-vercel-domain>/dashboard/billing
 # JSON mapping: plan -> interval -> price_id
-STRIPE_PRICE_IDS='{"starter":{"monthly":"price_...","yearly":"price_..."},"pro":{"monthly":"price_...","yearly":"price_..."},"business":{"monthly":"price_...","yearly":"price_..."}}'
+STRIPE_PRICE_IDS='{"pro":{"monthly":"price_...","yearly":"price_..."},"premium":{"monthly":"price_...","yearly":"price_..."},"enterprise":{"monthly":"price_...","yearly":"price_..."}}'
 STRIPE_SUCCESS_URL=https://<your-vercel-domain>/dashboard/billing?payment=success
 STRIPE_CANCEL_URL=https://<your-vercel-domain>/dashboard/billing?payment=cancel
 
@@ -281,9 +286,141 @@ GOOGLE_REDIRECT_URI=https://<your-railway-domain>/real-estate/calendar/google/ca
 USE_N8N=false
 SVONTAI_TO_N8N_SECRET=change-this-to-a-secure-random-string-svontai-to-n8n
 N8N_TO_SVONTAI_SECRET=change-this-to-a-secure-random-string-n8n-to-svontai
+
+# Tool Marketplace v1 - Artifact storage
+ARTIFACT_STORAGE_PROVIDER=local
+ARTIFACT_STORAGE_LOCAL_BASE_PATH=storage/artifacts
+ARTIFACT_SIGNED_URL_EXPIRES_SECONDS=3600
+ARTIFACT_SIGNING_SECRET=change-this-to-a-secure-random-string-artifacts
+
+# If ARTIFACT_STORAGE_PROVIDER=supabase
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_STORAGE_BUCKET=svontai-artifacts
 ```
 
 `SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
+
+### Railway migration & smoke checklist (P6.1)
+
+> Aşağıdaki sıra merge öncesi zorunlu doğrulama akışıdır.
+
+#### 1) Pre-check (backup + alembic state)
+```bash
+# 1. Railway backend service'e bağlan
+railway login
+railway link
+
+# 2. Production DB URL'yi doğrula (yerel shell'e export et)
+export DATABASE_URL='postgresql+psycopg://...'
+
+# 3. DB backup al (local)
+pg_dump "$DATABASE_URL" -Fc -f "backup_pre_p6_$(date +%Y%m%d_%H%M%S).dump"
+
+# 4. Mevcut alembic version kontrol
+cd backend
+alembic current
+alembic heads
+```
+
+#### 2) Deploy + migrations
+```bash
+# Repo root
+git push origin <branch>
+
+# Railway deploy
+railway up
+```
+
+`Procfile` start komutu migration içerir:
+```bash
+cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+#### 3) Post-migration doğrulama
+```bash
+# Backend container içinde kontrol (Railway shell)
+railway shell
+cd backend
+alembic current
+alembic heads
+```
+Beklenen: `alembic current` çıktısı `heads` ile aynı revision (`029`).
+
+#### 4) Route registration + app boot doğrulama
+```bash
+curl -fsS https://<your-railway-domain>/health
+curl -fsS https://<your-railway-domain>/openapi.json | jq '.paths["/integrations/status"], .paths["/tools/run"], .paths["/tools/runs/{request_id}"]'
+```
+
+### Lightweight smoke script (pytest bağımsız)
+
+Dosya: `scripts/smoke_tool_engine.py`
+
+Çalıştırma:
+```bash
+python3 scripts/smoke_tool_engine.py
+```
+
+Opsiyonel env:
+```bash
+# default: http://127.0.0.1:8000
+export SMOKE_BASE_URL=https://<your-railway-domain>
+
+# hazır token/tenant ile koşmak için:
+export SMOKE_ACCESS_TOKEN=...
+export SMOKE_TENANT_ID=...
+
+# register/login flow için:
+export SMOKE_EMAIL=smoke@example.com
+export SMOKE_PASSWORD=Password123!
+export SMOKE_VERIFICATION_CODE=123456   # yalnızca response'tan code parse edilemezse
+```
+
+Script adımları:
+1. `/health` (fallback `/`) ile servis ayakta mı kontrol eder.
+2. Token+tenant üretir (register + email verify + login + tenant create/resolve).
+3. `GET /integrations/status`
+4. `GET /tools`
+5. `PUT /tools/pdf_summary/settings` (`enabled=true`)
+6. `POST /tools/run` (dummy `requestId`)
+7. `GET /tools/runs` ve `GET /tools/runs/{request_id}`
+
+`USE_N8N=false` ise `/tools/run` `success=false` dönebilir; bu durumda smoke script endpoint/DB zinciri çalıştıysa testi geçerli kabul eder.
+
+### Migration 029 safety notes
+
+- Migration: `backend/alembic/versions/029_standardize_plans_and_add_google_oauth_tokens.py`
+- Değişiklikler:
+  - `google_oauth_tokens` tablosu eklenir.
+  - Eski plan adları normalize edilir:
+    - `starter -> pro`
+    - `pro -> premium` (legacy veri durumuna göre)
+    - `business -> enterprise`
+  - `tenant_subscriptions.plan_id` plan merge durumlarında yeni plana taşınır.
+  - `tools.required_plan` legacy değerleri normalize edilir (`starter/growth/business`).
+- Not: plan birleştirme/rename operasyonları nedeniyle downgrade teorik olarak mümkün olsa da **tam kayıpsız geri dönüş garantisi yoktur**. Merge öncesi DB backup zorunlu.
+
+Rollback (acil durum):
+```bash
+# uygulamayı bakım moduna al
+alembic downgrade 028
+
+# gerekirse backup restore
+pg_restore --clean --if-exists --no-owner --no-privileges -d "$DATABASE_URL" backup_pre_p6_<timestamp>.dump
+```
+
+### Post-deploy verification (expected)
+
+- `GET /health` -> `200`
+- `GET /integrations/status` -> `200`, Google integration alanları:
+  - `connected` / `missing` / `expired`
+  - `required_scopes`, `granted_scopes`, `expires_at`
+- `GET /tools` -> `200`, her tool için `requiredPlan` gelir.
+- `PUT /tools/{slug}/settings` -> `200`
+- `POST /tools/run` -> `200` (`requestId` echo, run kaydı oluşur)
+- `GET /tools/runs` -> `200`
+- `GET /tools/runs/{request_id}` -> `200`
 
 ### Frontend (Vercel)
 1. Connect GitHub repository
@@ -317,6 +454,19 @@ N8N_INCOMING_WORKFLOW_ID=svontai-incoming
 SVONTAI_TO_N8N_SECRET=your-secure-random-secret-1
 N8N_TO_SVONTAI_SECRET=your-secure-random-secret-2
 ```
+
+Tool Marketplace API (tenant auth required):
+- `GET /tools`
+- `GET /tools/runs`
+- `GET /tools/runs/{request_id}`
+- `POST /tools/run`
+
+Billing API (tenant auth required except webhook):
+- `GET /billing/plan`
+- `GET /billing/limits`
+- `POST /billing/stripe/checkout-session`
+- `GET /billing/stripe/portal`
+- `POST /billing/stripe/webhook` (Stripe signature required)
 
 ### Key Features
 
