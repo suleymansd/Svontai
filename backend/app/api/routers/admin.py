@@ -2,12 +2,14 @@
 Admin API routes for system administration.
 """
 
+import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy import select, func, and_
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -32,11 +34,13 @@ from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
 from app.schemas.tool import ToolCreate, ToolUpdate, ToolResponse
 from app.core.security import get_password_hash
 from app.services.real_estate_service import RealEstateService
+from app.services.tool_seed_service import seed_initial_tools
 
 from pydantic import BaseModel, EmailStr
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 
 # Schemas
@@ -171,6 +175,12 @@ class ToolListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ToolSeedResponse(BaseModel):
+    created: int
+    updated: int
+    total: int
 
 
 class RealEstatePackAdminUpdate(BaseModel):
@@ -963,24 +973,85 @@ async def create_tool_admin(
     admin: User = Depends(require_admin),
     request: Request = None
 ):
-    existing = db.query(Tool).filter(Tool.key == payload.key).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
+    try:
+        # First-run fallback: if tool catalog is empty, seed safe defaults.
+        if db.query(Tool.id).first() is None:
+            try:
+                seeded = seed_initial_tools(db)
+                logger.info("Admin tool create fallback seed executed: %s", seeded)
+            except Exception as seed_exc:
+                db.rollback()
+                logger.exception("Admin tool create fallback seed failed: %s", seed_exc)
 
-    tool = Tool(**payload.model_dump())
-    db.add(tool)
-    log_admin_action(
-        db,
-        admin,
-        "admin.tool.create",
-        "tool",
-        None,
-        payload.model_dump(),
-        request=request
-    )
-    db.commit()
-    db.refresh(tool)
-    return ToolResponse.model_validate(tool)
+        existing = db.query(Tool).filter(Tool.key == payload.key).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
+
+        create_data = payload.model_dump(exclude_unset=False)
+        create_data["key"] = (create_data.get("key") or "").strip()
+        create_data["slug"] = (create_data.get("slug") or create_data["key"]).strip()
+
+        if not create_data["key"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tool key is required"
+            )
+        if not create_data["slug"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tool slug is required"
+            )
+
+        # Required model field defaults for resilient production creates.
+        create_data["tags"] = create_data.get("tags") or []
+        create_data["required_integrations_json"] = create_data.get("required_integrations_json") or []
+        create_data["input_schema_json"] = create_data.get("input_schema_json") or {}
+        create_data["output_schema_json"] = create_data.get("output_schema_json") or {}
+        create_data["n8n_workflow_id"] = (create_data.get("n8n_workflow_id") or "svontai-tool-runner").strip()
+
+        existing_slug = db.query(Tool).filter(Tool.slug == create_data["slug"]).first()
+        if existing_slug:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool slug already exists")
+
+        tool = Tool(**create_data)
+        db.add(tool)
+        log_admin_action(
+            db,
+            admin,
+            "admin.tool.create",
+            "tool",
+            None,
+            create_data,
+            request=request
+        )
+        db.commit()
+        db.refresh(tool)
+        return ToolResponse.model_validate(tool)
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        error_detail = str(getattr(exc, "orig", exc))
+        logger.exception("Admin tool create integrity error: %s", error_detail)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Tool validation failed: {error_detail}"
+        )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Admin tool create database error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while creating tool: {exc}"
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Admin tool create unexpected error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create tool: {exc}"
+        )
 
 
 @router.put("/tools/{tool_id}", response_model=ToolResponse)
@@ -1001,6 +1072,13 @@ async def update_tool_admin(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "slug" in update_data and update_data["slug"]:
+        existing_slug = db.query(Tool).filter(Tool.slug == update_data["slug"], Tool.id != tool.id).first()
+        if existing_slug:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool slug already exists")
+    if "slug" in update_data and isinstance(update_data["slug"], str):
+        update_data["slug"] = update_data["slug"].strip() or None
+
     for key, value in update_data.items():
         setattr(tool, key, value)
 
@@ -1040,6 +1118,25 @@ async def delete_tool_admin(
     )
     db.delete(tool)
     db.commit()
+
+
+@router.post("/tools/seed-initial", response_model=ToolSeedResponse)
+async def seed_initial_tools_admin(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None,
+):
+    result = seed_initial_tools(db)
+    log_admin_action(
+        db,
+        admin,
+        "admin.tool.seed_initial",
+        "tool",
+        None,
+        result,
+        request=request,
+    )
+    return ToolSeedResponse(**result)
 
 
 @router.delete("/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
