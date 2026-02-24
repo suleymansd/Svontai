@@ -110,6 +110,41 @@ def _ensure_leads_schema_compatibility() -> None:
         db.close()
 
 
+def _log_tools_id_column_type() -> None:
+    """
+    Startup guard: log `tools.id` database column type for schema mismatch diagnostics.
+    """
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        dialect = bind.dialect.name
+        if dialect != "postgresql":
+            logger.warning("Tools.id type guard skipped (dialect=%s)", dialect)
+            return
+
+        row = db.execute(
+            text(
+                """
+                SELECT data_type, udt_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'tools'
+                  AND column_name = 'id'
+                LIMIT 1
+                """
+            )
+        ).first()
+
+        if row:
+            logger.warning("Tools.id column type guard: data_type=%s udt_name=%s", row[0], row[1])
+        else:
+            logger.warning("Tools.id column type guard: tools.id not found")
+    finally:
+        db.close()
+
+
 def _bootstrap_first_admin() -> None:
     """
     One-time bootstrap for first global admin user.
@@ -231,6 +266,11 @@ async def lifespan(app: FastAPI):
         _ensure_leads_schema_compatibility()
     except Exception as exc:
         logger.warning("Could not apply leads schema compatibility patch: %s", exc)
+
+    try:
+        _log_tools_id_column_type()
+    except Exception as exc:
+        logger.warning("Could not run tools.id column type guard: %s", exc)
 
     try:
         _bootstrap_first_admin()
