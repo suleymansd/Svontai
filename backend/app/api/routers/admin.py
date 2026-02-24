@@ -218,6 +218,16 @@ class TenantPlanOverrideResponse(BaseModel):
     status: str
 
 
+class TenantForcePlanRequest(BaseModel):
+    plan_type: Literal["free", "pro", "premium", "enterprise"]
+
+
+class TenantForcePlanResponse(BaseModel):
+    tenant_id: str
+    new_plan: str
+    status: str
+
+
 # Helper function to check admin
 async def require_admin(
     current_user: User = Depends(get_current_user),
@@ -752,6 +762,55 @@ async def override_tenant_plan(
         old_plan=old_plan,
         new_plan=normalized_plan,
         expires_at=payload.expires_at.isoformat() if payload.expires_at else None,
+        status="ok",
+    )
+
+
+@router.put("/tenants/{tenant_id}/force-plan", response_model=TenantForcePlanResponse)
+async def force_tenant_plan(
+    tenant_id: UUID,
+    payload: TenantForcePlanRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None,
+):
+    if settings.ENVIRONMENT == "prod" and not settings.ALLOW_ADMIN_PLAN_OVERRIDE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PLAN_OVERRIDE_DISABLED",
+                "message": "Admin force-plan production ortamında devre dışı."
+            },
+        )
+
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    normalized_plan = normalize_plan_code(payload.plan_type)
+    subscription_service = SubscriptionService(db)
+    try:
+        subscription = subscription_service.upgrade_plan(
+            tenant_id=tenant.id,
+            new_plan_name=normalized_plan,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.force_plan",
+        "tenant",
+        str(tenant.id),
+        {"new_plan": normalized_plan},
+        request=request,
+    )
+    db.commit()
+
+    return TenantForcePlanResponse(
+        tenant_id=str(tenant.id),
+        new_plan=normalize_plan_code(subscription.plan.plan_type or subscription.plan.name),
         status="ok",
     )
 
