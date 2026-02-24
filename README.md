@@ -470,6 +470,20 @@ Tool Marketplace API (tenant auth required):
 - `GET /tools/runs/{request_id}`
 - `POST /tools/run`
 
+Admin Tools API (super admin token required):
+- `GET /admin/tools`
+- `GET /admin/tools/{tool_id}`
+- `PATCH /admin/tools/{tool_id}`
+- `PUT /admin/tools/{tool_id}`
+
+Tool workflow ID güncelleme örneği:
+```bash
+curl -X PATCH "https://<your-railway-domain>/admin/tools/<tool_id>" \
+  -H "Authorization: Bearer <SUPER_ADMIN_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"n8n_workflow_id":"svontai-meeting-summary"}'
+```
+
 Billing API (tenant auth required except webhook):
 - `GET /billing/plan`
 - `GET /billing/limits`

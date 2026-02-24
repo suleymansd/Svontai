@@ -8,7 +8,7 @@ from uuid import UUID
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from sqlalchemy import select, func, and_
+from sqlalchemy import String, and_, cast, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ from app.models.real_estate import RealEstatePackSettings
 from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
-from app.schemas.tool import ToolCreate, ToolUpdate, ToolResponse
+from app.schemas.tool import ToolCreate, ToolResponse
 from app.core.config import settings
 from app.core.plans import normalize_plan_code
 from app.core.security import get_password_hash
@@ -39,7 +39,7 @@ from app.services.real_estate_service import RealEstateService
 from app.services.subscription_service import SubscriptionService
 from app.services.tool_seed_service import seed_initial_tools
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -172,8 +172,30 @@ class PlanListResponse(BaseModel):
     total_pages: int
 
 
+class ToolAdminOut(BaseModel):
+    id: str
+    key: str
+    slug: str
+    name: str
+    description: str | None = None
+    category: str | None = None
+    icon: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    required_plan: str | None = None
+    status: str
+    is_public: bool
+    coming_soon: bool
+    is_premium: bool
+    required_integrations_json: list[str] = Field(default_factory=list)
+    n8n_workflow_id: str | None = None
+    input_schema_json: dict = Field(default_factory=dict)
+    output_schema_json: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
 class ToolListResponse(BaseModel):
-    items: list[ToolResponse]
+    items: list[ToolAdminOut]
     total: int
     page: int
     page_size: int
@@ -228,6 +250,44 @@ class TenantForcePlanResponse(BaseModel):
     status: str
 
 
+class ToolAdminPatch(BaseModel):
+    key: str | None = None
+    slug: str | None = None
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    icon: str | None = None
+    tags: list[str] | None = None
+    required_plan: str | None = None
+    status: str | None = None
+    is_public: bool | None = None
+    coming_soon: bool | None = None
+    is_premium: bool | None = None
+    input_schema_json: dict | None = None
+    output_schema_json: dict | None = None
+    required_integrations_json: list[str] | None = None
+    n8n_workflow_id: str | None = None
+
+
+class ToolAdminUpdate(BaseModel):
+    key: str
+    slug: str
+    name: str
+    status: str
+    coming_soon: bool
+    is_public: bool
+    required_plan: str | None = None
+    description: str | None = None
+    category: str | None = None
+    icon: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    is_premium: bool = False
+    input_schema_json: dict = Field(default_factory=dict)
+    output_schema_json: dict = Field(default_factory=dict)
+    required_integrations_json: list[str] = Field(default_factory=list)
+    n8n_workflow_id: str | None = None
+
+
 # Helper function to check admin
 async def require_admin(
     current_user: User = Depends(get_current_user),
@@ -244,7 +304,7 @@ async def require_admin(
     if portal != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin paneline erişmek için Super Admin girişi yapın."
+            detail="Admin privileges required"
         )
     return current_user
 
@@ -270,6 +330,45 @@ def log_admin_action(
             user_agent=request.headers.get("User-Agent") if request else None
         )
     )
+
+
+def _serialize_tool(tool: Tool) -> ToolAdminOut:
+    return ToolAdminOut(
+        id=str(tool.id),
+        key=tool.key,
+        slug=tool.slug,
+        name=tool.name,
+        description=tool.description,
+        category=tool.category,
+        icon=tool.icon,
+        tags=list(tool.tags or []),
+        required_plan=tool.required_plan,
+        status=tool.status,
+        is_public=bool(tool.is_public),
+        coming_soon=bool(tool.coming_soon),
+        is_premium=bool(tool.is_premium),
+        required_integrations_json=list(tool.required_integrations_json or []),
+        n8n_workflow_id=tool.n8n_workflow_id,
+        input_schema_json=dict(tool.input_schema_json or {}),
+        output_schema_json=dict(tool.output_schema_json or {}),
+        created_at=tool.created_at,
+        updated_at=tool.updated_at,
+    )
+
+
+def _get_tool_by_id(db: Session, tool_id: UUID) -> Tool | None:
+    try:
+        tool = db.get(Tool, tool_id)
+        if tool:
+            return tool
+    except SQLAlchemyError:
+        db.rollback()
+
+    tool_id_str = str(tool_id)
+    tool = db.query(Tool).filter(cast(Tool.id, String) == tool_id_str).first()
+    if tool:
+        return tool
+    return db.query(Tool).filter(Tool.id == tool_id_str).first()
 
 
 # Routes
@@ -1119,7 +1218,7 @@ async def list_tools_admin(
     tools = query.order_by(Tool.created_at.desc()).offset(offset).limit(page_size).all()
 
     return ToolListResponse(
-        items=[ToolResponse.model_validate(tool) for tool in tools],
+        items=[_serialize_tool(tool) for tool in tools],
         total=total,
         page=page,
         page_size=page_size,
@@ -1215,15 +1314,27 @@ async def create_tool_admin(
         )
 
 
-@router.put("/tools/{tool_id}", response_model=ToolResponse)
+@router.get("/tools/{tool_id}", response_model=ToolAdminOut)
+async def get_tool_admin(
+    tool_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tool = _get_tool_by_id(db, tool_id)
+    if not tool:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
+    return _serialize_tool(tool)
+
+
+@router.patch("/tools/{tool_id}", response_model=ToolAdminOut)
 async def update_tool_admin(
     tool_id: UUID,
-    payload: ToolUpdate,
+    payload: ToolAdminPatch,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     request: Request = None
 ):
-    tool = db.get(Tool, tool_id)
+    tool = _get_tool_by_id(db, tool_id)
     if not tool:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
 
@@ -1233,12 +1344,22 @@ async def update_tool_admin(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "key" in update_data and isinstance(update_data["key"], str):
+        update_data["key"] = update_data["key"].strip()
+        if not update_data["key"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tool key is required")
+
     if "slug" in update_data and update_data["slug"]:
-        existing_slug = db.query(Tool).filter(Tool.slug == update_data["slug"], Tool.id != tool.id).first()
+        normalized_slug = update_data["slug"].strip()
+        if not normalized_slug:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tool slug is required")
+        update_data["slug"] = normalized_slug
+        existing_slug = db.query(Tool).filter(
+            Tool.slug == normalized_slug,
+            cast(Tool.id, String) != str(tool.id)
+        ).first()
         if existing_slug:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool slug already exists")
-    if "slug" in update_data and isinstance(update_data["slug"], str):
-        update_data["slug"] = update_data["slug"].strip() or None
 
     for key, value in update_data.items():
         setattr(tool, key, value)
@@ -1252,9 +1373,76 @@ async def update_tool_admin(
         update_data,
         request=request
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Tool validation failed: {getattr(exc, 'orig', exc)}"
+        ) from exc
     db.refresh(tool)
-    return ToolResponse.model_validate(tool)
+    return _serialize_tool(tool)
+
+
+@router.put("/tools/{tool_id}", response_model=ToolAdminOut)
+async def replace_tool_admin(
+    tool_id: UUID,
+    payload: ToolAdminUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+):
+    tool = _get_tool_by_id(db, tool_id)
+    if not tool:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
+
+    if payload.key != tool.key:
+        existing = db.query(Tool).filter(Tool.key == payload.key).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool key already exists")
+
+    if payload.slug != tool.slug:
+        existing_slug = db.query(Tool).filter(
+            Tool.slug == payload.slug,
+            cast(Tool.id, String) != str(tool.id)
+        ).first()
+        if existing_slug:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tool slug already exists")
+
+    update_data = payload.model_dump()
+    update_data["key"] = update_data["key"].strip()
+    update_data["slug"] = update_data["slug"].strip()
+    update_data["name"] = update_data["name"].strip()
+    if not update_data["key"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tool key is required")
+    if not update_data["slug"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tool slug is required")
+    if not update_data["name"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tool name is required")
+
+    for key, value in update_data.items():
+        setattr(tool, key, value)
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tool.replace",
+        "tool",
+        str(tool.id),
+        update_data,
+        request=request
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Tool validation failed: {getattr(exc, 'orig', exc)}"
+        ) from exc
+    db.refresh(tool)
+    return _serialize_tool(tool)
 
 
 @router.delete("/tools/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1264,7 +1452,7 @@ async def delete_tool_admin(
     admin: User = Depends(require_admin),
     request: Request = None
 ):
-    tool = db.get(Tool, tool_id)
+    tool = _get_tool_by_id(db, tool_id)
     if not tool:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
 
