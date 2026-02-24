@@ -184,6 +184,8 @@ class Settings(BaseSettings):
     N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE: str = "/api/v1/workflows/{workflow_id}/run"
     # Shared runner workflow identifier (can be overridden per-tool with tools.n8n_workflow_id)
     N8N_TOOL_RUNNER_WORKFLOW_ID: str = "svontai-tool-runner"
+    # Enables verbose tool runner debug logging (URL/host/env snapshot without raw secrets)
+    TOOL_RUNNER_DEBUG: bool = False
 
     # ===========================================
     # Artifact Storage (Tool outputs)

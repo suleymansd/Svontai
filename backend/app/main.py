@@ -74,7 +74,7 @@ except Exception as e:  # pragma: no cover
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO if settings.ENVIRONMENT == "dev" else logging.WARNING,
+    level=logging.INFO if (settings.ENVIRONMENT == "dev" or settings.TOOL_RUNNER_DEBUG) else logging.WARNING,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -195,6 +195,15 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("SvontAi API starting up...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+    if settings.TOOL_RUNNER_DEBUG:
+        logger.info(
+            "Tool runner startup debug USE_N8N=%s N8N_BASE_URL=%s "
+            "N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE=%s N8N_TOOL_RUNNER_WORKFLOW_ID=%s",
+            settings.USE_N8N,
+            settings.N8N_BASE_URL,
+            settings.N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE,
+            settings.N8N_TOOL_RUNNER_WORKFLOW_ID,
+        )
 
     reminder_task: asyncio.Task | None = None
     real_estate_task: asyncio.Task | None = None

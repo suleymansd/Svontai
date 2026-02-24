@@ -288,6 +288,8 @@ GOOGLE_REDIRECT_URI=https://<your-railway-domain>/real-estate/calendar/google/ca
 USE_N8N=false
 SVONTAI_TO_N8N_SECRET=change-this-to-a-secure-random-string-svontai-to-n8n
 N8N_TO_SVONTAI_SECRET=change-this-to-a-secure-random-string-n8n-to-svontai
+# Tool runner debug (DNS/URL troubleshooting)
+TOOL_RUNNER_DEBUG=false
 
 # Tool Marketplace v1 - Artifact storage
 ARTIFACT_STORAGE_PROVIDER=local
@@ -303,6 +305,7 @@ SUPABASE_STORAGE_BUCKET=svontai-artifacts
 
 `SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
 `BOOTSTRAP_ADMIN_EMAIL` ilk açılışta sadece admin yoksa çalışır; belirtilen kullanıcıya global admin yetkisi verir.
+`TOOL_RUNNER_DEBUG=true` olduğunda `/tools/run` öncesi çözümlenen n8n URL/hostname/env snapshot loglanır (secret maskeli).
 
 ### Railway migration & smoke checklist (P6.1)
 

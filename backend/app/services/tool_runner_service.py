@@ -6,6 +6,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -232,6 +233,32 @@ class ToolRunnerService:
     def _is_retryable_http_status(status_code: int) -> bool:
         return 500 <= status_code < 600
 
+    @staticmethod
+    def _mask_secret(value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        if len(raw) <= 8:
+            return "****"
+        return f"{raw[:4]}...{raw[-4:]}"
+
+    def _log_runner_debug_snapshot(self, *, request_id: str, run_url: str) -> None:
+        if not settings.TOOL_RUNNER_DEBUG:
+            return
+        parsed = urlparse(run_url)
+        logger.info(
+            "Tool runner debug request_id=%s run_url=%s hostname=%s USE_N8N=%s N8N_BASE_URL=%s "
+            "N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE=%s N8N_TOOL_RUNNER_WORKFLOW_ID=%s SVONTAI_TO_N8N_SECRET=%s",
+            request_id,
+            run_url,
+            parsed.hostname or "",
+            settings.USE_N8N,
+            settings.N8N_BASE_URL,
+            settings.N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE,
+            settings.N8N_TOOL_RUNNER_WORKFLOW_ID,
+            self._mask_secret(settings.SVONTAI_TO_N8N_SECRET),
+        )
+
     async def _call_n8n_runner(
         self,
         runner_workflow_id: str,
@@ -251,14 +278,7 @@ class ToolRunnerService:
         timeout_seconds = self._runner_timeout_seconds()
         backoff_base = max(0.1, float(settings.N8N_TOOL_RUNNER_BACKOFF_SECONDS or 0.5))
 
-        logger.info(
-            "Tool runner n8n request request_id=%s url=%s tenant_id=%s retry_count=%s timeout=%ss",
-            request_id,
-            run_url,
-            tenant_id,
-            retry_count,
-            timeout_seconds,
-        )
+        self._log_runner_debug_snapshot(request_id=request_id, run_url=run_url)
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             for attempt in range(retry_count + 1):
                 try:
@@ -266,6 +286,15 @@ class ToolRunnerService:
                     response.raise_for_status()
                     return response.json() if response.content else {}
                 except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                    if settings.TOOL_RUNNER_DEBUG:
+                        parsed = urlparse(run_url)
+                        logger.info(
+                            "Tool runner transport debug request_id=%s run_url=%s hostname=%s error=%s",
+                            request_id,
+                            run_url,
+                            parsed.hostname or "",
+                            exc,
+                        )
                     if attempt >= retry_count:
                         raise RuntimeError(f"n8n runner transport error: {exc}") from exc
                     sleep_seconds = backoff_base * (2 ** attempt)
