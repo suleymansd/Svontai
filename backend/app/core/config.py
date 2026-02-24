@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
     SUPER_ADMIN_REQUIRE_2FA: bool = False
     BOOTSTRAP_ADMIN_EMAIL: str = ""
+    ALLOW_ADMIN_PLAN_OVERRIDE: bool = False
 
     # API key hashing (separate secret recommended; falls back to JWT_SECRET_KEY)
     API_KEY_HASH_SECRET: str = ""

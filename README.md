@@ -101,6 +101,7 @@ OPENAI_API_KEY=sk-your-openai-key
 WEBHOOK_USERNAME=your-webhook-username
 WEBHOOK_PASSWORD=your-webhook-password
 BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com
+ALLOW_ADMIN_PLAN_OVERRIDE=false
 ```
 
 6. Create database:
@@ -235,6 +236,7 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 JWT_SECRET_KEY=change-this-to-a-secure-random-string
 SUPER_ADMIN_REQUIRE_2FA=true
 BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com
+ALLOW_ADMIN_PLAN_OVERRIDE=false
 
 # URLs
 FRONTEND_URL=https://<your-vercel-domain>
@@ -305,6 +307,7 @@ SUPABASE_STORAGE_BUCKET=svontai-artifacts
 
 `SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
 `BOOTSTRAP_ADMIN_EMAIL` ilk açılışta sadece admin yoksa çalışır; belirtilen kullanıcıya global admin yetkisi verir.
+`ALLOW_ADMIN_PLAN_OVERRIDE=true` ise prod ortamda `/admin/tenants/{tenant_id}/plan` endpoint’i aktif olur.
 `TOOL_RUNNER_DEBUG=true` olduğunda `/tools/run` öncesi çözümlenen n8n URL/hostname/env snapshot loglanır (secret maskeli).
 
 ### Railway migration & smoke checklist (P6.1)

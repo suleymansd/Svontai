@@ -5,7 +5,7 @@ Admin API routes for system administration.
 import logging
 from datetime import datetime, timedelta
 from uuid import UUID
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy import select, func, and_
@@ -32,8 +32,11 @@ from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
 from app.schemas.tool import ToolCreate, ToolUpdate, ToolResponse
+from app.core.config import settings
+from app.core.plans import normalize_plan_code
 from app.core.security import get_password_hash
 from app.services.real_estate_service import RealEstateService
+from app.services.subscription_service import SubscriptionService
 from app.services.tool_seed_service import seed_initial_tools
 
 from pydantic import BaseModel, EmailStr
@@ -199,6 +202,20 @@ class RealEstatePackAdminResponse(BaseModel):
     followup_days: int
     followup_attempts: int
     persona: str
+
+
+class TenantPlanOverrideRequest(BaseModel):
+    plan_type: Literal["free", "pro", "premium", "enterprise"]
+    note: str
+    expires_at: datetime | None = None
+
+
+class TenantPlanOverrideResponse(BaseModel):
+    tenant_id: str
+    old_plan: str
+    new_plan: str
+    expires_at: str | None
+    status: str
 
 
 # Helper function to check admin
@@ -652,6 +669,91 @@ async def update_tenant_feature_flags(
     db.commit()
 
     return await get_tenant_detail(tenant_id, db, admin)
+
+
+@router.put("/tenants/{tenant_id}/plan", response_model=TenantPlanOverrideResponse)
+async def override_tenant_plan(
+    tenant_id: UUID,
+    payload: TenantPlanOverrideRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None,
+):
+    if settings.ENVIRONMENT == "prod" and not settings.ALLOW_ADMIN_PLAN_OVERRIDE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PLAN_OVERRIDE_DISABLED",
+                "message": "Admin plan override production ortamında devre dışı."
+            },
+        )
+
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    normalized_plan = normalize_plan_code(payload.plan_type)
+    plan = db.query(Plan).filter(
+        func.lower(Plan.name) == normalized_plan,
+        Plan.is_active.is_(True)
+    ).first()
+
+    if not plan:
+        SubscriptionService(db).get_or_create_free_plan()
+        plan = db.query(Plan).filter(
+            func.lower(Plan.name) == normalized_plan,
+            Plan.is_active.is_(True)
+        ).first()
+
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Plan not found: {normalized_plan}"
+        )
+
+    subscription_service = SubscriptionService(db)
+    subscription = subscription_service.get_subscription(tenant.id)
+    if subscription is None:
+        subscription = subscription_service.create_subscription(tenant.id, "free")
+
+    old_plan = normalize_plan_code(subscription.plan.plan_type or subscription.plan.name)
+    subscription.plan_id = plan.id
+
+    extra_data = dict(subscription.extra_data or {})
+    extra_data["admin_plan_override"] = {
+        "old_plan": old_plan,
+        "new_plan": normalized_plan,
+        "note": payload.note,
+        "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+        "updated_by": str(admin.id),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    subscription.extra_data = extra_data
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.plan_override",
+        "tenant",
+        str(tenant.id),
+        {
+            "old_plan": old_plan,
+            "new_plan": normalized_plan,
+            "note": payload.note,
+            "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+        },
+        request=request,
+    )
+
+    db.commit()
+
+    return TenantPlanOverrideResponse(
+        tenant_id=str(tenant.id),
+        old_plan=old_plan,
+        new_plan=normalized_plan,
+        expires_at=payload.expires_at.isoformat() if payload.expires_at else None,
+        status="ok",
+    )
 
 
 @router.post("/tenants/{tenant_id}/suspend", status_code=status.HTTP_200_OK)
