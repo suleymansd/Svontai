@@ -9,6 +9,34 @@ from app.models.tool import Tool
 
 INITIAL_TOOL_DEFINITIONS: list[dict] = [
     {
+        "key": "agent_router",
+        "slug": "agent_router",
+        "name": "Agent Router",
+        "description": "Kullanıcı isteğine göre tool seçimi yapan yönlendirici (Agent Mode).",
+        "category": "agent",
+        "required_integrations_json": ["openai"],
+        "required_plan": "free",
+        "input_schema_json": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "context": {"type": "object"},
+            },
+            "required": ["text"],
+        },
+        "output_schema_json": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string"},
+                "selected_tool": {"type": "string"},
+                "arguments": {"type": "object"},
+                "confidence": {"type": "number"},
+            },
+            "required": ["summary"],
+        },
+        "n8n_workflow_id": "svontai-tool-runner",
+    },
+    {
         "key": "pdf_summary",
         "slug": "pdf_summary",
         "name": "PDF Summary",
