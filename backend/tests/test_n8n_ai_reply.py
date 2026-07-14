@@ -2,7 +2,12 @@ import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.api.routers.n8n_tools import AIReplyRequest, generate_ai_reply
+from app.api.routers.n8n_tools import (
+    AIGenerateRequest,
+    AIReplyRequest,
+    generate_ai_reply,
+    generate_tool_text,
+)
 from app.models.conversation import ConversationStatus
 from app.services.ai_service import ai_service
 
@@ -86,3 +91,22 @@ def test_n8n_ai_reply_stops_during_human_takeover():
     assert result.should_reply is False
     assert result.handoff_required is True
     generate.assert_not_awaited()
+
+
+def test_n8n_tool_generation_uses_allowlisted_prompt():
+    body = AIGenerateRequest(
+        tenantId=str(uuid.uuid4()),
+        purpose="meeting_summary",
+        text="Toplantıda cuma günü yayına çıkma kararı alındı.",
+    )
+    with patch("app.api.routers.n8n_tools._verify_tenant", new=AsyncMock()), patch.object(
+        ai_service,
+        "generate_text",
+        new=AsyncMock(return_value="- Karar: Cuma günü yayına çıkılacak."),
+    ) as generate:
+        result = asyncio.run(generate_tool_text(request=MagicMock(), body=body))
+
+    assert result.success is True
+    assert result.text.startswith("- Karar")
+    assert result.output[0].content[0].text == result.text
+    generate.assert_awaited_once()

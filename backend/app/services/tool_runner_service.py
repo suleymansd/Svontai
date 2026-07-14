@@ -18,7 +18,7 @@ from app.core.plans import (
     normalize_plan_code,
     plan_meets_requirement,
 )
-from app.core.n8n_security import generate_svontai_to_n8n_headers
+from app.core.n8n_security import create_n8n_jwt_token, generate_svontai_to_n8n_headers
 from app.models.artifact import Artifact
 from app.models.tenant_tool import TenantTool
 from app.models.tool import Tool
@@ -511,6 +511,13 @@ class ToolRunnerService:
                 "tool_slug": tool_slug,
                 "tool_input": payload.tool_input,
                 "context": payload.context.model_dump(),
+                "svontai": {
+                    "tenant_id": str(tenant_id),
+                    "token": create_n8n_jwt_token(str(tenant_id)),
+                    "endpoints": {
+                        "ai_generate": f"{settings.BACKEND_URL.rstrip('/')}/api/v1/n8n/ai/generate",
+                    },
+                },
             }
             raw_response = await self._call_n8n_runner(
                 runner_workflow_id,

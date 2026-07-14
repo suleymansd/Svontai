@@ -10,6 +10,7 @@ Auth: Authorization: Bearer <n8n_callback_jwt> (tenant-scoped).
 from __future__ import annotations
 
 import re
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -76,6 +77,45 @@ class AIReplyResponse(BaseModel):
     handoff_required: bool = Field(default=False, alias="handoffRequired")
 
 
+class AIGenerateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: str = Field(..., alias="tenantId")
+    purpose: Literal["meeting_summary", "pdf_summary", "report_generator"]
+    text: str = Field(..., min_length=1, max_length=100_000)
+
+
+class AIContentItem(BaseModel):
+    text: str
+
+
+class AIOutputItem(BaseModel):
+    content: list[AIContentItem]
+
+
+class AIGenerateResponse(BaseModel):
+    success: bool = True
+    text: str
+    content: list[AIContentItem]
+    output: list[AIOutputItem]
+
+
+_TOOL_AI_PROMPTS = {
+    "meeting_summary": (
+        "Sen profesyonel bir toplantı asistanısın. Metni Türkçe ve maddeler halinde özetle. "
+        "Kararları, sorumluları ve aksiyon maddelerini ayrı başlıklarda çıkar. Bilgi uydurma."
+    ),
+    "pdf_summary": (
+        "Sen profesyonel bir doküman özetleyicisisin. Verilen metni Türkçe, kısa ve maddeler "
+        "halinde özetle. Ana fikirleri ve önemli verileri koru; bilgi uydurma."
+    ),
+    "report_generator": (
+        "Sen profesyonel bir iş analisti ve teknik yazarsın. Verilen metinden Türkçe, kapsamlı, "
+        "düzenli ve net bir rapor üret. Bulgular, değerlendirme ve öneriler başlıklarını kullan."
+    ),
+}
+
+
 @router.post("/ai/reply", response_model=AIReplyResponse)
 async def generate_ai_reply(
     request: Request,
@@ -115,6 +155,41 @@ async def generate_ai_reply(
         bot_settings=bot.settings,
     )
     return AIReplyResponse(shouldReply=bool(reply.strip()), replyText=reply)
+
+
+@router.post("/ai/generate", response_model=AIGenerateResponse)
+async def generate_tool_text(
+    request: Request,
+    body: AIGenerateRequest,
+) -> AIGenerateResponse:
+    """Run an allowlisted tool-generation task for a verified tenant workflow."""
+    await _verify_tenant(request, body.tenant_id)
+    try:
+        UUID(body.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant ID") from exc
+
+    try:
+        generated = await ai_service.generate_text(
+            system_prompt=_TOOL_AI_PROMPTS[body.purpose],
+            user_text=body.text.strip(),
+            max_tokens=1600 if body.purpose == "report_generator" else 900,
+            temperature=0.25,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI generation failed") from exc
+
+    if not generated:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI returned an empty response")
+
+    item = AIContentItem(text=generated)
+    return AIGenerateResponse(
+        text=generated,
+        content=[item],
+        output=[AIOutputItem(content=[item])],
+    )
 
 
 class LeadUpsertRequest(BaseModel):

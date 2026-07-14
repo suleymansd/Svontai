@@ -350,6 +350,26 @@ C: {item.answer}
             logger.exception("%s conversation summary generation failed", self.provider)
             return ""
 
+    async def generate_text(
+        self,
+        *,
+        system_prompt: str,
+        user_text: str,
+        max_tokens: int = 1200,
+        temperature: float = 0.3,
+    ) -> str:
+        """Run a provider-neutral, server-controlled text generation task."""
+        response = await self._get_client().chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return (response.choices[0].message.content or "").strip()
+
 
 # Singleton instance
 ai_service = AIService()
