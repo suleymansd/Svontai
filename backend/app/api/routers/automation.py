@@ -9,7 +9,7 @@ import uuid
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -23,6 +23,7 @@ from app.models.automation import (
     AutomationRunStatus
 )
 from app.core.config import settings
+from app.core.time import utc_now_naive
 from app.services.audit_log_service import AuditLogService
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ router = APIRouter(prefix="/automation", tags=["Automation"])
 
 class AutomationSettingsResponse(BaseModel):
     """Response model for automation settings."""
+    model_config = ConfigDict(from_attributes=True)
     
     id: str
     tenant_id: str
@@ -52,9 +54,6 @@ class AutomationSettingsResponse(BaseModel):
     # Global settings info
     global_n8n_enabled: bool = False
     
-    class Config:
-        from_attributes = True
-
 
 class AutomationSettingsUpdate(BaseModel):
     """Request model for updating automation settings."""
@@ -72,6 +71,7 @@ class AutomationSettingsUpdate(BaseModel):
 
 class AutomationRunResponse(BaseModel):
     """Response model for automation run."""
+    model_config = ConfigDict(from_attributes=True)
     
     id: str
     tenant_id: str
@@ -89,9 +89,6 @@ class AutomationRunResponse(BaseModel):
     created_at: str
     updated_at: str
     
-    class Config:
-        from_attributes = True
-
 
 class TestEventRequest(BaseModel):
     """Request to send a test event to n8n."""
@@ -371,8 +368,8 @@ async def get_automation_status(
     ).first()
     
     # Count recent runs
-    from datetime import datetime, timedelta
-    one_day_ago = datetime.utcnow() - timedelta(days=1)
+    from datetime import timedelta
+    one_day_ago = utc_now_naive() - timedelta(days=1)
     
     total_runs = db.query(AutomationRun).filter(
         AutomationRun.tenant_id == tenant_id,

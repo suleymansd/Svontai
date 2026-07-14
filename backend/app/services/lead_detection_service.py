@@ -5,6 +5,7 @@ Lead detection service for automatic lead capture from conversations.
 import re
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -128,7 +129,7 @@ class LeadDetectionService:
                     existing_lead.detection_confidence,
                     detected["confidence"]
                 )
-                existing_lead.updated_at = datetime.utcnow()
+                existing_lead.updated_at = utc_now_naive()
                 self.db.commit()
             
             return existing_lead
@@ -216,7 +217,7 @@ class LeadDetectionService:
         
         # Recalculate score
         lead.score = self.calculate_lead_score(lead)
-        lead.updated_at = datetime.utcnow()
+        lead.updated_at = utc_now_naive()
         
         self.db.commit()
         self.db.refresh(lead)

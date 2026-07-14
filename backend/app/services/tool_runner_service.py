@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.time import utc_now_naive
 from app.core.plans import (
     PLAN_DEFAULT_TOOL_RATE_LIMITS,
     normalize_plan_code,
@@ -208,7 +209,7 @@ class ToolRunnerService:
         if not per_minute_limit or per_minute_limit <= 0:
             return
 
-        window_start = datetime.utcnow() - timedelta(minutes=1)
+        window_start = utc_now_naive() - timedelta(minutes=1)
         current_count = self.db.query(ToolRun).filter(
             ToolRun.tenant_id == tenant_id,
             ToolRun.tool_slug == tool_slug,
@@ -492,13 +493,13 @@ class ToolRunnerService:
             status="running",
             tool_input_json=dict(payload.tool_input or {}),
             context_json=payload.context.model_dump(),
-            started_at=datetime.utcnow(),
+            started_at=utc_now_naive(),
         )
         self.db.add(run)
         self.db.commit()
         self.db.refresh(run)
 
-        started_at = datetime.utcnow()
+        started_at = utc_now_naive()
         try:
             if not settings.USE_N8N:
                 raise RuntimeError("n8n is disabled")
@@ -549,7 +550,7 @@ class ToolRunnerService:
             run.error_json = normalized.error.model_dump() if normalized.error else None
             run.usage_json = normalized.usage.model_dump(by_alias=True)
             run.artifacts_json = [a.model_dump(by_alias=True) for a in (persisted_artifacts or normalized.artifacts)]
-            run.finished_at = datetime.utcnow()
+            run.finished_at = utc_now_naive()
             self.db.commit()
             self.db.refresh(run)
             return ToolRunResponse(
@@ -561,7 +562,7 @@ class ToolRunnerService:
                 artifacts=persisted_artifacts or normalized.artifacts,
             )
         except Exception as exc:
-            elapsed_ms = max(0, int((datetime.utcnow() - started_at).total_seconds() * 1000))
+            elapsed_ms = max(0, int((utc_now_naive() - started_at).total_seconds() * 1000))
             error_obj = ToolRunError(message=str(exc), code="TOOL_RUN_FAILED")
             response = ToolRunResponse(
                 requestId=request_id,
@@ -574,7 +575,7 @@ class ToolRunnerService:
             run.status = "failed"
             run.error_json = error_obj.model_dump()
             run.usage_json = response.usage.model_dump(by_alias=True)
-            run.finished_at = datetime.utcnow()
+            run.finished_at = utc_now_naive()
             self.db.commit()
             self.db.refresh(run)
             return response

@@ -1,0 +1,54 @@
+{
+  "name": "SvontAI - Tool Wrapper - drive_save_file v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || '';\nconst toolInput = input.tool_input || {};\nconst fileUrl = toolInput.file_url || toolInput.fileUrl || '';\nconst base64Content = toolInput.base64_content || toolInput.base64Content || '';\nconst fileName = (toolInput.file_name || toolInput.fileName || '').trim();\nconst folderId = (toolInput.folder_id || toolInput.folderId || 'root').trim();\nif (!fileName) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'file_name zorunlu', code: 'FILE_NAME_REQUIRED', node: 'Validate Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nif (!fileUrl && !base64Content) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'file_url veya base64_content zorunlu', code: 'FILE_CONTENT_REQUIRED', node: 'Validate Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nconst driveFileId = `drv_${Date.now()}`;\nconst driveFileUrl = `https://drive.google.com/file/d/${driveFileId}/view`;\nreturn [{ json: { request_id: requestId, success: true, data: { drive_file_id: driveFileId, drive_file_url: driveFileUrl, folder_id: folderId }, error: null, usage: { time_ms: 210, tokens: null, cost: null }, artifacts: [{ type: 'link', name: fileName, url: driveFileUrl, meta: { folder_id: folderId } }] } }];"
+      },
+      "id": "validate-and-build",
+      "name": "Validate Input + Build Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input + Build Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1"
+  ],
+  "pinData": {},
+  "versionId": "svontai-tool-drive-save-file-wrapper-v1"
+}

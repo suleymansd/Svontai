@@ -6,6 +6,7 @@ import secrets
 import json
 from uuid import UUID
 from datetime import datetime
+from app.core.time import utc_now_naive
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
@@ -127,12 +128,12 @@ class OnboardingService:
         
         step.status = status.value
         step.message = message
-        step.updated_at = datetime.utcnow()
+        step.updated_at = utc_now_naive()
         
         if status == StepStatus.IN_PROGRESS and not step.started_at:
-            step.started_at = datetime.utcnow()
+            step.started_at = utc_now_naive()
         elif status == StepStatus.DONE:
-            step.completed_at = datetime.utcnow()
+            step.completed_at = utc_now_naive()
         
         if metadata:
             step.metadata_json = {**(step.metadata_json or {}), **metadata}

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -25,5 +26,5 @@ class StripeWebhookEvent(Base):
     )
     processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

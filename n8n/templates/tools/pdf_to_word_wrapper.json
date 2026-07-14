@@ -1,0 +1,54 @@
+{
+  "name": "SvontAI - Tool Wrapper - pdf_to_word v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || '';\nconst toolInput = input.tool_input || {};\nconst pdfUrl = toolInput.pdf_url || toolInput.pdfUrl || '';\nconst base64Pdf = toolInput.base64_pdf || toolInput.base64Pdf || '';\nconst outputName = (toolInput.output_name || toolInput.outputName || 'converted').replace(/\\s+/g, '_');\nif (!pdfUrl && !base64Pdf) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'pdf_url veya base64_pdf zorunlu', code: 'PDF_INPUT_REQUIRED', node: 'Validate Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nconst docUrl = `https://files.example.local/${outputName}.docx`;\nreturn [{ json: { request_id: requestId, success: true, data: { document_url: docUrl, filename: `${outputName}.docx` }, error: null, usage: { time_ms: 180, tokens: null, cost: null }, artifacts: [{ type: 'file', name: `${outputName}.docx`, url: docUrl, meta: { generated_by: 'pdf_to_word_wrapper', source: pdfUrl ? 'pdf_url' : 'base64_pdf' } }] } }];"
+      },
+      "id": "validate-and-build",
+      "name": "Validate Input + Build Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input + Build Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1"
+  ],
+  "pinData": {},
+  "versionId": "svontai-tool-pdf-to-word-wrapper-v1"
+}

@@ -2,13 +2,14 @@
 Session service for refresh token rotation.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models.session import UserSession
 from app.core.config import settings
+from app.core.time import utc_now_naive
 from app.core.security import hash_token
 
 
@@ -26,7 +27,7 @@ class SessionService:
         user_agent: str | None = None
     ) -> UserSession:
         """Create a session for a refresh token."""
-        now = datetime.utcnow()
+        now = utc_now_naive()
         session = UserSession(
             user_id=user_id,
             refresh_token_hash=hash_token(refresh_token),
@@ -46,7 +47,7 @@ class SessionService:
         refresh_token: str
     ) -> UserSession:
         """Rotate the refresh token hash for a session."""
-        now = datetime.utcnow()
+        now = utc_now_naive()
         session.refresh_token_hash = hash_token(refresh_token)
         session.last_used_at = now
         session.expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -56,5 +57,5 @@ class SessionService:
 
     def revoke_session(self, session: UserSession) -> None:
         """Revoke a session."""
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = utc_now_naive()
         self.db.commit()

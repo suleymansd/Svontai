@@ -18,6 +18,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.whatsapp_account import WhatsAppAccount
 from app.services.google_oauth_token_service import GoogleOAuthTokenService
+from app.services.autopilot_service import AutopilotService
 
 
 IntegrationState = Literal["connected", "missing", "expired"]
@@ -166,3 +167,25 @@ async def get_integrations_status(
         whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_connected else "missing"),
         n8n=IntegrationStatusItem(status="connected" if n8n_connected else "missing"),
     )
+
+
+@router.get("/diagnostics")
+async def get_integration_diagnostics(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+) -> dict:
+    _ = current_user
+    return AutopilotService(db).run_diagnostics(current_tenant)
+
+
+@router.post("/{provider}/repair")
+async def repair_integration(
+    provider: str,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> dict:
+    return AutopilotService(db).repair_provider(current_tenant, provider, current_user)

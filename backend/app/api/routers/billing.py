@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from app.core.time import utc_now_naive
 from typing import Any, Literal
 from uuid import UUID
 
@@ -262,7 +263,7 @@ async def stripe_webhook(
         )
 
     event_row.processed = True
-    event_row.processed_at = datetime.utcnow()
+    event_row.processed_at = utc_now_naive()
     if tenant_id:
         event_row.tenant_id = tenant_id
     db.commit()

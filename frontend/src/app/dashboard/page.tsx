@@ -1,253 +1,295 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import {
-  Bot,
-  BarChart3,
-  MessageSquare,
-  Users,
-  TrendingUp,
-  Zap,
-  Plus
-} from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
-import { billingApi, botApi, leadApi, conversationApi } from '@/lib/api'
 import Link from 'next/link'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  AlertTriangle,
+  Bot,
+  CalendarCheck,
+  CheckCircle2,
+  LifeBuoy,
+  MessageSquare,
+  PhoneCall,
+  RefreshCw,
+  ShieldCheck,
+  Smartphone,
+  Users,
+} from 'lucide-react'
+import { autopilotApi, conversationApi, leadApi } from '@/lib/api'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ContentContainer } from '@/components/shared/content-container'
-import { PageHeader } from '@/components/shared/page-header'
-import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { KPIStat } from '@/components/shared/kpi-stat'
+import { PageHeader } from '@/components/shared/page-header'
 
 export default function DashboardPage() {
-  const { data: bots, isLoading: botsLoading } = useQuery({
-    queryKey: ['bots'],
-    queryFn: () => botApi.list().then(res => res.data),
+  const queryClient = useQueryClient()
+  const { data: autopilotStatus, isLoading: autopilotLoading } = useQuery({
+    queryKey: ['autopilot-status'],
+    queryFn: () => autopilotApi.getStatus().then(res => res.data),
   })
-
+  const { data: conversations, isLoading: conversationsLoading } = useQuery({
+    queryKey: ['customer-dashboard-conversations'],
+    queryFn: () => conversationApi.list({ limit: 5 }).then(res => res.data),
+  })
   const { data: leads, isLoading: leadsLoading } = useQuery({
-    queryKey: ['leads'],
-    queryFn: () => leadApi.list({ limit: 100 }).then(res => res.data),
+    queryKey: ['customer-dashboard-leads'],
+    queryFn: () => leadApi.list({ limit: 5 }).then(res => res.data),
   })
-  const { data: billingLimits } = useQuery({
-    queryKey: ['billing-limits-widget'],
-    queryFn: () => billingApi.getLimits().then(res => res.data),
+  const runAutopilotMutation = useMutation({
+    mutationFn: () => autopilotApi.run().then(res => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-dashboard-conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-dashboard-leads'] })
+    },
   })
 
-  const isLoading = botsLoading || leadsLoading
-
-  const activeBots = bots?.filter((bot: any) => bot.is_active).length || 0
-  const totalLeads = leads?.length || 0
-  const totalBots = bots?.length || 0
-  const monthlyUsed = Number(billingLimits?.usage?.monthly_runs_used || 0)
-  const monthlyLimit = Number(billingLimits?.limits?.monthly_runs || 0)
-  const topTools = Object.entries(billingLimits?.usage?.by_tool || {})
-    .sort((a: any, b: any) => Number(b[1]) - Number(a[1]))
-    .slice(0, 3)
+  const requiredActions = autopilotStatus?.required_user_actions || []
+  const healthScore = Number(autopilotStatus?.health_score || 0)
+  const isReady = autopilotStatus?.status === 'ready'
+  const businessProfileReady = autopilotStatus?.business_profile?.status === 'ready'
+  const latestConversations = Array.isArray(conversations) ? conversations.slice(0, 3) : []
+  const latestLeads = Array.isArray(leads) ? leads.slice(0, 3) : []
 
   return (
     <ContentContainer>
       <div className="space-y-8">
         <PageHeader
-          title="Hoş Geldiniz"
-          description="İşletmenizin performansını ve müşterilerinizin etkileşimini takip edin."
-          icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />}
+          title="SmartWA Ana Panel"
+          description="Sistem müşterilerinizle WhatsApp üzerinden ilgilenir; siz sadece gerekiyorsa izinleri tamamlarsınız."
+          icon={<Icon3DBadge icon={ShieldCheck} from="from-primary" to="to-violet-500" />}
           actions={(
-            <Link href="/dashboard/bots">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Yeni Bot Oluştur
-              </Button>
-            </Link>
+            <Button onClick={() => runAutopilotMutation.mutate()} disabled={runAutopilotMutation.isPending}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {runAutopilotMutation.isPending ? 'Kontrol ediliyor...' : 'Sistemi Kontrol Et'}
+            </Button>
           )}
         />
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {isLoading ? (
-            [...Array(4)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-8 w-16" />
-                      <Skeleton className="h-4 w-32" />
-                    </div>
-                    <Skeleton className="h-12 w-12 rounded-2xl" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <>
-              <KPIStat label="Toplam Bot" value={totalBots} icon={<Bot className="h-5 w-5" />} />
-              <KPIStat label="Aktif Bot" value={activeBots} icon={<Zap className="h-5 w-5" />} />
-              <KPIStat label="Toplam Lead" value={totalLeads} icon={<Users className="h-5 w-5" />} />
-              <KPIStat label="Yanıt Oranı" value={totalBots > 0 ? '%98.5' : '-'} icon={<TrendingUp className="h-5 w-5" />} />
-            </>
-          )}
-        </div>
-
         <Card className="border border-border/70 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Bu Ay Kullanım</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-sm text-muted-foreground">
-              {monthlyUsed.toLocaleString('tr-TR')} / {monthlyLimit.toLocaleString('tr-TR')} tool run
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
-                style={{
-                  width: `${monthlyLimit > 0 ? Math.min(100, Math.round((monthlyUsed / monthlyLimit) * 100)) : 0}%`,
-                }}
-              />
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Top 3 tool:{' '}
-              {topTools.length > 0
-                ? topTools.map(([slug, count]: any) => `${slug} (${count})`).join(', ')
-                : 'Henüz kullanım yok'}
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/dashboard/tools">
-                <Button size="sm" variant="outline">Marketplace</Button>
-              </Link>
-              <Link href="/dashboard/billing">
-                <Button size="sm">Yükselt</Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Bots Overview */}
-        <Card className="border border-border/70 shadow-soft gradient-border-animated">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
             <div>
-              <CardTitle>Botlarınız</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">{activeBots} aktif, {totalBots - activeBots} pasif</p>
+              <CardTitle>Sistem Durumu</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                SmartWA kurulum, sağlık kontrolü ve otomatik onarımları arka planda yürütür.
+              </p>
             </div>
-            <Link href="/dashboard/bots">
-              <Button variant="outline">
-                Tümünü Yönet
-              </Button>
-            </Link>
+            <Badge variant={isReady ? 'success' : 'warning'}>
+              {isReady ? 'Çalışıyor' : 'İzin Bekliyor'}
+            </Badge>
           </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="p-4 rounded-2xl border">
-                    <div className="flex items-center gap-3 mb-4">
-                      <Skeleton className="w-12 h-12 rounded-xl" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-16" />
-                      </div>
-                    </div>
-                    <Skeleton className="h-2 w-full rounded-full" />
-                  </div>
-                ))}
-              </div>
-            ) : bots?.length === 0 ? (
-              <EmptyState
-                icon={<Bot className="h-8 w-8 text-primary" />}
-                title="İlk botunuzu oluşturun"
-                description="Müşterilerinize 7/24 otomatik yanıt vermek için ilk AI asistanınızı oluşturun."
-                action={(
-                  <Link href="/dashboard/bots">
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Bot Oluştur
-                    </Button>
-                  </Link>
-                )}
-              />
+          <CardContent className="space-y-5">
+            {autopilotLoading ? (
+              <Skeleton className="h-24 w-full" />
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {bots?.slice(0, 6).map((bot: any) => (
-                  <Link key={bot.id} href={`/dashboard/bots/${bot.id}`}>
-                    <div className="p-4 rounded-2xl border border-border/70 hover:border-primary/30 hover:shadow-glow-primary transition-all duration-300 group card-hover-lift gradient-border-animated">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div
-                          className="w-12 h-12 rounded-xl flex items-center justify-center shadow-soft"
-                          style={{ backgroundColor: bot.primary_color + '20' }}
-                        >
-                          <Bot className="w-6 h-6" style={{ color: bot.primary_color }} />
-                        </div>
+              <>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <KPIStat label="Genel Sağlık" value={`${healthScore}/100`} icon={<ShieldCheck className="h-5 w-5" />} />
+                  <KPIStat label="İşletme Bilgisi" value={businessProfileReady ? 'Hazır' : 'Ekibimizde'} icon={<CheckCircle2 className="h-5 w-5" />} />
+                  <KPIStat label="Sizden Beklenen" value={requiredActions.length} icon={<AlertTriangle className="h-5 w-5" />} />
+                </div>
+
+                {requiredActions.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-warning/40 bg-warning-subtle/30 p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
                         <div>
-                          <h4 className="font-semibold group-hover:text-primary transition-colors">{bot.name}</h4>
-                          <Badge variant={bot.is_active ? 'success' : 'secondary'} className="text-xs">
-                            {bot.is_active ? 'Aktif' : 'Pasif'}
-                          </Badge>
+                          <h3 className="font-semibold">Devam etmek için izin gerekiyor</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Meta WhatsApp veya ödeme gibi güvenliğiniz için sizin onayınız gereken adımlar var.
+                          </p>
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {bot.description || 'Açıklama eklenmemiş'}
-                      </p>
                     </div>
-                  </Link>
-                ))}
-              </div>
+                    {requiredActions.slice(0, 3).map((action: any) => (
+                      <div key={action.key} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-medium">{action.label}</p>
+                          <p className="text-sm text-muted-foreground">Bu tamamlanınca sistem otomatik devam eder.</p>
+                        </div>
+                        {action.url ? (
+                          <Button asChild>
+                            <Link href={action.url}>Tamamla</Link>
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-success/30 bg-success-subtle/30 p-4">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
+                      <div>
+                        <h3 className="font-semibold">Sizden bekleyen zorunlu işlem yok</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          SmartWA müşteri mesajları, sağlık kontrolleri ve otomatik toparlama akışlarını sürdürüyor.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Link href="/dashboard/bots">
-            <Card className="border border-border/70 hover:shadow-glow-primary transition-all duration-300 cursor-pointer group card-hover-lift gradient-border-animated">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center group-hover:scale-110 transition-transform shadow-glow-primary">
-                    <Bot className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Bot Yönetimi</h3>
-                    <p className="text-sm text-muted-foreground">Botları düzenle ve eğit</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10">
+                <Bot className="h-6 w-6 text-violet-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Botlarım</h3>
+                <p className="text-sm text-muted-foreground">Yanıtları ve bilgileri özelleştirin.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/bots">Botları Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-          <Link href="/dashboard/leads">
-            <Card className="border border-border/70 hover:shadow-glow-primary transition-all duration-300 cursor-pointer group card-hover-lift gradient-border-animated">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-success/15 to-success/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Users className="w-6 h-6 text-success" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Lead'ler</h3>
-                    <p className="text-sm text-muted-foreground">Potansiyel müşteriler</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <Smartphone className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">WhatsApp Bağlantısı</h3>
+                <p className="text-sm text-muted-foreground">Numaranızı bağlayın, sistem devam etsin.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/setup/whatsapp">Bağlantıyı Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-          <Link href="/dashboard/conversations">
-            <Card className="border border-border/70 hover:shadow-glow-primary transition-all duration-300 cursor-pointer group card-hover-lift gradient-border-animated">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-info/15 to-info/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <MessageSquare className="w-6 h-6 text-info" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Konuşmalar</h3>
-                    <p className="text-sm text-muted-foreground">Müşteri mesajları</p>
-                  </div>
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10">
+                <MessageSquare className="h-6 w-6 text-info" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Müşteri Mesajları</h3>
+                <p className="text-sm text-muted-foreground">Gelen konuşmaları tek yerden izleyin.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/conversations">Mesajları Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10">
+                <PhoneCall className="h-6 w-6 text-warning" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Aramalar</h3>
+                <p className="text-sm text-muted-foreground">Çağrı kayıtlarını ve özetleri görün.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/calls">Aramaları Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
+                <CalendarCheck className="h-6 w-6 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Randevular</h3>
+                <p className="text-sm text-muted-foreground">Alınan randevuları ve hatırlatmaları izleyin.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/appointments">Randevuları Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/70 shadow-soft">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
+                <LifeBuoy className="h-6 w-6 text-success" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Destek</h3>
+                <p className="text-sm text-muted-foreground">Bir şey gerektiğinde ekibimize yazın.</p>
+                <Button asChild size="sm" variant="outline" className="mt-3">
+                  <Link href="/dashboard/tickets">Destek Aç</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border border-border/70 shadow-soft">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Son Mesajlar</CardTitle>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dashboard/conversations">Tümünü Gör</Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {conversationsLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : latestConversations.length === 0 ? (
+                <EmptyState
+                  icon={<MessageSquare className="h-8 w-8 text-primary" />}
+                  title="Henüz mesaj yok"
+                  description="WhatsApp bağlantısı tamamlandığında müşteri konuşmaları burada görünür."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {latestConversations.map((conversation: any) => (
+                    <Link key={conversation.id} href="/dashboard/conversations" className="block rounded-xl border p-4 hover:bg-muted/40">
+                      <p className="font-medium">{conversation.customer_name || conversation.customer_phone || 'Müşteri'}</p>
+                      <p className="mt-1 text-sm text-muted-foreground line-clamp-1">{conversation.last_message || 'Konuşma detayı'}</p>
+                    </Link>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/70 shadow-soft">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Müşteriler</CardTitle>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dashboard/leads">Tümünü Gör</Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {leadsLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : latestLeads.length === 0 ? (
+                <EmptyState
+                  icon={<Users className="h-8 w-8 text-primary" />}
+                  title="Henüz müşteri kaydı yok"
+                  description="SmartWA müşteri ilgisini yakaladığında kayıtlar burada görünür."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {latestLeads.map((lead: any) => (
+                    <div key={lead.id} className="rounded-xl border p-4">
+                      <p className="font-medium">{lead.name || 'İsimsiz müşteri'}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{lead.phone || lead.email || 'İletişim bilgisi bekleniyor'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </ContentContainer>

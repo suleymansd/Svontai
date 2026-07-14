@@ -13,6 +13,8 @@ PERMISSIONS = [
     "audit:read",
     "automations:read",
     "automations:manage",
+    "agency:read",
+    "agency:write",
     "kyc:submit",
     "kyc:review",
     "users:read",
@@ -33,6 +35,8 @@ ROLE_PERMISSIONS = {
         "audit:read",
         "automations:read",
         "automations:manage",
+        "agency:read",
+        "agency:write",
         "kyc:submit",
         "users:read"
     ],
@@ -42,11 +46,13 @@ ROLE_PERMISSIONS = {
         "tickets:create",
         "tickets:manage",
         "automations:read",
+        "agency:read",
         "kyc:submit"
     ],
     "viewer": [
         "tools:read",
-        "automations:read"
+        "automations:read",
+        "agency:read"
     ],
     "system_admin": PERMISSIONS
 }

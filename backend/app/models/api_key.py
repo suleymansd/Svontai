@@ -6,6 +6,7 @@ We never store plaintext keys. Only a server-salted hash + last4 are stored.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,5 +35,5 @@ class TenantApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     last4: Mapped[str] = mapped_column(String(4), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
 

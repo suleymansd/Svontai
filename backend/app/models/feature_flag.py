@@ -4,6 +4,7 @@ Feature flag model for tenant overrides.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import String, DateTime, Boolean, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,13 +45,13 @@ class FeatureFlag(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
 

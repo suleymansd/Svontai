@@ -4,6 +4,7 @@ Workspace notes model for internal operations.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -63,12 +64,12 @@ class WorkspaceNote(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )

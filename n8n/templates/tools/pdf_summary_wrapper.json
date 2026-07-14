@@ -1,0 +1,78 @@
+{
+  "name": "SvontAI - Tool Wrapper - pdf_summary v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || '';\nconst toolInput = input.tool_input || {};\nconst pdfUrl = toolInput.pdf_url || toolInput.pdfUrl || '';\nconst base64Pdf = toolInput.base64_pdf || toolInput.base64Pdf || '';\nif (!pdfUrl && !base64Pdf) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'tool_input.pdf_url veya tool_input.base64_pdf zorunlu', code: 'PDF_INPUT_REQUIRED', node: 'Validate PDF Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nreturn [{ json: { ...input, request_id: requestId, _pdf_url: pdfUrl, _has_base64: !!base64Pdf } }];"
+      },
+      "id": "validate-pdf-input",
+      "name": "Validate PDF Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst source = input._pdf_url ? `pdf_url: ${input._pdf_url}` : 'base64_pdf';\nconst summary = `PDF özeti (MVP): Kaynak ${source}. Bu wrapper şablonu production'da gerçek PDF parse + LLM özet node'ları ile genişletilmelidir.`;\nconst artifactUrl = input._pdf_url || null;\nreturn [{ json: { request_id: input.request_id, success: true, data: { summary }, error: null, usage: { time_ms: 120, tokens: null, cost: null }, artifacts: artifactUrl ? [{ type: 'link', name: 'source_pdf', url: artifactUrl, meta: { source: 'pdf_url' } }] : [] } }];"
+      },
+      "id": "build-summary-response",
+      "name": "Build Summary Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate PDF Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate PDF Input": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1"
+  ],
+  "pinData": {},
+  "versionId": "svontai-tool-pdf-summary-wrapper-v1"
+}

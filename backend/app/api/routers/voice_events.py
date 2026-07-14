@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.voice_security import verify_voice_gateway_request_dependency
@@ -29,6 +29,8 @@ router = APIRouter(prefix="/api/v1/voice", tags=["Voice (Gateway)"])
 
 
 class VoiceEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: UUID = Field(..., alias="tenantId")
     event_type: str = Field(..., alias="eventType", min_length=3, max_length=80)
     event_id: str = Field(..., alias="eventId", min_length=8, max_length=255)
@@ -43,17 +45,14 @@ class VoiceEvent(BaseModel):
     call: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class VoiceIngestResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     accepted: bool
     run_id: str | None = Field(default=None, alias="runId")
     message: str | None = None
 
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/events", response_model=VoiceIngestResponse)

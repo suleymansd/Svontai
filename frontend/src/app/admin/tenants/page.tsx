@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { 
   Building2, 
   Search, 
@@ -51,7 +51,7 @@ export default function TenantsPage() {
   const [total, setTotal] = useState(0)
   const [actionMenuId, setActionMenuId] = useState<string | null>(null)
 
-  const fetchTenants = async () => {
+  const fetchTenants = useCallback(async () => {
     try {
       setLoading(true)
       const response = await adminApi.listTenants({ page, page_size: 20, search: search || undefined })
@@ -69,11 +69,11 @@ export default function TenantsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, toast])
 
   useEffect(() => {
     fetchTenants()
-  }, [page, search])
+  }, [fetchTenants])
 
   const handleDeleteTenant = async (tenantId: string, tenantName: string) => {
     if (!confirm(`"${tenantName}" tenant'ını silmek istediğinize emin misiniz? Bu işlem tüm botları ve konuşmaları da silecektir.`)) return

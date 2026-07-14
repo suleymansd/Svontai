@@ -16,34 +16,34 @@ const plans = [
   {
     name: 'Free',
     key: 'free',
-    description: 'Temel otomasyonlar için',
+    description: 'Ürünü tanımak ve demo akışı görmek için',
     monthly: 0,
     yearly: 0,
-    highlights: ['Aylık 300 tool run', 'Temel marketplace', 'Topluluk desteği'],
+    highlights: ['Demo workspace', 'Otonom kurulum merkezi', 'Temel sağlık görünümü'],
   },
   {
     name: 'Pro',
     key: 'pro',
-    description: 'Yeni büyüyen ekipler',
+    description: 'Tek işletme için satışa hazır WhatsApp AI',
     monthly: 299,
     yearly: 2990,
-    highlights: ['Aylık 2.000 tool run', 'Pro tool’lar', 'Öncelikli ticket desteği'],
+    highlights: ['Done-for-you kurulum', '1 WhatsApp AI asistanı', 'Concierge bilgi formasyonu'],
   },
   {
     name: 'Premium',
     key: 'premium',
-    description: 'Yoğun otomasyon kullanan ekipler',
+    description: 'Daha yoğun müşteri akışı ve entegrasyonlar',
     monthly: 599,
     yearly: 5990,
-    highlights: ['Aylık 10.000 tool run', 'Premium tool erişimi', 'Gelişmiş entegrasyonlar'],
+    highlights: ['Gelişmiş entegrasyonlar', 'Öncelikli destek', 'Incident ve retry otomasyonu'],
   },
   {
     name: 'Kurumsal',
     key: 'enterprise',
-    description: 'Kurumsal ölçekte',
+    description: 'Ajanslar ve çoklu müşteri operasyonları',
     monthly: null,
     yearly: null,
-    highlights: ['Aylık 50.000+ tool run', 'Özel SLA', 'Dedicated support', 'Özel güvenlik gereksinimleri'],
+    highlights: ['Çoklu müşteri yönetimi', 'Launch board ve SLA', 'Özel güvenlik gereksinimleri', 'Dedicated support'],
   },
 ]
 
@@ -102,8 +102,10 @@ export default function PricingPage() {
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
         <Reveal className="space-y-6">
           <Badge variant="outline">Fiyatlandırma</Badge>
-          <h1 className="text-4xl font-semibold">Her ölçek için hazır planlar</h1>
-          <p className="text-muted-foreground">Tüm planlarda multi-tenant izolasyon, audit log ve güvenlik standarttır.</p>
+          <h1 className="text-4xl font-semibold">Kurulumu bizim üstlendiğimiz WhatsApp AI paketleri</h1>
+          <p className="text-muted-foreground">
+            Planlar; concierge bilgi formasyonu, otonom sağlık kontrolleri, audit log ve güvenli tenant izolasyonu üzerine kurulur.
+          </p>
           <div className="flex items-center gap-3">
             <Button variant={billing === 'monthly' ? 'default' : 'outline'} onClick={() => setBilling('monthly')}>
               Aylık
@@ -139,7 +141,7 @@ export default function PricingPage() {
                   {plan.key === 'free' && (
                     <Link href="/register" className="block">
                       <Button className="w-full" variant="outline">
-                        Başla
+                        Demo Workspace Aç
                       </Button>
                     </Link>
                   )}
@@ -150,7 +152,7 @@ export default function PricingPage() {
                       onClick={() => handleCheckout(plan.key as 'pro' | 'premium')}
                       disabled={checkoutMutation.isPending}
                     >
-                      {checkoutMutation.isPending && activeCheckoutPlan === plan.key ? 'Yönlendiriliyor...' : 'Yükselt'}
+                      {checkoutMutation.isPending && activeCheckoutPlan === plan.key ? 'Yönlendiriliyor...' : 'Kurulumu Başlat'}
                     </Button>
                   )}
                   {plan.key === 'enterprise' && (
@@ -169,7 +171,7 @@ export default function PricingPage() {
         <div className="mt-16 rounded-3xl border border-border/60 bg-card/60 p-8 text-center">
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Star className="h-4 w-4 text-warning" />
-            SvontAI Enterprise ile SLA ve güvenlik özel gereksinimlerinizi karşılıyoruz.
+            Enterprise ve ajans planlarında launch board, çoklu müşteri yönetimi ve şirket içi bilgi formasyonu operasyonu birlikte gelir.
           </div>
         </div>
       </section>

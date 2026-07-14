@@ -4,6 +4,7 @@ Tenant Onboarding model for tracking setup progress.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import String, DateTime, ForeignKey, Boolean, JSON
@@ -15,54 +16,62 @@ from app.db.base import Base
 class OnboardingStepKey(str, Enum):
     """Onboarding step keys."""
     CREATE_TENANT = "create_tenant"
-    CREATE_BOT = "create_bot"
-    ADD_WELCOME_MESSAGE = "add_welcome_message"
-    ADD_KNOWLEDGE = "add_knowledge"
+    BUSINESS_PROFILE = "business_profile"
+    CUSTOMER_GOALS = "customer_goals"
+    KNOWLEDGE_SOURCES = "knowledge_sources"
     CONNECT_WHATSAPP = "connect_whatsapp"
-    ACTIVATE_BOT = "activate_bot"
+    AUTOPILOT_SETUP = "autopilot_setup"
+    REVIEW_READY = "review_ready"
 
 
 ONBOARDING_STEPS_CONFIG = [
     {
         "key": OnboardingStepKey.CREATE_TENANT.value,
-        "title": "İşletme Oluştur",
-        "description": "İşletmenizi kaydedin",
+        "title": "Hesap oluşturuldu",
+        "description": "SmartWA çalışma alanınız hazırlandı",
         "order": 1,
         "required": True
     },
     {
-        "key": OnboardingStepKey.CREATE_BOT.value,
-        "title": "İlk Botunuzu Oluşturun",
-        "description": "AI asistanınıza bir isim verin",
+        "key": OnboardingStepKey.BUSINESS_PROFILE.value,
+        "title": "İşletmeyi tanıyalım",
+        "description": "Sektör, ton ve müşteri amacını belirleyin",
         "order": 2,
         "required": True
     },
     {
-        "key": OnboardingStepKey.ADD_WELCOME_MESSAGE.value,
-        "title": "Karşılama Mesajı Ekleyin",
-        "description": "Müşterilerinizi nasıl karşılayacağınızı belirleyin",
+        "key": OnboardingStepKey.CUSTOMER_GOALS.value,
+        "title": "Müşteri akışını seçin",
+        "description": "Müşterilerinizin size en çok neden yazdığını seçin",
         "order": 3,
         "required": True
     },
     {
-        "key": OnboardingStepKey.ADD_KNOWLEDGE.value,
-        "title": "Bilgi Tabanı Oluşturun",
-        "description": "Botunuzun cevaplayacağı bilgileri ekleyin",
+        "key": OnboardingStepKey.KNOWLEDGE_SOURCES.value,
+        "title": "Bilgi kaynakları",
+        "description": "Web sitesi, Instagram veya kısa not ekleyin",
         "order": 4,
-        "required": True
+        "required": False
     },
     {
         "key": OnboardingStepKey.CONNECT_WHATSAPP.value,
-        "title": "WhatsApp Bağlayın",
-        "description": "WhatsApp Business hesabınızı bağlayın (opsiyonel)",
+        "title": "WhatsApp bağlantısı",
+        "description": "Numaranızı bağlayın veya daha sonra tamamlayın",
         "order": 5,
         "required": False
     },
     {
-        "key": OnboardingStepKey.ACTIVATE_BOT.value,
-        "title": "Botu Aktif Edin",
-        "description": "Botunuzu yayına alın",
+        "key": OnboardingStepKey.AUTOPILOT_SETUP.value,
+        "title": "Otonom kurulum",
+        "description": "Bot ve sistem ayarları otomatik hazırlanır",
         "order": 6,
+        "required": True
+    },
+    {
+        "key": OnboardingStepKey.REVIEW_READY.value,
+        "title": "Hazır",
+        "description": "Sistemin durumunu kontrol edip panele geçin",
+        "order": 7,
         "required": True
     }
 ]
@@ -116,13 +125,13 @@ class TenantOnboarding(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     
@@ -150,19 +159,19 @@ class TenantOnboarding(Base):
             }
         # Mark create_tenant as completed since tenant exists
         steps[OnboardingStepKey.CREATE_TENANT.value]["completed"] = True
-        steps[OnboardingStepKey.CREATE_TENANT.value]["completed_at"] = datetime.utcnow().isoformat()
+        steps[OnboardingStepKey.CREATE_TENANT.value]["completed_at"] = utc_now_naive().isoformat()
         
         return cls(
             tenant_id=tenant_id,
             steps=steps,
-            current_step=OnboardingStepKey.CREATE_BOT.value
+            current_step=OnboardingStepKey.BUSINESS_PROFILE.value
         )
     
     def complete_step(self, step_key: str) -> bool:
         """Mark a step as completed."""
         if step_key in self.steps:
             self.steps[step_key]["completed"] = True
-            self.steps[step_key]["completed_at"] = datetime.utcnow().isoformat()
+            self.steps[step_key]["completed_at"] = utc_now_naive().isoformat()
             self._update_current_step()
             self._check_completion()
             return True
@@ -176,7 +185,7 @@ class TenantOnboarding(Base):
                 if step_config["required"]:
                     self.current_step = step_key
                     return
-        self.current_step = OnboardingStepKey.ACTIVATE_BOT.value
+        self.current_step = OnboardingStepKey.REVIEW_READY.value
     
     def _check_completion(self):
         """Check if all required steps are completed."""
@@ -186,7 +195,7 @@ class TenantOnboarding(Base):
                 if step_key in self.steps and not self.steps[step_key]["completed"]:
                     return
         self.is_completed = True
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utc_now_naive()
     
     def get_progress_percentage(self) -> int:
         """Get completion percentage."""
@@ -196,4 +205,3 @@ class TenantOnboarding(Base):
             if v.get("completed") and any(s["key"] == k and s["required"] for s in ONBOARDING_STEPS_CONFIG)
         ])
         return int((completed / total) * 100) if total > 0 else 0
-

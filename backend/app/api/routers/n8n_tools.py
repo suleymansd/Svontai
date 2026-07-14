@@ -13,7 +13,7 @@ import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.n8n_security import verify_n8n_bearer_token
@@ -55,6 +55,8 @@ async def _verify_tenant(request: Request, tenant_id: str) -> None:
 
 
 class LeadUpsertRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     phone: str | None = None
     email: str | None = None
@@ -70,31 +72,28 @@ class LeadUpsertRequest(BaseModel):
     call_provider: str | None = Field(default=None, alias="callProvider")
     call_provider_call_id: str | None = Field(default=None, alias="callProviderCallId")
 
-    class Config:
-        populate_by_name = True
-
 
 class LeadUpsertResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     lead_id: str = Field(..., alias="leadId")
     created: bool
     updated: bool
 
-    class Config:
-        populate_by_name = True
-
 
 class LeadGetRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     lead_id: str | None = Field(default=None, alias="leadId")
     phone: str | None = None
     email: str | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class LeadGetResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     lead_id: str = Field(..., alias="leadId")
     name: str | None = None
@@ -106,9 +105,6 @@ class LeadGetResponse(BaseModel):
     tags: list[str]
     notes: str | None = None
     extra_data: dict = Field(default_factory=dict, alias="extraData")
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/leads/get", response_model=LeadGetResponse)
@@ -158,6 +154,8 @@ async def get_lead(
 
 
 class LeadPatchRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     lead_id: str | None = Field(default=None, alias="leadId")
     phone: str | None = None
@@ -173,17 +171,13 @@ class LeadPatchRequest(BaseModel):
     extra_data_merge: dict | None = Field(default=None, alias="extraDataMerge")
     notes_append: str | None = Field(default=None, alias="notesAppend")
 
-    class Config:
-        populate_by_name = True
-
 
 class LeadPatchResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     lead_id: str = Field(..., alias="leadId")
     updated: bool
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/leads/patch", response_model=LeadPatchResponse)
@@ -380,6 +374,8 @@ async def upsert_lead(
 
 
 class NoteCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     lead_id: str | None = Field(default=None, alias="leadId")
     call_id: str | None = Field(default=None, alias="callId")
@@ -395,17 +391,13 @@ class NoteCreateRequest(BaseModel):
     source: str = "n8n"
     meta_json: dict | None = Field(default=None, alias="metaJson")
 
-    class Config:
-        populate_by_name = True
-
 
 class NoteCreateResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     note_id: str = Field(..., alias="noteId")
     created: bool
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/notes/create", response_model=NoteCreateResponse)
@@ -501,6 +493,8 @@ async def create_note(
 
 
 class UsageIncrementRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     message_count: int = Field(default=0, alias="messageCount")
     voice_seconds: int = Field(default=0, alias="voiceSeconds")
@@ -509,11 +503,10 @@ class UsageIncrementRequest(BaseModel):
     outbound_calls: int = Field(default=0, alias="outboundCalls")
     extra: dict | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class UsageIncrementResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     period_key: str = Field(..., alias="periodKey")
     message_count: int = Field(..., alias="messageCount")
@@ -521,9 +514,6 @@ class UsageIncrementResponse(BaseModel):
     workflow_runs: int = Field(..., alias="workflowRuns")
     tool_calls: int = Field(..., alias="toolCalls")
     outbound_calls: int = Field(..., alias="outboundCalls")
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/usage/increment", response_model=UsageIncrementResponse)
@@ -556,14 +546,13 @@ async def increment_usage(
 
 
 class AuditLogRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     action: str
     resource_type: str | None = Field(default=None, alias="resourceType")
     resource_id: str | None = Field(default=None, alias="resourceId")
     payload: dict | None = None
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/audit/log")
@@ -592,15 +581,16 @@ async def append_audit_log(
 
 
 class CallResolveRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     provider: str
     provider_call_id: str = Field(..., alias="providerCallId")
 
-    class Config:
-        populate_by_name = True
-
 
 class CallResolveResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     call_id: str = Field(..., alias="callId")
     lead_id: str | None = Field(default=None, alias="leadId")
@@ -608,9 +598,6 @@ class CallResolveResponse(BaseModel):
     to_number: str | None = Field(default=None, alias="to")
     status: str
     duration_seconds: int = Field(..., alias="durationSeconds")
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/calls/resolve", response_model=CallResolveResponse)
@@ -642,32 +629,29 @@ async def resolve_call(
 
 
 class CallTranscriptRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     call_id: str | None = Field(default=None, alias="callId")
     provider: str | None = None
     provider_call_id: str | None = Field(default=None, alias="providerCallId")
 
-    class Config:
-        populate_by_name = True
-
 
 class CallTranscriptItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     segment_index: int = Field(..., alias="segmentIndex")
     speaker: str
     text: str
     ts_iso: str | None = Field(default=None, alias="tsIso")
 
-    class Config:
-        populate_by_name = True
-
 
 class CallTranscriptResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     call_id: str = Field(..., alias="callId")
     items: list[CallTranscriptItem]
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/calls/transcript", response_model=CallTranscriptResponse)
@@ -719,6 +703,8 @@ async def get_call_transcript(
 
 
 class RealEstateListingSearchRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     sale_rent: str | None = Field(default=None, alias="saleRent")
     property_type: str | None = Field(default=None, alias="propertyType")
@@ -729,11 +715,10 @@ class RealEstateListingSearchRequest(BaseModel):
     m2_min: int | None = Field(default=None, alias="m2Min")
     limit: int = Field(default=3, ge=1, le=20)
 
-    class Config:
-        populate_by_name = True
-
 
 class RealEstateListingSearchItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     title: str
     sale_rent: str = Field(..., alias="saleRent")
@@ -745,9 +730,6 @@ class RealEstateListingSearchItem(BaseModel):
     rooms: str | None = None
     url: str | None = None
     media: list = Field(default_factory=list)
-
-    class Config:
-        populate_by_name = True
 
 
 class RealEstateListingSearchResponse(BaseModel):
@@ -809,14 +791,13 @@ async def real_estate_search_listings(
 
 
 class RealEstateListingEventRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     lead_id: str = Field(..., alias="leadId")
     listing_id: str = Field(..., alias="listingId")
     event: str
     meta_json: dict | None = Field(default=None, alias="metaJson")
-
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/real-estate/listing-events")

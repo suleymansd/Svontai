@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -26,5 +27,5 @@ class TenantTool(Base):
     rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
     config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)

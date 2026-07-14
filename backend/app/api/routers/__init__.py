@@ -33,6 +33,7 @@ from app.api.routers.calls import router as calls_router
 from app.api.routers.telephony import router as telephony_router
 from app.api.routers.voice_intent import router as voice_intent_router
 from app.api.routers.voice_call_summary import router as voice_call_summary_router
+from app.api.routers.voice_automation import router as voice_automation_router
 from app.api.routers.n8n_tools import router as n8n_tools_router
 from app.api.routers.n8n_reply import router as n8n_reply_router
 from app.api.routers.n8n_dev_token import router as n8n_dev_token_router
@@ -40,6 +41,8 @@ from app.api.routers.tool_runner import router as tool_runner_router
 from app.api.routers.assistant import router as assistant_router
 from app.api.routers.integrations import router as integrations_router
 from app.api.routers.billing import router as billing_router
+from app.api.routers.setup_autopilot import router as setup_autopilot_router
+from app.api.routers.agency import router as agency_router
 from app.api.routers.debug import router as debug_router
 
 __all__ = [
@@ -77,6 +80,7 @@ __all__ = [
     "telephony_router",
     "voice_intent_router",
     "voice_call_summary_router",
+    "voice_automation_router",
     "n8n_tools_router",
     "n8n_reply_router",
     "n8n_dev_token_router",
@@ -84,5 +88,7 @@ __all__ = [
     "assistant_router",
     "integrations_router",
     "billing_router",
+    "setup_autopilot_router",
+    "agency_router",
     "debug_router",
 ]

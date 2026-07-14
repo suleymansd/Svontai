@@ -3,6 +3,7 @@ Appointment management routes with email reminders.
 """
 
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -136,7 +137,7 @@ async def send_due_reminders(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ):
-    now = datetime.utcnow()
+    now = utc_now_naive()
     appointments = db.query(Appointment).filter(
         Appointment.tenant_id == current_tenant.id,
         Appointment.status != "cancelled",

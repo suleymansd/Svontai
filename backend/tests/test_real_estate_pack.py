@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -549,11 +550,11 @@ def test_connector_auto_sync_runs_only_when_due():
 
     def fake_google(tenant_id, user_id, config):
         calls.append("google")
-        return {"source": "google_sheets", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": datetime.utcnow().isoformat()}
+        return {"source": "google_sheets", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": utc_now_naive().isoformat()}
 
     def fake_remax(tenant_id, user_id, config):
         calls.append("remax")
-        return {"source": "remax_connector", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": datetime.utcnow().isoformat()}
+        return {"source": "remax_connector", "stats": {"created": 1, "updated": 0, "deactivated": 0, "skipped": 0}, "synced_at": utc_now_naive().isoformat()}
 
     service.sync_listings_from_google_sheets = fake_google  # type: ignore[assignment]
     service.sync_listings_from_remax_connector = fake_remax  # type: ignore[assignment]
@@ -565,8 +566,8 @@ def test_connector_auto_sync_runs_only_when_due():
 
     settings = service.get_or_create_settings(tenant.id)
     source = copy.deepcopy(settings.listings_source)
-    source["google_sheets"]["last_sync_at"] = datetime.utcnow().isoformat()
-    source["remax_connector"]["last_sync_at"] = datetime.utcnow().isoformat()
+    source["google_sheets"]["last_sync_at"] = utc_now_naive().isoformat()
+    source["remax_connector"]["last_sync_at"] = utc_now_naive().isoformat()
     settings.listings_source = source
     db.commit()
 

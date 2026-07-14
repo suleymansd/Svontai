@@ -4,6 +4,7 @@ Real Estate Pack models for industry-specific automation.
 
 import uuid
 from datetime import datetime, date
+from app.core.time import utc_now_naive
 
 from sqlalchemy import (
     Boolean,
@@ -53,8 +54,8 @@ class RealEstatePackSettings(Base):
     report_brand_color: Mapped[str] = mapped_column(String(20), default="#6D28D9", nullable=False)
     report_footer: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateGoogleCalendarIntegration(Base):
@@ -78,8 +79,8 @@ class RealEstateGoogleCalendarIntegration(Base):
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="inactive", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateListing(Base):
@@ -116,8 +117,8 @@ class RealEstateListing(Base):
     media: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateConversationState(Base):
@@ -153,8 +154,8 @@ class RealEstateConversationState(Base):
     window_open_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_customer_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_outbound_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateLeadListingEvent(Base):
@@ -182,7 +183,7 @@ class RealEstateLeadListingEvent(Base):
     )
     event: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     meta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False, index=True)
 
 
 class RealEstateAppointment(Base):
@@ -220,8 +221,8 @@ class RealEstateAppointment(Base):
     meeting_mode: Mapped[str] = mapped_column(String(20), default="in_person", nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateFollowUpJob(Base):
@@ -255,8 +256,8 @@ class RealEstateFollowUpJob(Base):
     template_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateTemplateRegistry(Base):
@@ -279,8 +280,8 @@ class RealEstateTemplateRegistry(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     content_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
 
 class RealEstateWeeklyReport(Base):
@@ -298,4 +299,4 @@ class RealEstateWeeklyReport(Base):
     week_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     metrics_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)

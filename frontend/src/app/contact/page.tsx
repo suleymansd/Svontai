@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Mail, Phone } from 'lucide-react'
+import { Mail, ShieldCheck } from 'lucide-react'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { Reveal } from '@/components/marketing/reveal'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +21,7 @@ export default function ContactPage() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    const subject = encodeURIComponent('SvontAI Demo Talebi')
+    const subject = encodeURIComponent('SmartWA Demo ve Concierge Kurulum Talebi')
     const body = encodeURIComponent(
       `Ad Soyad: ${form.name}\nE-posta: ${form.email}\nŞirket: ${form.company}\n\nMesaj:\n${form.message}`
     )
@@ -33,8 +33,8 @@ export default function ContactPage() {
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:px-8">
         <Reveal className="space-y-5 text-center">
           <Badge variant="outline">İletişim</Badge>
-          <h1 className="text-4xl font-semibold">SvontAI demo ve satış ekibiyle görüşün</h1>
-          <p className="text-muted-foreground">Sizin için doğru planı birlikte tasarlayalım.</p>
+          <h1 className="text-4xl font-semibold">SmartWA demo ve kurulum görüşmesi</h1>
+          <p className="text-muted-foreground">İşletmenizin WhatsApp, bot, arama ve concierge kurulum ihtiyacını birlikte netleştirelim.</p>
         </Reveal>
 
         <div className="mt-12 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -57,9 +57,9 @@ export default function ContactPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Mesajınız</Label>
-                  <Textarea rows={6} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} required />
+                  <Textarea rows={6} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Sektör, WhatsApp numarası durumu, günlük mesaj yoğunluğu ve beklediğiniz otomasyon akışını yazabilirsiniz." required />
                 </div>
-                <Button type="submit" className="w-full">Demo Talebi Gönder</Button>
+                <Button type="submit" className="w-full">Görüşme Talebi Gönder</Button>
               </form>
             </CardContent>
           </Card>
@@ -70,7 +70,7 @@ export default function ContactPage() {
                 <div className="flex items-center gap-3">
                   <Mail className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="text-sm text-muted-foreground">E-posta</p>
+                    <p className="text-sm text-muted-foreground">Satış ve kurulum</p>
                     <p className="font-medium">sales@svontai.com</p>
                   </div>
                 </div>
@@ -78,18 +78,18 @@ export default function ContactPage() {
             </Card>
             <Card className="border-border/60">
               <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <Phone className="h-5 w-5 text-primary" />
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Telefon</p>
-                    <p className="font-medium">+90 (212) 000 00 00</p>
+                    <p className="font-medium">Görüşmede netleştirdiklerimiz</p>
+                    <p className="mt-1 text-sm text-muted-foreground">WhatsApp bağlantısı, bilgi formasyonu, bot tonu, arama otomasyonu, ödeme/plan ve canlıya alma adımları.</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
             <Card className="border-border/60">
               <CardContent className="p-6 text-sm text-muted-foreground">
-                Satış ve teknik ekiplerimiz hafta içi 09:00 - 19:00 arasında sizinle iletişim kurar.
+                Talebinizi aldıktan sonra işletme bilgilerinize göre self-serve veya concierge kurulum akışını öneririz.
               </CardContent>
             </Card>
           </div>

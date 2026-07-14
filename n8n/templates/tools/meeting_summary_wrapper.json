@@ -1,0 +1,55 @@
+{
+  "name": "SvontAI - Tool Wrapper - meeting_summary v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || input.requestId || '';\nconst toolInput = input.tool_input || input.toolInput || {};\nconst transcript = String(toolInput.transcript || toolInput.text || '').trim();\nif (!transcript) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'Missing transcript/text for meeting_summary', code: 'INVALID_INPUT', node: 'Build Meeting Summary' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nconst summary = transcript.length > 300 ? transcript.slice(0, 300) + '…' : transcript;\nreturn [{ json: { request_id: requestId, success: true, data: { summary: `Toplantı özeti: ${summary}`, action_items: ['Takip e-postası gönder', 'Bir sonraki randevuyu planla'], participants: toolInput.participants || [] }, error: null, usage: { time_ms: 180, tokens: 120, cost: 0.0012 }, artifacts: [] } }];"
+      },
+      "id": "build-meeting-summary",
+      "name": "Build Meeting Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Meeting Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1",
+    "staging"
+  ],
+  "versionId": "meeting-summary-wrapper-v1"
+}

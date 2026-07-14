@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,4 +31,4 @@ class Artifact(Base):
     path: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     meta_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)

@@ -4,6 +4,7 @@ Onboarding steps model for tracking setup progress.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, JSON
@@ -92,8 +93,8 @@ class OnboardingStep(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     
@@ -152,7 +153,7 @@ class AuditLog(Base):
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False,
         index=True
     )

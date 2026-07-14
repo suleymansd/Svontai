@@ -4,6 +4,7 @@ Monthly usage counters for billing-aware metering.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,6 +35,6 @@ class TenantUsageCounter(Base):
 
     extra_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 

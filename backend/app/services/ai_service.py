@@ -5,6 +5,7 @@ AI Service for generating bot responses using OpenAI with guardrails and safety 
 import re
 from typing import Optional
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 from collections import defaultdict
 
 from openai import AsyncOpenAI
@@ -164,7 +165,7 @@ C: {item.answer}
         Check if conversation is rate limited.
         Returns (allowed: bool, message: str)
         """
-        now = datetime.utcnow()
+        now = utc_now_naive()
         key = str(conversation_id)
         
         # Clean old entries

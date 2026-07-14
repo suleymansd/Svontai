@@ -8,7 +8,7 @@ from datetime import datetime
 from uuid import UUID
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -28,6 +28,13 @@ from app.schemas.public import (
 from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
+from app.core.rate_limit import (
+    public_chat_init_rate_limiter,
+    public_chat_send_rate_limiter,
+    public_lead_rate_limiter,
+    rate_limit_key,
+    require_rate_limit,
+)
 
 router = APIRouter(prefix="/public", tags=["Public Chat"])
 logger = logging.getLogger(__name__)
@@ -41,6 +48,7 @@ def generate_external_user_id() -> str:
 @router.post("/chat/init", response_model=ChatInitResponse)
 async def init_chat(
     request: ChatInitRequest,
+    http_request: Request,
     db: Session = Depends(get_db)
 ) -> ChatInitResponse:
     """
@@ -53,6 +61,12 @@ async def init_chat(
     Returns:
         Chat session information including conversation ID.
     """
+    require_rate_limit(
+        public_chat_init_rate_limiter,
+        rate_limit_key(http_request, "public-chat-init", request.bot_public_key),
+        "Çok fazla sohbet başlatma isteği. Lütfen daha sonra tekrar deneyin.",
+    )
+
     # Find bot by public key
     bot = db.query(Bot).filter(
         Bot.public_key == request.bot_public_key,
@@ -103,6 +117,7 @@ async def init_chat(
 @router.post("/chat/send", response_model=ChatSendResponse)
 async def send_chat_message(
     request: ChatSendRequest,
+    http_request: Request,
     db: Session = Depends(get_db)
 ) -> ChatSendResponse:
     """
@@ -115,6 +130,12 @@ async def send_chat_message(
     Returns:
         AI-generated response.
     """
+    require_rate_limit(
+        public_chat_send_rate_limiter,
+        rate_limit_key(http_request, "public-chat-send", request.conversation_id),
+        "Çok fazla mesaj isteği. Lütfen daha sonra tekrar deneyin.",
+    )
+
     # Get conversation
     conversation = db.query(Conversation).filter(
         Conversation.id == request.conversation_id
@@ -257,6 +278,7 @@ async def list_chat_messages(
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_public_lead(
     lead_data: LeadPublicCreate,
+    http_request: Request,
     db: Session = Depends(get_db)
 ) -> Lead:
     """
@@ -269,6 +291,12 @@ async def create_public_lead(
     Returns:
         The created lead.
     """
+    require_rate_limit(
+        public_lead_rate_limiter,
+        rate_limit_key(http_request, "public-lead", lead_data.bot_public_key),
+        "Çok fazla lead oluşturma isteği. Lütfen daha sonra tekrar deneyin.",
+    )
+
     # Find bot by public key
     bot = db.query(Bot).filter(
         Bot.public_key == lead_data.bot_public_key,

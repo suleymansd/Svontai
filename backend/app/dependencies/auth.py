@@ -4,6 +4,7 @@ Authentication dependencies for FastAPI.
 
 from uuid import UUID
 from datetime import datetime
+from app.core.time import utc_now_naive
 from typing import Any
 
 from fastapi import Depends, HTTPException, status, Header
@@ -95,7 +96,7 @@ async def get_current_user(
             detail="Hesap devre dışı bırakılmış"
         )
 
-    if user.locked_until and user.locked_until > datetime.utcnow():
+    if user.locked_until and user.locked_until > utc_now_naive():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hesap geçici olarak kilitlendi"

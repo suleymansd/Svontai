@@ -57,6 +57,45 @@ def test_smoke_register_verify_login_and_core_resources(client):
     assert bots_list.status_code == 200, bots_list.text
     assert bots_list.json() == []
 
+    onboarding_status = client.get("/onboarding/setup/status", headers=_auth_headers(access_token, tenant_id))
+    assert onboarding_status.status_code == 200, onboarding_status.text
+    assert onboarding_status.json()["current_step"] == "business_profile"
+
+    profile_resp = client.post(
+        "/onboarding/setup/business-profile",
+        json={
+            "industry": "service",
+            "primary_goal": "appointment",
+            "tone": "professional",
+            "handoff_rules": ["complaint", "unknown_question"],
+            "website_url": "https://acme.example",
+            "business_summary": "Randevu ve bilgi taleplerini WhatsApp üzerinden karşılayan hizmet işletmesi.",
+        },
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert profile_resp.status_code == 200, profile_resp.text
+    assert profile_resp.json()["current_step"] == "autopilot_setup"
+
+    run_onboarding = client.post("/onboarding/setup/run-autopilot", headers=_auth_headers(access_token, tenant_id))
+    assert run_onboarding.status_code == 200, run_onboarding.text
+    assert run_onboarding.json()["is_completed"] is True
+
+    bots_list = client.get("/bots", headers=_auth_headers(access_token, tenant_id))
+    assert bots_list.status_code == 200, bots_list.text
+    assert len(bots_list.json()) == 1
+    assert bots_list.json()[0]["name"] == "SmartWA Autopilot"
+
+    autopilot_status = client.get("/setup/autopilot/status", headers=_auth_headers(access_token, tenant_id))
+    assert autopilot_status.status_code == 200, autopilot_status.text
+    assert autopilot_status.json()["latest_run"]["status"] == "completed"
+    assert autopilot_status.json()["business_profile"]["status"] == "customer_collected"
+    assert autopilot_status.json()["concierge_enrichment"]["status"] == "pending"
+    concierge_ticket_id = autopilot_status.json()["concierge_enrichment"]["ticket_id"]
+
+    tickets_resp = client.get("/tickets", headers=_auth_headers(access_token, tenant_id))
+    assert tickets_resp.status_code == 200, tickets_resp.text
+    assert any(ticket["id"] == concierge_ticket_id for ticket in tickets_resp.json())
+
     bot_resp = client.post(
         "/bots",
         json={

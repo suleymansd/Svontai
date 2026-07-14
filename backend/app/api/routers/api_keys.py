@@ -10,6 +10,7 @@ Implements:
 from __future__ import annotations
 
 from datetime import datetime
+from app.core.time import utc_now_naive
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -143,7 +144,7 @@ async def revoke_api_key(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API anahtarı bulunamadı")
 
-    record.revoked_at = datetime.utcnow()
+    record.revoked_at = utc_now_naive()
     db.commit()
 
     AuditLogService(db).log(

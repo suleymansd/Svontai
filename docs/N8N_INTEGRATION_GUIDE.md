@@ -193,3 +193,79 @@ Gerekli n8n env:
 - `OPENAI_MODEL` (opsiyonel, default: `gpt-4o-mini`)
 - `WA_FALLBACK_TEMPLATE_NAME` (opsiyonel; 24h pencere dışı için)
 - `WA_FALLBACK_TEMPLATE_LANG` (opsiyonel; default `tr`)
+
+## 6) Marketplace Tool Runner (Yeni)
+
+Backend artık tenant bazlı tool marketplace için standart runner endpoint’leri sunar:
+
+- `GET /tools/registry`
+- `PUT /tools/{tool_slug}/settings`
+- `POST /tools/run`
+- `POST /assistant/chat`
+
+İlk 10 marketplace tool kaydını üretmek için (Super Admin):
+- `POST /admin/tools/seed-initial`
+
+### 6.1) `/tools/run` standart contract
+
+Request:
+```json
+{
+  "requestId": "optional-uuid",
+  "toolSlug": "pdf_summary",
+  "toolInput": { "text": "..." },
+  "context": {
+    "locale": "tr-TR",
+    "timezone": "Europe/Istanbul",
+    "channel": "web",
+    "memory": {}
+  }
+}
+```
+
+Response:
+```json
+{
+  "requestId": "uuid",
+  "success": true,
+  "data": {},
+  "error": null,
+  "usage": { "timeMs": 1200, "tokens": null, "cost": null },
+  "artifacts": []
+}
+```
+
+### 6.2) Tool Runner için gerekli backend env
+
+- `USE_N8N=true`
+- `N8N_BASE_URL`
+- `N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE` (default: `/api/v1/workflows/{workflow_id}/run`)
+- `N8N_TOOL_RUNNER_WORKFLOW_ID` (default: `svontai-tool-runner`)
+- `N8N_TIMEOUT_SECONDS`
+- `SVONTAI_TO_N8N_SECRET`
+- `N8N_API_KEY` (opsiyonel)
+
+Not:
+- Tool runner path’i public webhook kullanmaz; backend doğrudan n8n internal API run endpoint’ine çağrı yapar.
+- Template dosyaları:
+  - `n8n/templates/svontai-tool-runner.json`
+  - `n8n/templates/tools/pdf_summary_wrapper.json`
+  - `n8n/templates/tools/pdf_to_word_wrapper.json`
+  - `n8n/templates/tools/drive_save_file_wrapper.json`
+  - `n8n/templates/tools/gmail_summary_wrapper.json`
+- Import sonrası tüm workflow’lar `inactive` kalmalıdır.
+
+### 6.3) Yeni tool slug’ları
+
+- `pdf_to_word`
+- `drive_save_file`
+- `gmail_summary`
+
+Runner `tool_slug` eşleşmezse standart hata döner:
+```json
+{
+  "request_id": "....",
+  "success": false,
+  "error": { "code": "UNSUPPORTED_TOOL_SLUG", "message": "Unsupported tool_slug: ..." }
+}
+```

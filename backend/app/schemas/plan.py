@@ -6,13 +6,14 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+from app.models.plan import PlanType
 
 
 class PlanBase(BaseModel):
     name: str
     display_name: str
     description: str | None = None
-    plan_type: str
+    plan_type: PlanType
     price_monthly: float
     price_yearly: float
     currency: str
@@ -34,7 +35,7 @@ class PlanUpdate(BaseModel):
     name: str | None = None
     display_name: str | None = None
     description: str | None = None
-    plan_type: str | None = None
+    plan_type: PlanType | None = None
     price_monthly: float | None = None
     price_yearly: float | None = None
     currency: str | None = None

@@ -225,7 +225,7 @@ export default function WhatsAppSetupPage() {
       })
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [])
+  }, [toast])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {

@@ -6,6 +6,7 @@ This is the system-of-record for phone calls (inbound/outbound) regardless of pr
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, Index
@@ -66,8 +67,8 @@ class Call(Base):
 
     meta_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
     tenant: Mapped["Tenant"] = relationship("Tenant")
     lead: Mapped["Lead | None"] = relationship("Lead")
@@ -108,7 +109,7 @@ class CallTranscript(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     ts_iso: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
 
     call: Mapped["Call"] = relationship("Call", back_populates="transcripts")
 
@@ -134,8 +135,8 @@ class CallSummary(Base):
     action_items_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 
     call: Mapped["Call"] = relationship("Call", back_populates="summary")
 

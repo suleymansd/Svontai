@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.services.concierge_enrichment_service import ConciergeEnrichmentService
 from app.services.rbac_service import RbacService
 from app.services.audit_log_service import AuditLogService
 
@@ -78,6 +79,9 @@ async def create_tenant(
         ip_address=request.client.host if request else None,
         user_agent=request.headers.get("User-Agent") if request else None
     )
+
+    ConciergeEnrichmentService(db).ensure_started(tenant, current_user)
+    db.refresh(tenant)
     
     return tenant
 

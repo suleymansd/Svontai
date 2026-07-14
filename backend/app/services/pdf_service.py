@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import unicodedata
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 
 class SimplePdfService:
@@ -24,7 +25,7 @@ class SimplePdfService:
         """
         Build a simple one-page text PDF.
         """
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        timestamp = utc_now_naive().strftime("%Y-%m-%d %H:%M UTC")
         safe_title = SimplePdfService._ascii_safe(title)[:110]
         safe_footer = SimplePdfService._ascii_safe(footer or "")[:110]
 

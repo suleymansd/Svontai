@@ -6,6 +6,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
+os.environ.setdefault("WEBHOOK_USERNAME", "test-webhook")
+os.environ.setdefault("WEBHOOK_PASSWORD", "test-webhook-pass")
+
+
 @pytest.fixture()
 def client(monkeypatch):
     """
@@ -15,6 +19,24 @@ def client(monkeypatch):
     so existing unit tests remain unaffected.
     """
     from app.core.config import settings
+    from app.core import rate_limit as rate_limit_module
+
+    rate_limit_module.clear_rate_limiters([
+        rate_limit_module.login_rate_limiter,
+        rate_limit_module.register_rate_limiter,
+        rate_limit_module.refresh_rate_limiter,
+        rate_limit_module.password_reset_rate_limiter,
+        rate_limit_module.email_verification_rate_limiter,
+        rate_limit_module.email_confirm_rate_limiter,
+        rate_limit_module.global_ip_rate_limiter,
+        rate_limit_module.webhook_rate_limiter,
+        rate_limit_module.public_chat_init_rate_limiter,
+        rate_limit_module.public_chat_send_rate_limiter,
+        rate_limit_module.public_lead_rate_limiter,
+        rate_limit_module.assistant_rate_limiter,
+        rate_limit_module.tool_run_rate_limiter,
+        rate_limit_module.voice_test_call_rate_limiter,
+    ])
 
     old_environment = settings.ENVIRONMENT
     old_email_enabled = settings.EMAIL_ENABLED

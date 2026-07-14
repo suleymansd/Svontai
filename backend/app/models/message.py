@@ -4,6 +4,7 @@ Message model for conversation messages.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, JSON, Index
@@ -54,7 +55,7 @@ class Message(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     

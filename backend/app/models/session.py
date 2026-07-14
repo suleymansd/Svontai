@@ -4,6 +4,7 @@ User session model for refresh token rotation.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -40,7 +41,7 @@ class UserSession(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     last_used_at: Mapped[datetime | None] = mapped_column(

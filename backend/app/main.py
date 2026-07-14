@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.rate_limit import global_ip_rate_limiter, rate_limit_key
 from app.api.routers import (
     auth_router,
     users_router,
@@ -51,12 +52,15 @@ from app.api.routers import (
     telephony_router,
     voice_intent_router,
     voice_call_summary_router,
+    voice_automation_router,
     debug_router,
     n8n_dev_token_router,
     tool_runner_router,
     assistant_router,
     integrations_router,
     billing_router,
+    setup_autopilot_router,
+    agency_router,
 )
 
 # TEMP runtime guard for production troubleshooting:
@@ -106,6 +110,80 @@ def _ensure_leads_schema_compatibility() -> None:
                 db.execute(text(statement))
             db.commit()
             logger.warning("Applied lead schema compatibility patch: %s", ", ".join(statements))
+    finally:
+        db.close()
+
+
+def _ensure_conversations_schema_compatibility() -> None:
+    """
+    Ensure critical conversation columns exist for backward-compatible deployments.
+    """
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        table_names = set(inspector.get_table_names())
+        if "conversations" not in table_names:
+            return
+
+        conversation_columns = {column["name"] for column in inspector.get_columns("conversations")}
+        statements: list[str] = []
+        if "source" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN source VARCHAR(50) NOT NULL DEFAULT 'whatsapp'")
+        if "status" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'ai_active'")
+        if "is_ai_paused" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN is_ai_paused BOOLEAN NOT NULL DEFAULT 0")
+        if "operator_id" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN operator_id VARCHAR(36) NULL")
+        if "takeover_at" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN takeover_at DATETIME NULL")
+        if "has_lead" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN has_lead BOOLEAN NOT NULL DEFAULT 0")
+        if "lead_score" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN lead_score INTEGER NOT NULL DEFAULT 0")
+        if "summary" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN summary TEXT NULL")
+        if "tags" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN tags JSON NOT NULL DEFAULT '[]'")
+        if "extra_data" not in conversation_columns:
+            statements.append("ALTER TABLE conversations ADD COLUMN extra_data JSON NOT NULL DEFAULT '{}'")
+
+        if statements:
+            for statement in statements:
+                db.execute(text(statement))
+            db.commit()
+            logger.warning("Applied conversation schema compatibility patch: %s", ", ".join(statements))
+    finally:
+        db.close()
+
+
+def _ensure_messages_schema_compatibility() -> None:
+    """
+    Ensure critical message columns exist for backward-compatible deployments.
+    """
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        table_names = set(inspector.get_table_names())
+        if "messages" not in table_names:
+            return
+
+        message_columns = {column["name"] for column in inspector.get_columns("messages")}
+        statements: list[str] = []
+        if "external_id" not in message_columns:
+            statements.append("ALTER TABLE messages ADD COLUMN external_id VARCHAR(255) NULL")
+
+        if statements:
+            for statement in statements:
+                db.execute(text(statement))
+            db.commit()
+            logger.warning("Applied message schema compatibility patch: %s", ", ".join(statements))
     finally:
         db.close()
 
@@ -232,7 +310,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     if settings.TOOL_RUNNER_DEBUG:
         logger.info(
-            "Tool runner startup debug USE_N8N=%s N8N_BASE_URL=%s "
+            "Tool runner startup debug USE_N8N=%s N8N_BASE_URL=%s "\
             "N8N_INTERNAL_RUN_ENDPOINT_TEMPLATE=%s N8N_TOOL_RUNNER_WORKFLOW_ID=%s",
             settings.USE_N8N,
             settings.N8N_BASE_URL,
@@ -262,10 +340,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not initialize plans: {e}")
 
-    try:
-        _ensure_leads_schema_compatibility()
-    except Exception as exc:
-        logger.warning("Could not apply leads schema compatibility patch: %s", exc)
+    if settings.ENVIRONMENT == "dev":
+        try:
+            _ensure_leads_schema_compatibility()
+        except Exception as exc:
+            logger.warning("Could not apply leads schema compatibility patch: %s", exc)
+
+        try:
+            _ensure_conversations_schema_compatibility()
+        except Exception as exc:
+            logger.warning("Could not apply conversations schema compatibility patch: %s", exc)
+
+        try:
+            _ensure_messages_schema_compatibility()
+        except Exception as exc:
+            logger.warning("Could not apply messages schema compatibility patch: %s", exc)
 
     try:
         _log_tools_id_column_type()
@@ -302,6 +391,17 @@ app = FastAPI(
 )
 
 
+
+
+@app.middleware("http")
+async def global_rate_limit_middleware(request: Request, call_next):
+    if request.url.path not in {"/", "/health"} and not global_ip_rate_limiter.allow(rate_limit_key(request, "global")):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Çok fazla istek. Lütfen birkaç dakika sonra tekrar deneyin."},
+        )
+    return await call_next(request)
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -312,7 +412,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     if settings.ENVIRONMENT == "prod":
         return JSONResponse(
             status_code=500,
-            content={"detail": "Bir hata oluştu. Lütfen daha sonra tekrar deneyin."}
+            content={"detail": "Bir hata olu\u015ftu. L\u00fctfen daha sonra tekrar deneyin."}
         )
     
     # Return detailed error in development
@@ -379,12 +479,15 @@ app.include_router(webhooks_alias_router)
 app.include_router(voice_events_router)
 app.include_router(voice_intent_router)
 app.include_router(voice_call_summary_router)
+app.include_router(voice_automation_router)
 app.include_router(calls_router)
 app.include_router(telephony_router)
 app.include_router(tool_runner_router)
 app.include_router(assistant_router)
 app.include_router(integrations_router)
 app.include_router(billing_router)
+app.include_router(setup_autopilot_router)
+app.include_router(agency_router)
 
 # Temporary debug endpoints (development only)
 if settings.ENVIRONMENT == "dev":

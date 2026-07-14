@@ -9,7 +9,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -37,6 +37,8 @@ class OnboardingStartResponse(BaseModel):
 
 class OnboardingStepResponse(BaseModel):
     """Response for a single onboarding step."""
+    model_config = ConfigDict(from_attributes=True)
+
     step_key: str
     step_order: int
     step_name: str
@@ -46,9 +48,6 @@ class OnboardingStepResponse(BaseModel):
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class OnboardingStatusResponse(BaseModel):
@@ -68,6 +67,8 @@ class OAuthCallbackRequest(BaseModel):
 
 class WhatsAppAccountResponse(BaseModel):
     """Response for WhatsApp account info."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     waba_id: Optional[str]
     phone_number_id: Optional[str]
@@ -78,9 +79,6 @@ class WhatsAppAccountResponse(BaseModel):
     is_verified: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class WhatsAppDiagnosticsResponse(BaseModel):

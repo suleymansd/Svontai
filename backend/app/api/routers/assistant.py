@@ -16,6 +16,7 @@ from app.schemas.tool_runner import (
     ToolRunRequest,
 )
 from app.services.tool_runner_service import ToolRunnerService
+from app.core.rate_limit import assistant_rate_limiter, rate_limit_key, require_rate_limit
 
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
@@ -48,6 +49,11 @@ async def assistant_chat(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"])),
 ) -> AssistantChatResponse:
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant", current_tenant.id, current_user.id),
+        "Çok fazla asistan isteği. Lütfen daha sonra tekrar deneyin.",
+    )
     tool_slug, tool_text = _extract_tool_call(payload)
     request_id = payload.request_id or ""
 

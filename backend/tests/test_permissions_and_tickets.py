@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -61,7 +62,7 @@ async def test_add_ticket_message_sets_staff_sender_type():
     db.query.return_value = query
 
     def refresh(obj):
-        obj.created_at = datetime.utcnow()
+        obj.created_at = utc_now_naive()
         if getattr(obj, "id", None) is None:
             obj.id = str(uuid.uuid4())
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { 
   Users, 
   Search, 
@@ -73,7 +73,7 @@ export default function UsersPage() {
     is_active: true
   })
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true)
       const response = await adminApi.listUsers({ page, page_size: 20, search: search || undefined })
@@ -91,11 +91,11 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, toast])
 
   useEffect(() => {
     fetchUsers()
-  }, [page, search])
+  }, [fetchUsers])
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()

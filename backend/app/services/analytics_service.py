@@ -4,6 +4,7 @@ Analytics service for tracking and aggregating usage metrics.
 
 import uuid
 from datetime import datetime, date, timedelta
+from app.core.time import utc_now_naive
 from typing import Optional, List
 
 from sqlalchemy.orm import Session
@@ -79,7 +80,7 @@ class AnalyticsService:
         if hasattr(stats, stat_name):
             current_value = getattr(stats, stat_name)
             setattr(stats, stat_name, current_value + count)
-            stats.updated_at = datetime.utcnow()
+            stats.updated_at = utc_now_naive()
             self.db.commit()
     
     def get_dashboard_stats(self, tenant_id: uuid.UUID) -> dict:

@@ -33,11 +33,19 @@ from app.models.appointment import Appointment
 from app.models.note import WorkspaceNote
 from app.models.api_key import TenantApiKey
 from app.models.call import Call, CallTranscript, CallSummary
+from app.models.voice_automation import (
+    CallIntent,
+    CallIntentStatus,
+    OutboundCallJob,
+    OutboundCallJobStatus,
+    TenantVoiceSettings,
+)
 from app.models.lead_note import LeadNote
 from app.models.usage_counter import TenantUsageCounter
 from app.models.telephony import TelephonyNumber
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.stripe_webhook_event import StripeWebhookEvent
+from app.models.autopilot import SetupRun, IntegrationHealthCheck, AgencyClient, ScheduledJob
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -119,11 +127,20 @@ __all__ = [
     "Call",
     "CallTranscript",
     "CallSummary",
+    "TenantVoiceSettings",
+    "CallIntent",
+    "CallIntentStatus",
+    "OutboundCallJob",
+    "OutboundCallJobStatus",
     "LeadNote",
     "TenantUsageCounter",
     "TelephonyNumber",
     "GoogleOAuthToken",
     "StripeWebhookEvent",
+    "SetupRun",
+    "IntegrationHealthCheck",
+    "AgencyClient",
+    "ScheduledJob",
     "RealEstatePackSettings",
     "RealEstateGoogleCalendarIntegration",
     "RealEstateListing",

@@ -5,42 +5,52 @@ import { Reveal } from '@/components/marketing/reveal'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ShieldCheck, Lock, KeyRound, FileCheck, Database, AlertOctagon } from 'lucide-react'
+import { ShieldCheck, Lock, KeyRound, FileCheck, Database, AlertOctagon, Gauge, Webhook } from 'lucide-react'
 
 export const metadata: Metadata = {
   title: 'Security',
-  description: 'SvontAI güvenlik standardı: tenant izolasyonu, RBAC, audit log ve incident yönetimi.',
+  description: 'SmartWA güvenlik yaklaşımı: tenant izolasyonu, RBAC, audit log, rate limit, webhook imza kontrolü ve incident yönetimi.',
 }
 
 const securityItems = [
   {
     title: 'Tenant izolasyonu',
-    description: 'Tüm sorgular tenant_id ile sınırlandırılır, IDOR engellenir.',
+    description: 'Müşteri verileri tenant kapsamıyla ayrılır; endpointlerde tenant context ve RBAC kontrolleri uygulanır.',
     icon: ShieldCheck,
   },
   {
     title: 'RBAC + Audit',
-    description: 'Rol tabanlı erişim ve hassas aksiyonlar için audit log.',
+    description: 'Rol tabanlı erişim, admin context ayrımı ve hassas aksiyonlar için audit/system event kayıtları tutulur.',
     icon: FileCheck,
   },
   {
-    title: 'Kayıtlı anahtarlar',
-    description: 'API anahtarları şifrelenmiş saklama ve rotation süreçleri.',
+    title: 'Secret yönetimi',
+    description: 'Prod ortamda insecure default secret ile startup engellenir; webhook ve entegrasyon secretları env üzerinden yönetilir.',
     icon: KeyRound,
   },
   {
     title: 'Veri koruma',
-    description: 'KVKK uyumlu süreçler ve hassas veri maskeleme.',
+    description: 'Erişim, düzeltme, silme ve destek talepleri için operasyonel süreçler ve kayıt mekanizmaları bulunur.',
     icon: Database,
   },
   {
+    title: 'Rate limit',
+    description: 'Auth, public chat, webhook, tool/assistant ve test araması uçlarında abuse limitleri uygulanır.',
+    icon: Gauge,
+  },
+  {
+    title: 'Webhook doğrulama',
+    description: 'Prod ortamda Meta webhook POST çağrıları imza kontrolünden geçer; alias webhook basic auth ile korunur.',
+    icon: Webhook,
+  },
+  {
     title: 'Hesap koruması',
-    description: 'Brute-force koruması, rate limit ve account lockout.',
+    description: 'Brute-force koruması, refresh cookie, kısa ömürlü access token ve hesap kilitleme akışları desteklenir.',
     icon: Lock,
   },
   {
     title: 'Incident yönetimi',
-    description: 'Olaylar için merkezi triage, postmortem ve SLA kayıtları.',
+    description: 'Provider veya otomasyon sorunları için incident/ticket üretimi ve runbook odaklı operasyon akışı bulunur.',
     icon: AlertOctagon,
   },
 ]
@@ -51,8 +61,8 @@ export default function SecurityPage() {
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
         <Reveal className="space-y-5">
           <Badge variant="outline">Güvenlik</Badge>
-          <h1 className="text-4xl font-semibold">Enterprise güvenlik standardı</h1>
-          <p className="text-muted-foreground">SvontAI, müşterilerinizin verisini ve süreçlerini güvenle yönetmeniz için tasarlandı.</p>
+          <h1 className="text-4xl font-semibold">Güvenli otonomi yaklaşımı</h1>
+          <p className="text-muted-foreground">SmartWA; müşteri operasyonlarını otomatik yürütürken riskli aksiyonlarda onay, güçlü tenant ayrımı, rate limit ve izlenebilir audit kayıtlarıyla çalışacak şekilde tasarlandı.</p>
         </Reveal>
 
         <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -76,9 +86,9 @@ export default function SecurityPage() {
 
         <div className="mt-16 rounded-3xl border border-border/60 bg-card/60 p-10 text-center">
           <h2 className="text-2xl font-semibold">Güvenlik değerlendirmesi mi gerekiyor?</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Takımımız detaylı güvenlik dokümantasyonu ve SLA bilgilerini paylaşır.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Takımımız entegrasyon, veri akışı, yetki modeli ve canlıya alma kontrol listesini paylaşır.</p>
           <Link href="/contact" className="mt-6 inline-flex">
-            <Button>Güvenlik Paketini İste</Button>
+            <Button>Güvenlik Görüşmesi İste</Button>
           </Link>
         </div>
       </section>

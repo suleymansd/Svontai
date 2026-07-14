@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from app.core.time import utc_now_naive
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -83,7 +84,7 @@ async def trigger_n8n_test(
         to_number="trigger-test",
         text=body.text,
         message_id=message_id,
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=utc_now_naive().isoformat(),
         channel="whatsapp",
         correlation_id=str(uuid4()),
         contact_name=None,

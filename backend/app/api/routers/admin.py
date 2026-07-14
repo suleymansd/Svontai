@@ -4,6 +4,7 @@ Admin API routes for system administration.
 
 import logging
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 from uuid import UUID
 from typing import Literal, Optional
 
@@ -17,6 +18,7 @@ from app.dependencies.auth import get_current_user, get_access_token_payload
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
+from app.models.knowledge import BotKnowledgeItem
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.lead import Lead
@@ -24,8 +26,11 @@ from app.models.automation import AutomationRun
 from app.models.subscription import TenantSubscription
 from app.models.feature_flag import FeatureFlag
 from app.models.incident import Incident
+from app.models.autopilot import IntegrationHealthCheck, SetupRun
 from app.models.plan import Plan
 from app.models.tool import Tool
+from app.models.ticket import Ticket, TicketMessage
+from app.models.whatsapp_account import WhatsAppAccount
 from app.models.onboarding import AuditLog
 from app.models.real_estate import RealEstatePackSettings
 from app.schemas.user import UserResponse, UserAdminUpdate
@@ -38,6 +43,9 @@ from app.core.security import get_password_hash
 from app.services.real_estate_service import RealEstateService
 from app.services.subscription_service import SubscriptionService
 from app.services.tool_seed_service import seed_initial_tools
+from app.services.audit_log_service import AuditLogService
+from app.services.autopilot_service import AutopilotService, DEFAULT_PROFILE_TITLE
+from app.services.system_event_service import SystemEventService
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -206,6 +214,172 @@ class ToolSeedResponse(BaseModel):
     created: int
     updated: int
     total: int
+
+
+class LaunchBoardItem(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    owner_name: str
+    owner_email: str
+    plan_name: str | None = None
+    setup_mode: str
+    launch_stage: str
+    health_score: int
+    concierge_status: str
+    concierge_ticket_id: str | None = None
+    business_profile_status: str
+    whatsapp_status: str
+    required_user_actions: list[str] = Field(default_factory=list)
+    bot_count: int
+    open_tickets: int
+    open_incidents: int
+    latest_setup_run_status: str | None = None
+    created_at: datetime
+
+
+class LaunchBoardResponse(BaseModel):
+    items: list[LaunchBoardItem]
+    total: int
+    pending_concierge: int
+    ready_to_launch: int
+    blocked_by_user: int
+
+
+class ConciergeUpdateRequest(BaseModel):
+    status: Literal["pending", "in_progress", "ready_for_review", "launched", "blocked"]
+    note: str | None = None
+    create_ticket: bool = False
+
+
+class ConciergeActionResponse(BaseModel):
+    tenant_id: str
+    concierge_status: str
+    concierge_ticket_id: str | None = None
+    business_profile_status: str
+    launch_stage: str
+
+
+class BusinessProfileAdminUpdate(BaseModel):
+    industry: str = "unknown"
+    tone: str = "professional"
+    summary: str = ""
+    services: list[str] = Field(default_factory=list)
+    faq: list[dict] = Field(default_factory=list)
+    status: Literal["customer_collected", "admin_enriched", "ready"] = "admin_enriched"
+
+
+class AdminAutopilotRunResponse(BaseModel):
+    tenant_id: str
+    status: str
+    health_score: int
+    required_user_actions: list[dict] = Field(default_factory=list)
+
+
+def _launch_stage(profile_status: str, concierge_status: str, required_actions: list[str], health_score: int) -> str:
+    if required_actions:
+        return "blocked_by_user"
+    if profile_status != "ready" or concierge_status in {"pending", "in_progress"}:
+        return "concierge"
+    if health_score >= 80:
+        return "ready_to_launch"
+    return "needs_attention"
+
+
+def _required_user_actions_from_health(rows: list[IntegrationHealthCheck]) -> list[str]:
+    return [
+        row.provider
+        for row in rows
+        if row.requires_user_action or row.status in {"missing", "expired"}
+    ]
+
+
+def _tenant_settings(tenant: Tenant) -> dict:
+    return dict(tenant.settings or {})
+
+
+def _ensure_concierge_ticket(db: Session, tenant: Tenant, admin: User, note: str | None = None) -> str:
+    settings_json = _tenant_settings(tenant)
+    concierge = dict(settings_json.get("concierge_enrichment") or {})
+    ticket_id = concierge.get("ticket_id")
+    if ticket_id and db.get(Ticket, str(ticket_id)):
+        return str(ticket_id)
+
+    ticket = Ticket(
+        tenant_id=str(tenant.id),
+        requester_id=str(tenant.owner_id) if tenant.owner_id else None,
+        assigned_to=str(admin.id),
+        subject=f"Concierge bilgi formasyonu: {tenant.name}",
+        priority="high",
+        status="open",
+        last_activity_at=utc_now_naive(),
+    )
+    db.add(ticket)
+    db.flush()
+    db.add(
+        TicketMessage(
+            ticket_id=ticket.id,
+            sender_id=str(admin.id),
+            sender_type="system",
+            body=note or "Concierge kurulum ve bilgi formasyonu için operasyon kaydı açıldı.",
+        )
+    )
+    return ticket.id
+
+
+def _sync_profile_to_bot(db: Session, tenant: Tenant, profile: dict) -> None:
+    bot = db.query(Bot).filter(Bot.tenant_id == tenant.id).order_by(Bot.created_at.asc()).first()
+    if not bot:
+        return
+
+    industry = (profile.get("industry") or "unknown").strip()
+    summary = (profile.get("summary") or "").strip()
+    tone = (profile.get("tone") or "professional").strip()
+    if industry and industry != "unknown":
+        bot.description = f"{tenant.name} için {industry} odağında müşteri iletişimini yöneten SmartWA asistanı."
+    if summary:
+        bot.welcome_message = f"Merhaba, {tenant.name} ekibi adına size yardımcı olabilirim."
+
+    answer = (
+        f"İşletme: {tenant.name}\n"
+        f"Sektör: {industry or 'Belirtilmedi'}\n"
+        f"Ton: {tone}\n"
+        f"Özet: {summary or 'Belirtilmedi'}\n"
+        f"Hizmetler: {', '.join(map(str, profile.get('services') or [])) or 'Belirtilmedi'}\n"
+        "Müşteri sorularında bu işletme profilini esas al; net olmayan konularda insan desteğine yönlendir."
+    )
+    knowledge = db.query(BotKnowledgeItem).filter(
+        BotKnowledgeItem.bot_id == bot.id,
+        BotKnowledgeItem.title == DEFAULT_PROFILE_TITLE,
+    ).first()
+    if knowledge:
+        knowledge.answer = answer
+    else:
+        db.add(
+            BotKnowledgeItem(
+                bot_id=bot.id,
+                title=DEFAULT_PROFILE_TITLE,
+                question="Bu işletme hakkında nasıl davranmalısın?",
+                answer=answer,
+            )
+        )
+
+
+def _admin_operation_result(tenant: Tenant, health_rows: list[IntegrationHealthCheck] | None = None) -> ConciergeActionResponse:
+    settings_json = _tenant_settings(tenant)
+    profile = dict(settings_json.get("business_profile") or {})
+    concierge = dict(settings_json.get("concierge_enrichment") or {})
+    rows = health_rows or []
+    health_score = int(round(sum(row.health_score for row in rows) / max(1, len(rows)))) if rows else 0
+    required_actions = _required_user_actions_from_health(rows)
+    profile_status = str(profile.get("status") or "unknown")
+    concierge_status = str(concierge.get("status") or "not_started")
+    return ConciergeActionResponse(
+        tenant_id=str(tenant.id),
+        concierge_status=concierge_status,
+        concierge_ticket_id=concierge.get("ticket_id"),
+        business_profile_status=profile_status,
+        launch_stage=_launch_stage(profile_status, concierge_status, required_actions, health_score),
+    )
 
 
 class RealEstatePackAdminUpdate(BaseModel):
@@ -378,7 +552,7 @@ async def get_admin_stats(
     admin: User = Depends(require_admin)
 ):
     """Get admin dashboard statistics."""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - timedelta(days=7)
     
@@ -701,6 +875,308 @@ async def list_tenants(
     )
 
 
+@router.get("/launch-board", response_model=LaunchBoardResponse)
+async def get_launch_board(
+    search: Optional[str] = None,
+    stage: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=300),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """Customer launch board for concierge onboarding operations."""
+    _ = admin
+    query = db.query(Tenant, User).join(User, Tenant.owner_id == User.id)
+    if search:
+        query = query.filter(Tenant.name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%"))
+
+    rows = query.order_by(Tenant.created_at.desc()).limit(limit).all()
+    items: list[LaunchBoardItem] = []
+    counters = {"pending_concierge": 0, "ready_to_launch": 0, "blocked_by_user": 0}
+
+    for tenant, owner in rows:
+        settings = dict(tenant.settings or {})
+        setup_mode = str(settings.get("setup_mode") or "concierge")
+        profile = dict(settings.get("business_profile") or {})
+        concierge = dict(settings.get("concierge_enrichment") or {})
+        health_rows = db.query(IntegrationHealthCheck).filter(IntegrationHealthCheck.tenant_id == tenant.id).all()
+        health_score = int(round(sum(row.health_score for row in health_rows) / max(1, len(health_rows)))) if health_rows else 0
+        required_actions = _required_user_actions_from_health(health_rows)
+        profile_status = str(profile.get("status") or "unknown")
+        concierge_status = str(concierge.get("status") or "not_started")
+        launch_stage = _launch_stage(profile_status, concierge_status, required_actions, health_score)
+        if stage and launch_stage != stage:
+            continue
+
+        if launch_stage == "ready_to_launch":
+            counters["ready_to_launch"] += 1
+        if launch_stage == "blocked_by_user":
+            counters["blocked_by_user"] += 1
+        if concierge_status in {"pending", "in_progress"}:
+            counters["pending_concierge"] += 1
+
+        subscription = db.query(TenantSubscription).filter(TenantSubscription.tenant_id == tenant.id).first()
+        plan_name = None
+        if subscription:
+            plan = db.get(Plan, subscription.plan_id)
+            plan_name = plan.display_name if plan else None
+        whatsapp_connected = db.query(WhatsAppAccount.id).filter(
+            WhatsAppAccount.tenant_id == tenant.id,
+            WhatsAppAccount.is_active == True,
+            WhatsAppAccount.phone_number_id.isnot(None),
+        ).first()
+        latest_run = db.query(SetupRun).filter(SetupRun.tenant_id == tenant.id).order_by(SetupRun.created_at.desc()).first()
+        bot_count = int(db.query(func.count(Bot.id)).filter(Bot.tenant_id == tenant.id).scalar() or 0)
+        open_tickets = int(db.query(func.count(Ticket.id)).filter(Ticket.tenant_id == str(tenant.id), Ticket.status.in_(["open", "pending"])).scalar() or 0)
+        open_incidents = int(db.query(func.count(Incident.id)).filter(Incident.tenant_id == str(tenant.id), Incident.status != "resolved").scalar() or 0)
+
+        items.append(LaunchBoardItem(
+            tenant_id=str(tenant.id),
+            tenant_name=tenant.name,
+            owner_name=owner.full_name,
+            owner_email=owner.email,
+            plan_name=plan_name,
+            setup_mode=setup_mode,
+            launch_stage=launch_stage,
+            health_score=health_score,
+            concierge_status=concierge_status,
+            concierge_ticket_id=concierge.get("ticket_id"),
+            business_profile_status=profile_status,
+            whatsapp_status="connected" if whatsapp_connected else "missing",
+            required_user_actions=required_actions,
+            bot_count=bot_count,
+            open_tickets=open_tickets,
+            open_incidents=open_incidents,
+            latest_setup_run_status=latest_run.status if latest_run else None,
+            created_at=tenant.created_at,
+        ))
+
+    return LaunchBoardResponse(
+        items=items,
+        total=len(items),
+        pending_concierge=counters["pending_concierge"],
+        ready_to_launch=counters["ready_to_launch"],
+        blocked_by_user=counters["blocked_by_user"],
+    )
+
+
+@router.patch("/launch-board/{tenant_id}/concierge", response_model=ConciergeActionResponse)
+async def update_launch_board_concierge(
+    tenant_id: UUID,
+    request_body: ConciergeUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    settings_json = _tenant_settings(tenant)
+    profile = dict(settings_json.get("business_profile") or {})
+    concierge = dict(settings_json.get("concierge_enrichment") or {})
+    if request_body.create_ticket or not concierge.get("ticket_id"):
+        concierge["ticket_id"] = _ensure_concierge_ticket(db, tenant, admin, request_body.note)
+    concierge.update({
+        "status": request_body.status,
+        "updated_by": str(admin.id),
+        "updated_at": utc_now_naive().isoformat(),
+    })
+    if request_body.note:
+        concierge["last_note"] = request_body.note
+        if concierge.get("ticket_id"):
+            db.add(
+                TicketMessage(
+                    ticket_id=str(concierge["ticket_id"]),
+                    sender_id=str(admin.id),
+                    sender_type="admin",
+                    body=request_body.note,
+                )
+            )
+    if request_body.status == "ready_for_review" and profile.get("status") == "admin_enriched":
+        profile["status"] = "ready"
+        profile["updated_at"] = utc_now_naive().isoformat()
+
+    settings_json["concierge_enrichment"] = concierge
+    settings_json["business_profile"] = profile
+    tenant.settings = settings_json
+    db.commit()
+    db.refresh(tenant)
+
+    AuditLogService(db).log(
+        action="admin.concierge.update",
+        tenant_id=str(tenant.id),
+        user_id=str(admin.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload={"status": request_body.status, "note": request_body.note},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None,
+    )
+    SystemEventService(db).log(
+        tenant_id=str(tenant.id),
+        source="admin",
+        level="info",
+        code="CONCIERGE_STATUS_UPDATED",
+        message="Concierge status updated",
+        meta_json={"status": request_body.status, "ticket_id": concierge.get("ticket_id")},
+    )
+
+    health_rows = db.query(IntegrationHealthCheck).filter(IntegrationHealthCheck.tenant_id == tenant.id).all()
+    return _admin_operation_result(tenant, health_rows)
+
+
+@router.patch("/tenants/{tenant_id}/business-profile", response_model=ConciergeActionResponse)
+async def update_tenant_business_profile(
+    tenant_id: UUID,
+    request_body: BusinessProfileAdminUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    settings_json = _tenant_settings(tenant)
+    existing_profile = dict(settings_json.get("business_profile") or {})
+    profile = {
+        **existing_profile,
+        "status": request_body.status,
+        "source": "admin_concierge",
+        "business_name": tenant.name,
+        "industry": request_body.industry,
+        "tone": request_body.tone,
+        "summary": request_body.summary,
+        "services": request_body.services,
+        "faq": request_body.faq,
+        "updated_by": str(admin.id),
+        "updated_at": utc_now_naive().isoformat(),
+    }
+    concierge = dict(settings_json.get("concierge_enrichment") or {})
+    concierge.update({
+        "status": "ready_for_review" if request_body.status == "ready" else concierge.get("status") or "in_progress",
+        "updated_by": str(admin.id),
+        "updated_at": profile["updated_at"],
+    })
+    if not concierge.get("ticket_id"):
+        concierge["ticket_id"] = _ensure_concierge_ticket(db, tenant, admin, "Admin bilgi formasyonu düzenlendi.")
+
+    settings_json["setup_mode"] = settings_json.get("setup_mode") or "concierge"
+    settings_json["business_profile"] = profile
+    settings_json["concierge_enrichment"] = concierge
+    tenant.settings = settings_json
+    _sync_profile_to_bot(db, tenant, profile)
+    db.commit()
+    db.refresh(tenant)
+
+    AuditLogService(db).log(
+        action="admin.business_profile.update",
+        tenant_id=str(tenant.id),
+        user_id=str(admin.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload={"status": request_body.status, "industry": request_body.industry},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None,
+    )
+    SystemEventService(db).log(
+        tenant_id=str(tenant.id),
+        source="admin",
+        level="info",
+        code="BUSINESS_PROFILE_UPDATED",
+        message="Business profile updated by admin",
+        meta_json={"status": request_body.status, "industry": request_body.industry},
+    )
+
+    health_rows = db.query(IntegrationHealthCheck).filter(IntegrationHealthCheck.tenant_id == tenant.id).all()
+    return _admin_operation_result(tenant, health_rows)
+
+
+@router.post("/tenants/{tenant_id}/autopilot/run", response_model=AdminAutopilotRunResponse)
+async def run_admin_tenant_autopilot(
+    tenant_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    status_payload = AutopilotService(db).run(tenant, admin)
+    AuditLogService(db).log(
+        action="admin.autopilot.run",
+        tenant_id=str(tenant.id),
+        user_id=str(admin.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload={"health_score": status_payload.get("health_score")},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None,
+    )
+    return AdminAutopilotRunResponse(
+        tenant_id=str(tenant.id),
+        status=str(status_payload.get("status")),
+        health_score=int(status_payload.get("health_score") or 0),
+        required_user_actions=status_payload.get("required_user_actions") or [],
+    )
+
+
+@router.post("/tenants/{tenant_id}/launch", response_model=ConciergeActionResponse)
+async def launch_tenant_from_admin(
+    tenant_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    settings_json = _tenant_settings(tenant)
+    profile = dict(settings_json.get("business_profile") or {})
+    concierge = dict(settings_json.get("concierge_enrichment") or {})
+    profile["status"] = "ready"
+    profile["updated_at"] = utc_now_naive().isoformat()
+    concierge.update({
+        "status": "launched",
+        "launched_by": str(admin.id),
+        "launched_at": utc_now_naive().isoformat(),
+        "updated_by": str(admin.id),
+        "updated_at": utc_now_naive().isoformat(),
+    })
+    if not concierge.get("ticket_id"):
+        concierge["ticket_id"] = _ensure_concierge_ticket(db, tenant, admin, "Müşteri yayına alındı.")
+    settings_json["business_profile"] = profile
+    settings_json["concierge_enrichment"] = concierge
+    tenant.settings = settings_json
+    _sync_profile_to_bot(db, tenant, profile)
+    db.commit()
+    db.refresh(tenant)
+
+    AuditLogService(db).log(
+        action="admin.tenant.launch",
+        tenant_id=str(tenant.id),
+        user_id=str(admin.id),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        payload={"concierge_status": "launched"},
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get("User-Agent") if request else None,
+    )
+    SystemEventService(db).log(
+        tenant_id=str(tenant.id),
+        source="admin",
+        level="info",
+        code="TENANT_LAUNCHED",
+        message="Tenant launched by admin",
+        meta_json={"ticket_id": concierge.get("ticket_id")},
+    )
+
+    health_rows = db.query(IntegrationHealthCheck).filter(IntegrationHealthCheck.tenant_id == tenant.id).all()
+    return _admin_operation_result(tenant, health_rows)
+
+
 @router.get("/tenants/{tenant_id}", response_model=TenantAdminDetail)
 async def get_tenant_detail(
     tenant_id: UUID,
@@ -835,7 +1311,7 @@ async def override_tenant_plan(
         "note": payload.note,
         "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
         "updated_by": str(admin.id),
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": utc_now_naive().isoformat(),
     }
     subscription.extra_data = extra_data
 

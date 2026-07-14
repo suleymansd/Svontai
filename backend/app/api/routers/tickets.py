@@ -1,6 +1,5 @@
 """Ticketing API routes."""
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -22,6 +21,7 @@ from app.schemas.ticket import (
     TicketUpdate,
 )
 from app.services.audit_log_service import AuditLogService
+from app.core.time import utc_now_naive
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -68,7 +68,7 @@ async def create_ticket(
         subject=payload.subject,
         status="open",
         priority=payload.priority or "normal",
-        last_activity_at=datetime.utcnow(),
+        last_activity_at=utc_now_naive(),
     )
     db.add(ticket)
     db.flush()
@@ -143,7 +143,7 @@ async def add_ticket_message(
         sender_type="staff" if current_user.is_admin else "user",
         body=payload.body,
     )
-    ticket.last_activity_at = datetime.utcnow()
+    ticket.last_activity_at = utc_now_naive()
 
     db.add(message)
     db.commit()
@@ -180,7 +180,7 @@ async def update_ticket(
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(ticket, key, value)
-    ticket.last_activity_at = datetime.utcnow()
+    ticket.last_activity_at = utc_now_naive()
 
     db.commit()
     db.refresh(ticket)

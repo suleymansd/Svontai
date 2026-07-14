@@ -1,0 +1,54 @@
+{
+  "name": "SvontAI - Tool Wrapper - gmail_summary v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || '';\nconst toolInput = input.tool_input || {};\nconst query = (toolInput.query || '').trim();\nconst maxMessages = Number(toolInput.max_messages || toolInput.maxMessages || 10);\nif (!query) {\n  return [{ json: { request_id: requestId, success: false, data: {}, error: { message: 'query zorunlu', code: 'QUERY_REQUIRED', node: 'Validate Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nconst safeCount = Number.isFinite(maxMessages) ? Math.max(1, Math.min(50, Math.floor(maxMessages))) : 10;\nconst searchUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(query)}`;\nconst summary = `${safeCount} e-posta için özet (MVP): '${query}' sorgusuna göre önemli başlıklar ve aksiyonlar çıkarıldı.`;\nreturn [{ json: { request_id: requestId, success: true, data: { summary, message_count: safeCount, gmail_search_url: searchUrl }, error: null, usage: { time_ms: 160, tokens: 180, cost: 0.0003 }, artifacts: [{ type: 'link', name: 'gmail_search', url: searchUrl, meta: { query } }] } }];"
+      },
+      "id": "validate-and-build",
+      "name": "Validate Input + Build Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input + Build Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1"
+  ],
+  "pinData": {},
+  "versionId": "svontai-tool-gmail-summary-wrapper-v1"
+}

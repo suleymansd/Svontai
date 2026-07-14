@@ -9,62 +9,49 @@ import {
   MessagesSquare,
   PhoneCall,
   Users,
+  CalendarCheck,
   Settings,
   LogOut,
   Menu,
   X,
   ChevronRight,
-  Bell,
-  Search,
   Sparkles,
   Smartphone,
-  BarChart3,
   CreditCard,
-  Headphones,
   LifeBuoy,
   Rocket,
   ChevronsUpDown,
   User,
-  Plus,
-  Gauge,
-  Boxes,
   Building2,
-  BookOpen
+  ShieldCheck
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useAuthStore, useToolStore, useUIStore } from '@/lib/store'
+import { useAuthStore, useUIStore } from '@/lib/store'
 import { cn, maskEmail } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { setupOnboardingApi, subscriptionApi } from '@/lib/api'
-import { getToolMenuItems } from '@/components/tools/registry'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
-import { ToolIcon3D } from '@/components/tools/ToolIcon3D'
 import { decodeJwtPayload } from '@/lib/jwt'
 
 const sidebarItems = [
-  { name: 'Genel Bakış', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Tool Kataloğu', href: '/dashboard/tools', icon: Boxes },
+  { name: 'Ana Panel', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Sistem Durumu', href: '/dashboard/autopilot', icon: ShieldCheck },
   { name: 'Botlarım', href: '/dashboard/bots', icon: Bot },
-  { name: 'Konuşmalar', href: '/dashboard/conversations', icon: MessagesSquare },
-  { name: 'Leadler', href: '/dashboard/leads', icon: Users },
+  { name: 'Mesajlar', href: '/dashboard/conversations', icon: MessagesSquare },
   { name: 'Aramalar', href: '/dashboard/calls', icon: PhoneCall },
-  { name: 'Analitikler', href: '/dashboard/analytics', icon: BarChart3 },
-  { name: 'Operatör', href: '/dashboard/operator', icon: Headphones, feature: 'operator_takeover' },
-  { name: 'Hata Merkezi', href: '/dashboard/errors', icon: Bell },
+  { name: 'Müşteriler', href: '/dashboard/leads', icon: Users },
+  { name: 'Randevular', href: '/dashboard/appointments', icon: CalendarCheck },
   { name: 'Destek', href: '/dashboard/tickets', icon: LifeBuoy },
 ]
 
 const secondaryItems = [
-  { name: 'Nasıl Kullanılır', href: '/dashboard/help', icon: BookOpen },
-  { name: 'WhatsApp Kurulum', href: '/dashboard/setup/whatsapp', icon: Smartphone },
-  { name: 'Kullanım', href: '/dashboard/usage', icon: Gauge },
+  { name: 'WhatsApp Bağlantısı', href: '/dashboard/setup/whatsapp', icon: Smartphone },
   { name: 'Abonelik', href: '/dashboard/billing', icon: CreditCard },
-  { name: 'Ayarlar', href: '/dashboard/settings', icon: Settings },
+  { name: 'Hesap Ayarları', href: '/dashboard/settings', icon: Settings },
 ]
 
 export default function DashboardLayout({
@@ -75,10 +62,8 @@ export default function DashboardLayout({
   const router = useRouter()
   const pathname = usePathname()
   const { user, tenant, isAuthenticated, logout } = useAuthStore()
-  const { installedToolIds, toolConfigs } = useToolStore()
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const [mounted, setMounted] = useState(false)
-  const toolMenuItems = getToolMenuItems(installedToolIds, toolConfigs)
 
   // Fetch onboarding status
   const { data: onboardingStatus } = useQuery({
@@ -109,6 +94,17 @@ export default function DashboardLayout({
       }
     }
   }, [isAuthenticated, user?.is_admin, router])
+
+  useEffect(() => {
+    if (!mounted || !isAuthenticated || !onboardingStatus) return
+    if (
+      !onboardingStatus.is_completed &&
+      !pathname.startsWith('/dashboard/onboarding') &&
+      !pathname.startsWith('/dashboard/setup/whatsapp')
+    ) {
+      router.replace('/dashboard/onboarding')
+    }
+  }, [isAuthenticated, mounted, onboardingStatus, pathname, router])
 
   const handleLogout = () => {
     logout()
@@ -202,12 +198,6 @@ export default function DashboardLayout({
               Ana Menü
             </p>
             {sidebarItems.map((item) => {
-              // Check if feature is enabled
-              if (item.feature) {
-                const enabled = usageStats?.features?.[item.feature]
-                if (enabled !== true) return null
-              }
-
               const isActive = pathname === item.href ||
                 (item.href !== '/dashboard' && pathname.startsWith(item.href))
 
@@ -239,7 +229,7 @@ export default function DashboardLayout({
             })}
 
             <p className="px-3 py-2 mt-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-              Yönetim
+              Hesap
             </p>
             {secondaryItems.map((item) => {
               const isActive = pathname === item.href ||
@@ -271,40 +261,6 @@ export default function DashboardLayout({
                 </Link>
               )
             })}
-
-            {toolMenuItems.length > 0 && (
-              <>
-                <p className="px-3 py-2 mt-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-                  Tool Sayfaları
-                </p>
-                {toolMenuItems.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href)
-                  return (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className={cn(
-                        'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                        isActive
-                          ? 'nav-active-glow text-primary'
-                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                      )}
-                    >
-                      <ToolIcon3D
-                        toolId={item.id}
-                        size="sm"
-                        active
-                        className={cn(
-                          'shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition-transform duration-200 group-hover:-translate-y-0.5',
-                          isActive && 'ring-2 ring-primary/25'
-                        )}
-                      />
-                      <span>{item.name}</span>
-                    </Link>
-                  )
-                })}
-              </>
-            )}
           </nav>
 
           {/* Upgrade Card */}
@@ -377,13 +333,9 @@ export default function DashboardLayout({
               <Menu className="w-5 h-5" />
             </Button>
 
-            {/* Search */}
-            <div className="hidden sm:flex relative input-glow rounded-lg transition-all duration-300">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Ara..."
-                className="w-64 pl-9 h-9 rounded-lg bg-muted/60 border border-transparent focus-visible:border-input"
-              />
+            <div className="hidden sm:block">
+              <p className="text-sm font-medium">{tenant?.name || 'SmartWA'}</p>
+              <p className="text-xs text-muted-foreground">Otonom WhatsApp operasyon paneli</p>
             </div>
           </div>
 
@@ -393,13 +345,6 @@ export default function DashboardLayout({
                 Admin'a Dön
               </Button>
             )}
-            <Link href="/dashboard/bots" className="hidden sm:block">
-              <Button size="sm" className="h-9">
-                <Plus className="mr-2 h-4 w-4" />
-                Yeni Bot
-              </Button>
-            </Link>
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 gap-2">
@@ -412,8 +357,12 @@ export default function DashboardLayout({
                   <User className="h-4 w-4" />
                   {tenant?.name || 'Tenant'}
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => window.location.assign('/admin/tenants')}>Tenant yönetimine git</DropdownMenuItem>
+                {user?.is_admin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => window.location.assign('/admin/tenants')}>Tenant yönetimine git</DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -423,12 +372,6 @@ export default function DashboardLayout({
                 Deneme Sürümü
               </Badge>
             )}
-
-            {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

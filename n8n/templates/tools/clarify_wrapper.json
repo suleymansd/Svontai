@@ -1,0 +1,55 @@
+{
+  "name": "SvontAI - Tool Wrapper - clarify v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || input.requestId || '';\nconst toolInput = input.tool_input || input.toolInput || {};\nconst original = String(toolInput.text || toolInput.question || '').trim();\nconst clarifyQuestion = original\n  ? `Anladığım kadarıyla: \"${original}\". Devam etmeden önce bütçe ve hedef tarih bilgisini paylaşır mısın?`\n  : 'Devam edebilmem için lütfen hedefini, bütçeni ve zaman planını paylaşır mısın?';\nreturn [{ json: { request_id: requestId, success: true, data: { summary: 'Clarify adımı üretildi.', clarify_question: clarifyQuestion, selected_tool: 'clarify' }, error: null, usage: { time_ms: 95, tokens: 45, cost: 0.00045 }, artifacts: [] } }];"
+      },
+      "id": "build-clarify-response",
+      "name": "Build Clarify Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Clarify Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1",
+    "staging"
+  ],
+  "versionId": "clarify-wrapper-v1"
+}

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Archive, ArrowLeft, Loader2, Pin, Plus, Save, Trash2 } from 'lucide-react'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -75,7 +75,7 @@ export default function ToolWorkspacePage() {
     setDraft(storedConfig ?? createDefaultToolWorkspaceConfig(catalogTool))
   }, [catalogTool, storedConfig])
 
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     if (!isNoteTool) return
     setNotesLoading(true)
     try {
@@ -90,13 +90,13 @@ export default function ToolWorkspacePage() {
     } finally {
       setNotesLoading(false)
     }
-  }
+  }, [isNoteTool, toast])
 
   useEffect(() => {
     if (isNoteTool) {
       loadNotes()
     }
-  }, [isNoteTool])
+  }, [isNoteTool, loadNotes])
 
   const persistDraft = () => {
     if (!toolId || !catalogTool || !draft) return

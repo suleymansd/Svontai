@@ -206,7 +206,7 @@ Tasks
 - Plan/limit exceed now logs system events with dedupe window.
 - Operator conversations list uses pagination + subqueries to reduce N+1.
 - KYC submission/review logging pending until KYC module exists.
-- Seed script added: `backend/scripts/seed_demo.py`.
+- Demo seed script removed; production/customer data must come from real onboarding, integrations, and telemetry.
 - RBAC tightened on feature flags + subscription check feature.
 - IDOR hardening: analytics bot stats now validate tenant ownership.
 - Admin tenant list uses aggregate subqueries to reduce N+1.

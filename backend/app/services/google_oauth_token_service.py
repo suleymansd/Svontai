@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.time import utc_now_naive
 from app.core.encryption import decrypt_token, encrypt_token
 from app.models.google_oauth_token import GoogleOAuthToken
 
@@ -24,7 +25,7 @@ class GoogleOAuthTokenService:
 
     @staticmethod
     def _utcnow() -> datetime:
-        return datetime.utcnow()
+        return utc_now_naive()
 
     @staticmethod
     def _configured_for_refresh() -> bool:

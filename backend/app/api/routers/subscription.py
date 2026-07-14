@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.db.session import get_db
 from app.core.config import settings
@@ -28,6 +28,8 @@ router = APIRouter(prefix="/subscription", tags=["subscription"])
 
 # Schemas
 class PlanResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     display_name: str
@@ -42,11 +44,10 @@ class PlanResponse(BaseModel):
     feature_flags: dict
     trial_days: int
     
-    class Config:
-        from_attributes = True
-
 
 class SubscriptionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     plan_name: str
     plan_display_name: str
@@ -57,9 +58,6 @@ class SubscriptionResponse(BaseModel):
     messages_used: int
     message_limit: int
     
-    class Config:
-        from_attributes = True
-
 
 class UsageStatsResponse(BaseModel):
     plan_name: str

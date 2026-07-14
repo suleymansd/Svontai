@@ -4,21 +4,22 @@ Plan model for subscription tiers.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import String, DateTime, Integer, Boolean, JSON, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.core.plans import StandardPlanType
 
 
 class PlanType(str, Enum):
     """Plan tier types."""
-    FREE = "free"
-    STARTER = "starter"
-    PRO = "pro"
-    BUSINESS = "business"
-    ENTERPRISE = "enterprise"
+    FREE = StandardPlanType.FREE.value
+    PRO = StandardPlanType.PRO.value
+    PREMIUM = StandardPlanType.PREMIUM.value
+    ENTERPRISE = StandardPlanType.ENTERPRISE.value
 
 
 class Plan(Base):
@@ -110,13 +111,13 @@ class Plan(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     
@@ -162,10 +163,10 @@ DEFAULT_PLANS = [
         }
     },
     {
-        "name": "starter",
-        "display_name": "Başlangıç",
-        "description": "Küçük işletmeler için",
-        "plan_type": PlanType.STARTER.value,
+        "name": "pro",
+        "display_name": "Pro",
+        "description": "Küçük ve büyüyen ekipler için",
+        "plan_type": PlanType.PRO.value,
         "price_monthly": 299,
         "price_yearly": 2990,
         "message_limit": 1000,
@@ -178,7 +179,7 @@ DEFAULT_PLANS = [
             "analytics": True,
             "custom_branding": False,
             "priority_support": False,
-            "api_access": False,
+            "api_access": True,
             "export_data": True,
             "operator_takeover": False,
             "lead_automation": True,
@@ -186,14 +187,14 @@ DEFAULT_PLANS = [
             "error_center": True,
             "usage": True,
             "tools_catalog": True,
-            "tool_guides": True
+            "tool_guides": True,
         }
     },
     {
-        "name": "pro",
-        "display_name": "Profesyonel",
-        "description": "Büyüyen işletmeler için",
-        "plan_type": PlanType.PRO.value,
+        "name": "premium",
+        "display_name": "Premium",
+        "description": "İleri düzey otomasyon kullanan ekipler için",
+        "plan_type": PlanType.PREMIUM.value,
         "price_monthly": 599,
         "price_yearly": 5990,
         "message_limit": 5000,
@@ -214,14 +215,15 @@ DEFAULT_PLANS = [
             "error_center": True,
             "usage": True,
             "tools_catalog": True,
-            "tool_guides": True
+            "tool_guides": True,
+            "premium_tools": True,
         }
     },
     {
-        "name": "business",
-        "display_name": "İşletme",
-        "description": "Büyük ekipler için",
-        "plan_type": PlanType.BUSINESS.value,
+        "name": "enterprise",
+        "display_name": "Kurumsal",
+        "description": "Kurumsal ölçek ve özel SLA ihtiyaçları için",
+        "plan_type": PlanType.ENTERPRISE.value,
         "price_monthly": 1299,
         "price_yearly": 12990,
         "message_limit": 20000,

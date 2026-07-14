@@ -1,0 +1,491 @@
+{
+  "name": "SvontAI - Tool Runner v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "runner-trigger",
+      "name": "Runner Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || input.requestId;\nconst tenantId = input.tenant_id || input.tenantId;\nconst userId = input.user_id || input.userId;\nconst toolSlug = input.tool_slug || input.toolSlug;\nif (!requestId || !tenantId || !userId || !toolSlug) {\n  return [{ json: { request_id: requestId || '', success: false, data: {}, error: { message: 'Missing standardized input fields', code: 'INVALID_INPUT', node: 'Validate Input' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];\n}\nreturn [{ json: { ...input, request_id: requestId, tenant_id: tenantId, user_id: userId, tool_slug: toolSlug } }];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "pdf_summary",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "pdf_to_word",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf_to_word"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "drive_save_file",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "drive_save_file"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "gmail_summary",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "gmail_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "meeting_summary",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "meeting_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "report_generator",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "report_generator"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tool_slug }}",
+                    "rightValue": "clarify",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "clarify"
+            }
+          ]
+        },
+        "fallbackOutput": "other"
+      },
+      "id": "route-by-tool",
+      "name": "Route by tool_slug",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        560,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "pdf_summary_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-pdf-summary-wrapper",
+      "name": "Execute pdf_summary wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "pdf_to_word_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-pdf-to-word-wrapper",
+      "name": "Execute pdf_to_word wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "drive_save_file_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-drive-save-file-wrapper",
+      "name": "Execute drive_save_file wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "gmail_summary_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-gmail-summary-wrapper",
+      "name": "Execute gmail_summary wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { request_id: $json.request_id || '', success: false, data: {}, error: { message: `Unsupported tool_slug: ${$json.tool_slug || 'unknown'}`, code: 'UNSUPPORTED_TOOL_SLUG', node: 'Route by tool_slug' }, usage: { time_ms: 0, tokens: null, cost: null }, artifacts: [] } }];"
+      },
+      "id": "unsupported-tool",
+      "name": "Unsupported tool",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "meeting_summary_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-meeting-summary-wrapper",
+      "name": "Execute meeting_summary wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "report_generator_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-report-generator-wrapper",
+      "name": "Execute report_generator wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "clarify_wrapper",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "tenant_id": "={{ $json.tenant_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "tool_slug": "={{ $json.tool_slug }}",
+            "tool_input": "={{ $json.tool_input }}",
+            "context": "={{ $json.context }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "execute-clarify-wrapper",
+      "name": "Execute clarify wrapper",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        820
+      ]
+    }
+  ],
+  "connections": {
+    "Runner Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Route by tool_slug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by tool_slug": {
+      "main": [
+        [
+          {
+            "node": "Execute pdf_summary wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute pdf_to_word wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute drive_save_file wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute gmail_summary wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute meeting_summary wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute report_generator wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute clarify wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported tool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1"
+  ],
+  "pinData": {},
+  "versionId": "svontai-tool-runner-v1"
+}

@@ -4,6 +4,7 @@ Operator API router for human takeover functionality.
 
 from uuid import UUID
 from datetime import datetime
+from app.core.time import utc_now_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -171,7 +172,7 @@ async def takeover_conversation(
     conversation.status = ConversationStatus.HUMAN_TAKEOVER.value
     conversation.is_ai_paused = True
     conversation.operator_id = current_user.id
-    conversation.takeover_at = datetime.utcnow()
+    conversation.takeover_at = utc_now_naive()
     
     db.commit()
     

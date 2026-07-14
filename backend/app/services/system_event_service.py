@@ -1,6 +1,7 @@
 """Service for creating system events."""
 
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 
 from sqlalchemy.orm import Session
 
@@ -43,7 +44,7 @@ class SystemEventService:
         if event.level != "error":
             return
 
-        window_start = datetime.utcnow() - timedelta(minutes=10)
+        window_start = utc_now_naive() - timedelta(minutes=10)
         recent_count = self.db.query(SystemEvent).filter(
             SystemEvent.code == event.code,
             SystemEvent.created_at >= window_start,

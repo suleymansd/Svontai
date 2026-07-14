@@ -20,6 +20,7 @@ import {
   X,
   Shield,
   Activity,
+  Rocket,
   ChevronLeft,
   User,
   Boxes,
@@ -32,6 +33,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Launch Board', href: '/admin/launch', icon: Rocket },
   { name: 'Kullanıcılar', href: '/admin/users', icon: Users },
   { name: 'Müşteriler', href: '/admin/customers', icon: Building2 },
   { name: 'Tenantlar', href: '/admin/tenants', icon: Building2 },

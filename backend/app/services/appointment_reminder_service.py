@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 
 from sqlalchemy.orm import Session
 
@@ -34,7 +35,7 @@ class AppointmentReminderService:
         return value.strftime("%d.%m.%Y %H:%M")
 
     def dispatch_due_reminders(self, now: datetime | None = None) -> ReminderDispatchResult:
-        now = now or datetime.utcnow()
+        now = now or utc_now_naive()
 
         appointments = self.db.query(Appointment).filter(
             Appointment.status != "cancelled",

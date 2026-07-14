@@ -45,7 +45,7 @@ export default function RegisterPage() {
 
     const { access_token, refresh_token } = loginResponse.data
     localStorage.setItem('access_token', access_token)
-    localStorage.setItem('refresh_token', refresh_token)
+    localStorage.removeItem('refresh_token')
 
     const tenantResponse = await tenantApi.createTenant({
       name: pendingCredentials.company_name || pendingCredentials.full_name + "'in İşletmesi",
@@ -61,7 +61,7 @@ export default function RegisterPage() {
     setFeatureFlags(feature_flags || {})
     clearAdminTenantContext()
 
-    router.push('/dashboard')
+    router.push('/dashboard/onboarding')
   }
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -131,10 +131,10 @@ export default function RegisterPage() {
   }
 
   const benefits = [
-    '14 gün ücretsiz deneme',
-    'Kredi kartı gerekmez',
-    'Dakikalar içinde başlayın',
-    'İstediğiniz zaman iptal edin',
+    'Demo workspace oluşturun',
+    'Kurulum tipinizi seçin',
+    'Concierge veya hızlı kurulum',
+    'WhatsApp bağlantısını sonra tamamlayın',
   ]
 
   return (
@@ -204,7 +204,7 @@ export default function RegisterPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Hesap oluşturun</h1>
             <p className="text-muted-foreground">
-              14 günlük ücretsiz deneme ile başlayın
+              Demo workspace açın, ardından kurulum tipinizi seçin
             </p>
           </div>
 

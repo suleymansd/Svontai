@@ -4,6 +4,7 @@ Ticketing models for customer support.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -60,20 +61,20 @@ class Ticket(Base):
     )
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False,
         index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False,
         index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
 
@@ -118,7 +119,7 @@ class TicketMessage(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False,
         index=True
     )

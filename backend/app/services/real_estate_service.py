@@ -11,6 +11,7 @@ import re
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
+from app.core.time import utc_now_naive
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -172,12 +173,12 @@ class RealEstateService:
 
     @staticmethod
     def _month_key(now: datetime | None = None) -> str:
-        value = now or datetime.utcnow()
+        value = now or utc_now_naive()
         return value.strftime("%Y-%m")
 
     @staticmethod
     def _month_start(now: datetime | None = None) -> datetime:
-        value = now or datetime.utcnow()
+        value = now or utc_now_naive()
         return datetime(value.year, value.month, 1)
 
     def _get_tenant(self, tenant_id: UUID) -> Tenant | None:
@@ -641,7 +642,7 @@ class RealEstateService:
             mapping=merged_cfg.get("mapping") or {},
             deactivate_missing=bool(merged_cfg.get("deactivate_missing", False)),
         )
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = utc_now_naive().isoformat()
         merged_cfg.update(
             {
                 "enabled": True,
@@ -703,7 +704,7 @@ class RealEstateService:
             mapping=merged_cfg.get("mapping") or {},
             deactivate_missing=bool(merged_cfg.get("deactivate_missing", False)),
         )
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = utc_now_naive().isoformat()
         if provided_api_key:
             merged_cfg["api_key_encrypted"] = encrypt_token(provided_api_key)
         merged_cfg["api_key"] = ""
@@ -745,7 +746,7 @@ class RealEstateService:
         if owner_id is None:
             return {"google_sheets": {"status": "skipped", "reason": "owner_not_found"}, "remax_connector": {"status": "skipped", "reason": "owner_not_found"}}
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         result: dict[str, Any] = {
             "google_sheets": {"status": "skipped", "reason": "disabled"},
             "remax_connector": {"status": "skipped", "reason": "disabled"},
@@ -1054,7 +1055,7 @@ class RealEstateService:
                 lead.name = contact_name
             if normalized_phone and not lead.phone:
                 lead.phone = normalized_phone
-            lead.updated_at = datetime.utcnow()
+            lead.updated_at = utc_now_naive()
 
         conversation.lead = lead
         conversation.has_lead = True
@@ -1087,7 +1088,7 @@ class RealEstateService:
             confidence=0.0,
             collected_data={},
             pii_snapshot_encrypted=encrypt_token(json.dumps(pii_payload, ensure_ascii=False)),
-            window_open_until=datetime.utcnow() + timedelta(hours=24),
+            window_open_until=utc_now_naive() + timedelta(hours=24),
         )
         self.db.add(state)
         self.db.flush()
@@ -1248,7 +1249,7 @@ class RealEstateService:
             RealEstateLeadListingEvent.tenant_id == tenant_id,
             RealEstateLeadListingEvent.listing_id.isnot(None),
             RealEstateLeadListingEvent.event.in_(["clicked", "saved"]),
-            RealEstateLeadListingEvent.created_at >= datetime.utcnow() - timedelta(days=120),
+            RealEstateLeadListingEvent.created_at >= utc_now_naive() - timedelta(days=120),
         ).group_by(RealEstateLeadListingEvent.listing_id).all()
         popularity_map = {listing_id: int(count) for listing_id, count in popularity_rows if listing_id}
         max_popularity = max(popularity_map.values(), default=1)
@@ -1331,7 +1332,7 @@ class RealEstateService:
                 tenant_id=tenant_id,
                 lead_id=lead_id,
                 conversation_id=conversation_id,
-                scheduled_at=datetime.utcnow() + delay,
+                scheduled_at=utc_now_naive() + delay,
                 attempt_no=attempt_no,
                 max_attempts=max_attempts,
                 status="pending",
@@ -1410,7 +1411,7 @@ class RealEstateService:
             raise
         state = self._get_or_create_state(tenant_id, conversation, lead, contact_name, from_number)
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         state.window_open_until = now + timedelta(hours=24)
         state.last_customer_message_at = now
 
@@ -1488,7 +1489,7 @@ class RealEstateService:
         return RealEstateMessageResult(handled=True, response_text=response)
 
     async def run_followups(self, tenant_id: UUID) -> dict[str, int]:
-        now = datetime.utcnow()
+        now = utc_now_naive()
         settings = self.get_or_create_settings(tenant_id)
         if not settings.enabled:
             return {"pending": 0, "sent": 0, "skipped": 0, "failed": 0}
@@ -1793,7 +1794,7 @@ class RealEstateService:
             RealEstateListing.id.in_(listing_ids),
         ).all()
         if not rows:
-            return {"generated_at": datetime.utcnow().isoformat(), "items": []}
+            return {"generated_at": utc_now_naive().isoformat(), "items": []}
 
         lead = None
         if lead_id:
@@ -1853,7 +1854,7 @@ class RealEstateService:
             )
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": utc_now_naive().isoformat(),
             "lead_id": str(lead_id) if lead_id else None,
             "items": items,
         }
@@ -1865,7 +1866,7 @@ class RealEstateService:
         lead_id: UUID | None = None,
     ) -> tuple[dict[str, Any], bytes, str]:
         settings = self.get_or_create_settings(tenant_id)
-        now = datetime.utcnow()
+        now = utc_now_naive()
         month_key = self._month_key(now)
         usage_pdf = self._get_usage_counter(tenant_id, "pdf_generated", month_key=month_key)
         if usage_pdf >= settings.pdf_limit_monthly:
@@ -1896,7 +1897,7 @@ class RealEstateService:
             lines=lines,
             footer="Rapor yalnizca tenant ilan verisinden uretilmistir.",
         )
-        filename = f"listing-summary-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+        filename = f"listing-summary-{utc_now_naive().strftime('%Y%m%d-%H%M%S')}.pdf"
         self._increment_usage_counter(tenant_id, "pdf_generated", amount=1, month_key=month_key)
         return summary, pdf, filename
 
@@ -2169,7 +2170,7 @@ class RealEstateService:
         if not lead:
             raise ValueError("Lead bulunamadı")
 
-        since = datetime.utcnow() - timedelta(days=days)
+        since = utc_now_naive() - timedelta(days=days)
         views = self.db.query(func.count(RealEstateLeadListingEvent.id)).filter(
             RealEstateLeadListingEvent.tenant_id == tenant_id,
             RealEstateLeadListingEvent.lead_id == lead_id,
@@ -2224,7 +2225,7 @@ class RealEstateService:
         state = self.db.query(RealEstateConversationState).filter(
             RealEstateConversationState.conversation_id == lead.conversation_id
         ).first()
-        now = datetime.utcnow()
+        now = utc_now_naive()
         use_template = bool(state and state.window_open_until and now > state.window_open_until)
         send_result: dict[str, Any]
 
@@ -2273,7 +2274,7 @@ class RealEstateService:
             Lead.is_deleted.is_(False),
         ).all()
         due_leads: list[Lead] = []
-        now = datetime.utcnow()
+        now = utc_now_naive()
         for lead in leads:
             tags = set(lead.tags or [])
             if "seller" not in tags:
@@ -2306,7 +2307,7 @@ class RealEstateService:
 
     def generate_weekly_report_pdf(self, tenant_id: UUID) -> tuple[dict[str, Any], bytes]:
         settings = self.get_or_create_settings(tenant_id)
-        now = datetime.utcnow()
+        now = utc_now_naive()
         month_key = self._month_key(now)
         usage_pdf = self._get_usage_counter(tenant_id, "pdf_generated", month_key=month_key)
         if usage_pdf >= settings.pdf_limit_monthly:
@@ -2356,7 +2357,7 @@ class RealEstateService:
         if tenant is None:
             return {"sent": False, "reason": "tenant_not_found"}
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         if (
             not force
             and (

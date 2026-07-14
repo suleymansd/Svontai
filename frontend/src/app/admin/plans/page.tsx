@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, BadgeCheck, Sparkles, Zap, Crown, Building2, type LucideIcon } from 'lucide-react'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -52,7 +52,7 @@ const emptyPlanForm = {
   name: '',
   display_name: '',
   description: '',
-  plan_type: 'starter',
+  plan_type: 'pro',
   price_monthly: 0,
   price_yearly: 0,
   currency: 'TRY',
@@ -68,9 +68,9 @@ const emptyPlanForm = {
 
 const planTypeVisual: Record<string, { icon: LucideIcon; from: string; to: string }> = {
   free: { icon: Sparkles, from: 'from-slate-500', to: 'to-slate-700' },
-  starter: { icon: Zap, from: 'from-cyan-500', to: 'to-blue-500' },
-  pro: { icon: Crown, from: 'from-violet-500', to: 'to-fuchsia-500' },
-  business: { icon: Building2, from: 'from-amber-500', to: 'to-orange-500' },
+  pro: { icon: Zap, from: 'from-cyan-500', to: 'to-blue-500' },
+  premium: { icon: Crown, from: 'from-violet-500', to: 'to-fuchsia-500' },
+  enterprise: { icon: Building2, from: 'from-amber-500', to: 'to-orange-500' },
 }
 
 export default function PlansPage() {
@@ -86,7 +86,7 @@ export default function PlansPage() {
   const [activePlan, setActivePlan] = useState<Plan | null>(null)
   const [form, setForm] = useState({ ...emptyPlanForm })
 
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     try {
       setLoading(true)
       const response = await adminApi.listPlans({ page, page_size: 20, search: search || undefined })
@@ -102,11 +102,11 @@ export default function PlansPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, toast])
 
   useEffect(() => {
     fetchPlans()
-  }, [page, search])
+  }, [fetchPlans])
 
   const columns: DataColumn<Plan>[] = useMemo(() => [
     {
@@ -176,6 +176,7 @@ export default function PlansPage() {
         </div>
       )
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [])
 
   const openCreate = () => {

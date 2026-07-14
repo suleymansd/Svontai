@@ -4,6 +4,7 @@ WhatsApp integration model for Cloud API configuration.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -51,13 +52,13 @@ class WhatsAppIntegration(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     

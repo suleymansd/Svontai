@@ -6,6 +6,7 @@ Voice Gateway uses this mapping to resolve inbound calls to a tenant.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,6 +35,6 @@ class TelephonyNumber(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     meta_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
 

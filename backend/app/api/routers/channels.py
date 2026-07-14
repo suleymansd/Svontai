@@ -14,7 +14,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/api/v1/channels", tags=["Channels (n8n)"])
 
 class WhatsAppSendRequest(BaseModel):
     """Request body for sending WhatsApp messages from n8n."""
+    model_config = ConfigDict(populate_by_name=True)
     
     tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
     to: str = Field(..., description="Recipient phone number (with country code)")
@@ -54,9 +55,6 @@ class WhatsAppSendRequest(BaseModel):
     bot_id: Optional[str] = Field(default=None, alias="botId")
     phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
     
-    class Config:
-        populate_by_name = True
-
 
 class WhatsAppSendResponse(BaseModel):
     """Response for WhatsApp send endpoint."""
@@ -68,6 +66,8 @@ class WhatsAppSendResponse(BaseModel):
 
 
 class WhatsAppTemplateSendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
     to: str
     template_name: str = Field(..., alias="templateName")
@@ -77,11 +77,10 @@ class WhatsAppTemplateSendRequest(BaseModel):
     bot_id: Optional[str] = Field(default=None, alias="botId")
     phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
 
-    class Config:
-        populate_by_name = True
-
 
 class WhatsAppDocumentSendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
     to: str
     link: Optional[str] = None
@@ -92,21 +91,16 @@ class WhatsAppDocumentSendRequest(BaseModel):
     bot_id: Optional[str] = Field(default=None, alias="botId")
     phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
 
-    class Config:
-        populate_by_name = True
-
 
 class AutomationStatusUpdateRequest(BaseModel):
     """Request to update automation run status."""
+    model_config = ConfigDict(populate_by_name=True)
     
     run_id: str = Field(..., alias="runId")
     status: str = Field(..., description="New status: success, failed")
     error_message: Optional[str] = Field(default=None, alias="errorMessage")
     response_data: Optional[dict] = Field(default=None, alias="responseData")
     
-    class Config:
-        populate_by_name = True
-
 
 # ===========================================
 # WhatsApp Channel Endpoints

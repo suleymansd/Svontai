@@ -5,6 +5,7 @@ Google Calendar OAuth + event integration service (Real Estate Pack).
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 from urllib.parse import parse_qs, urlencode, urlparse
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.models.real_estate import RealEstateGoogleCalendarIntegration
+from app.services.google_oauth_token_service import GoogleOAuthTokenService
 
 
 class GoogleCalendarError(Exception):
@@ -30,6 +32,9 @@ class GoogleCalendarService:
         "openid",
         "email",
         "profile",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
         "https://www.googleapis.com/auth/calendar.events",
     ]
     STATE_EXP_MINUTES = 15
@@ -84,7 +89,7 @@ class GoogleCalendarService:
 
     @staticmethod
     def _utcnow() -> datetime:
-        return datetime.utcnow()
+        return utc_now_naive()
 
     def _encode_state(self, tenant_id: UUID, agent_id: UUID) -> str:
         payload = {
@@ -314,6 +319,10 @@ class GoogleCalendarService:
 
         access_token = token_data.get("access_token")
         refresh_token = token_data.get("refresh_token")
+        expires_in = int(token_data.get("expires_in") or 0)
+        granted_scopes = GoogleOAuthTokenService.parse_scopes(token_data.get("scope")) or [
+            scope for scope in self.SCOPES if scope.startswith("https://www.googleapis.com/auth/")
+        ]
         if access_token:
             integration.access_token_encrypted = encrypt_token(access_token)
         if refresh_token:
@@ -325,6 +334,14 @@ class GoogleCalendarService:
 
         self.db.commit()
         self.db.refresh(integration)
+
+        GoogleOAuthTokenService(self.db).upsert_tenant_google_token(
+            tenant_id=tenant_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            scopes=granted_scopes,
+            expires_in_seconds=expires_in if expires_in > 0 else None,
+        )
         return integration
 
     def get_agent_integration(self, tenant_id: UUID, agent_id: UUID) -> RealEstateGoogleCalendarIntegration | None:
@@ -347,10 +364,18 @@ class GoogleCalendarService:
     def _resolve_access_token(self, integration: RealEstateGoogleCalendarIntegration) -> str:
         refresh_token = decrypt_token(integration.refresh_token_encrypted) if integration.refresh_token_encrypted else None
         if refresh_token:
+            token_row_service = GoogleOAuthTokenService(self.db)
             fresh_access_token = self._refresh_access_token(refresh_token)
             integration.access_token_encrypted = encrypt_token(fresh_access_token)
             integration.updated_at = self._utcnow()
             self.db.commit()
+            token_row_service.upsert_tenant_google_token(
+                tenant_id=integration.tenant_id,
+                access_token=fresh_access_token,
+                refresh_token=None,
+                scopes=None,
+                expires_in_seconds=3600,
+            )
             return fresh_access_token
 
         access_token = decrypt_token(integration.access_token_encrypted) if integration.access_token_encrypted else None

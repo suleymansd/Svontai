@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { botApi, onboardingApi } from '@/lib/api'
+import { API_URL, botApi, onboardingApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -38,9 +38,7 @@ export default function BotEditPage() {
   const botId = params.botId as string
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState<'settings' | 'widget' | 'whatsapp'>('settings')
-  const widgetBaseUrl = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_BACKEND_URL || window.location.origin.replace(':3000', ':8000'))
-    : (process.env.NEXT_PUBLIC_BACKEND_URL || '')
+  const widgetBaseUrl = API_URL
 
   const { data: bot, isLoading } = useQuery({
     queryKey: ['bot', botId],

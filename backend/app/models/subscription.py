@@ -4,6 +4,7 @@ TenantSubscription model for tracking tenant subscriptions.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 
 from sqlalchemy import String, DateTime, ForeignKey, Integer, JSON, Boolean
@@ -47,7 +48,7 @@ class TenantSubscription(Base):
     # Dates
     started_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     trial_ends_at: Mapped[datetime | None] = mapped_column(
@@ -78,7 +79,7 @@ class TenantSubscription(Base):
     )
     usage_reset_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     # Payment provider info (for future integration)
@@ -102,13 +103,13 @@ class TenantSubscription(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     
@@ -129,9 +130,9 @@ class TenantSubscription(Base):
         """Check if subscription is currently active."""
         if self.status in [SubscriptionStatus.ACTIVE.value, SubscriptionStatus.TRIAL.value]:
             if self.status == SubscriptionStatus.TRIAL.value and self.trial_ends_at:
-                return datetime.utcnow() < self.trial_ends_at
+                return utc_now_naive() < self.trial_ends_at
             if self.ends_at:
-                return datetime.utcnow() < self.ends_at
+                return utc_now_naive() < self.ends_at
             return True
         return False
     
@@ -148,5 +149,5 @@ class TenantSubscription(Base):
     def reset_monthly_usage(self):
         """Reset monthly usage counters."""
         self.messages_used_this_month = 0
-        self.usage_reset_at = datetime.utcnow()
+        self.usage_reset_at = utc_now_naive()
 

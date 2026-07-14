@@ -10,7 +10,41 @@ import uuid
 import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime
+from app.core.time import utc_now_naive
 import time
+
+
+def _prod_real_service_settings(**overrides):
+    data = {
+        "ENVIRONMENT": "prod",
+        "JWT_SECRET_KEY": "secure-jwt-key-32-chars-minimum!",
+        "VOICE_GATEWAY_TO_SVONTAI_SECRET": "secure-voice-gateway-secret!",
+        "EMAIL_ENABLED": True,
+        "EMAIL_PROVIDER": "resend",
+        "RESEND_API_KEY": "re_live_test",
+        "PAYMENTS_ENABLED": True,
+        "STRIPE_SECRET_KEY": "sk_live_test",
+        "STRIPE_WEBHOOK_SECRET": "whsec_live_test",
+        "STRIPE_SUCCESS_URL": "https://app.svontai.com/billing/success",
+        "STRIPE_CANCEL_URL": "https://app.svontai.com/billing/cancel",
+        "STRIPE_PORTAL_RETURN_URL": "https://app.svontai.com/dashboard/billing",
+        "STRIPE_PRICE_IDS": {"pro": {"monthly": "price_live_pro"}},
+        "USE_N8N": True,
+        "N8N_BASE_URL": "https://n8n.svontai.com",
+        "N8N_INCOMING_WORKFLOW_ID": "incoming-prod",
+        "SVONTAI_TO_N8N_SECRET": "secure-svontai-to-n8n-secret!",
+        "N8N_TO_SVONTAI_SECRET": "secure-n8n-to-svontai-secret!",
+        "ARTIFACT_STORAGE_PROVIDER": "supabase",
+        "SUPABASE_URL": "https://project.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "supabase-service-role-key",
+        "SUPABASE_STORAGE_BUCKET": "svontai-artifacts",
+        "ARTIFACT_SIGNING_SECRET": "secure-artifact-signing-secret!",
+        "WEBHOOK_PUBLIC_URL": "https://api.svontai.com",
+        "BACKEND_URL": "https://api.svontai.com",
+        "FRONTEND_URL": "https://app.svontai.com",
+    }
+    data.update(overrides)
+    return data
 
 
 class TestIdempotency:
@@ -128,7 +162,7 @@ class TestWebhookTimeout:
                     to_number="+0987654321",
                     text="Test message",
                     message_id="wamid.test",
-                    timestamp=datetime.utcnow().isoformat()
+                    timestamp=utc_now_naive().isoformat()
                 )
                 
                 # Verify SessionLocal was called to create new session
@@ -179,10 +213,7 @@ class TestProductionSecretValidation:
         from app.core.config import Settings
         
         with pytest.raises(ValidationError) as exc_info:
-            Settings(
-                ENVIRONMENT="prod",
-                JWT_SECRET_KEY="your-super-secret-jwt-key-change-in-production"
-            )
+            Settings(**_prod_real_service_settings(JWT_SECRET_KEY="your-super-secret-jwt-key-change-in-production"))
         
         # Should mention JWT_SECRET_KEY in error
         error_str = str(exc_info.value)
@@ -195,38 +226,27 @@ class TestProductionSecretValidation:
         
         # Test SVONTAI_TO_N8N_SECRET
         with pytest.raises(ValidationError):
-            Settings(
-                ENVIRONMENT="prod",
-                JWT_SECRET_KEY="secure-jwt-key-32-chars-minimum!",
-                USE_N8N=True,
+            Settings(**_prod_real_service_settings(
                 SVONTAI_TO_N8N_SECRET="change-this-to-a-secure-random-string-svontai-to-n8n"
-            )
+            ))
     
-    def test_insecure_n8n_secrets_allowed_when_disabled(self):
-        """Test that insecure n8n secrets are allowed when n8n disabled."""
+    def test_prod_requires_real_time_external_services(self):
+        """Test that production fails when real-time external services are disabled."""
+        from pydantic import ValidationError
         from app.core.config import Settings
         
-        # Should NOT raise when USE_N8N=False
-        settings = Settings(
-            ENVIRONMENT="prod",
-            JWT_SECRET_KEY="secure-jwt-key-32-chars-minimum!",
-            USE_N8N=False,
-            SVONTAI_TO_N8N_SECRET="change-this-to-a-secure-random-string-svontai-to-n8n"
-        )
-        
-        assert settings.USE_N8N is False
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(**_prod_real_service_settings(USE_N8N=False))
+
+        assert "USE_N8N=true" in str(exc_info.value)
     
     def test_secure_secrets_work_in_production(self):
         """Test that secure secrets work in production."""
         from app.core.config import Settings
         
-        settings = Settings(
-            ENVIRONMENT="prod",
+        settings = Settings(**_prod_real_service_settings(
             JWT_SECRET_KEY="my-super-secure-jwt-key-for-prod",
-            USE_N8N=True,
-            SVONTAI_TO_N8N_SECRET="secure-svontai-to-n8n-secret!",
-            N8N_TO_SVONTAI_SECRET="secure-n8n-to-svontai-secret!"
-        )
+        ))
         
         assert settings.ENVIRONMENT == "prod"
         assert settings.USE_N8N is True

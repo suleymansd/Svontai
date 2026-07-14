@@ -3,12 +3,14 @@ Subscription service for managing tenant subscriptions and limits.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from app.core.time import utc_now_naive
+from app.core.plans import normalize_plan_code
 from app.models.plan import Plan, DEFAULT_PLANS
 from app.models.subscription import TenantSubscription, SubscriptionStatus
 from app.models.tenant import Tenant
@@ -29,7 +31,7 @@ class SubscriptionService:
         message: str,
         meta: dict
     ) -> None:
-        window_start = datetime.utcnow() - timedelta(minutes=15)
+        window_start = utc_now_naive() - timedelta(minutes=15)
         existing = self.db.query(SystemEvent).filter(
             SystemEvent.tenant_id == str(tenant_id),
             SystemEvent.code == code,
@@ -64,8 +66,9 @@ class SubscriptionService:
         plan_name: str = "free"
     ) -> TenantSubscription:
         """Create a new subscription for a tenant."""
+        normalized_plan_name = normalize_plan_code(plan_name)
         # Get plan
-        plan = self.db.query(Plan).filter(Plan.name == plan_name).first()
+        plan = self.db.query(Plan).filter(Plan.name == normalized_plan_name).first()
         if not plan:
             plan = self.get_or_create_free_plan()
         
@@ -78,7 +81,7 @@ class SubscriptionService:
             return existing
         
         # Create subscription
-        now = datetime.utcnow()
+        now = utc_now_naive()
         trial_ends_at = now + timedelta(days=plan.trial_days) if plan.trial_days > 0 else None
         
         subscription = TenantSubscription(
@@ -193,7 +196,7 @@ class SubscriptionService:
         
         return {
             "plan_name": plan.display_name,
-            "plan_type": plan.plan_type,
+            "plan_type": normalize_plan_code(plan.plan_type),
             "messages_used": subscription.messages_used_this_month,
             "message_limit": plan.message_limit,
             "messages_remaining": max(0, plan.message_limit - subscription.messages_used_this_month),
@@ -213,21 +216,22 @@ class SubscriptionService:
         external_subscription_id: Optional[str] = None
     ) -> TenantSubscription:
         """Upgrade tenant to a new plan."""
+        normalized_plan_name = normalize_plan_code(new_plan_name)
         subscription = self.get_subscription(tenant_id)
-        new_plan = self.db.query(Plan).filter(Plan.name == new_plan_name).first()
+        new_plan = self.db.query(Plan).filter(Plan.name == normalized_plan_name).first()
         
         if not new_plan:
-            raise ValueError(f"Plan not found: {new_plan_name}")
+            raise ValueError(f"Plan not found: {normalized_plan_name}")
         
         if subscription:
             subscription.plan_id = new_plan.id
             subscription.status = SubscriptionStatus.ACTIVE.value
             subscription.external_subscription_id = external_subscription_id
-            subscription.current_period_start = datetime.utcnow()
-            subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+            subscription.current_period_start = utc_now_naive()
+            subscription.current_period_end = utc_now_naive() + timedelta(days=30)
             subscription.trial_ends_at = None
         else:
-            subscription = self.create_subscription(tenant_id, new_plan_name)
+            subscription = self.create_subscription(tenant_id, normalized_plan_name)
         
         self.db.commit()
         return subscription
@@ -237,10 +241,10 @@ class SubscriptionService:
         subscription = self.get_subscription(tenant_id)
         
         if subscription:
-            subscription.cancelled_at = datetime.utcnow()
+            subscription.cancelled_at = utc_now_naive()
             if immediate:
                 subscription.status = SubscriptionStatus.CANCELLED.value
-                subscription.ends_at = datetime.utcnow()
+                subscription.ends_at = utc_now_naive()
             else:
                 # Will cancel at end of period
                 subscription.ends_at = subscription.current_period_end
@@ -254,7 +258,7 @@ class SubscriptionService:
         subscription = self.get_subscription(tenant_id)
         if subscription:
             subscription.messages_used_this_month = 0
-            subscription.usage_reset_at = datetime.utcnow()
+            subscription.usage_reset_at = utc_now_naive()
             self.db.commit()
 
 

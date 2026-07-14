@@ -40,7 +40,7 @@ def test_check_feature_returns_false_without_subscription():
 
 def test_message_limit_logs_event():
     tenant_id = uuid.uuid4()
-    plan = SimpleNamespace(message_limit=5, name="starter")
+    plan = SimpleNamespace(message_limit=5, name="pro")
     subscription = SimpleNamespace(
         plan=plan,
         messages_used_this_month=5,

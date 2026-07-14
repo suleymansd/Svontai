@@ -15,3 +15,4 @@ from app.schemas.ticket import *
 from app.schemas.password_reset import *
 from app.schemas.appointment import *
 from app.schemas.note import *
+from app.schemas.tool_runner import *

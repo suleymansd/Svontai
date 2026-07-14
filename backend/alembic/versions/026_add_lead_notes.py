@@ -18,6 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    dialect = op.get_bind().dialect.name
+    json_empty_object_default = sa.text("'{}'::jsonb") if dialect == "postgresql" else sa.text("'{}'")
+
     op.create_table(
         "lead_notes",
         sa.Column("id", sa.UUID(), primary_key=True),
@@ -30,7 +33,7 @@ def upgrade() -> None:
         sa.Column("note_type", sa.String(40), nullable=False, server_default="manual"),
         sa.Column("title", sa.String(140), nullable=False, server_default=""),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("meta_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("meta_json", sa.JSON(), nullable=False, server_default=json_empty_object_default),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
@@ -55,4 +58,3 @@ def downgrade() -> None:
     op.drop_index("ix_lead_notes_lead_id", table_name="lead_notes")
     op.drop_index("ix_lead_notes_tenant_id", table_name="lead_notes")
     op.drop_table("lead_notes")
-

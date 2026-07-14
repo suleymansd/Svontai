@@ -54,16 +54,16 @@ interface Subscription {
 
 const planIcons: Record<string, React.ElementType> = {
   free: Sparkles,
-  starter: Zap,
-  pro: Crown,
-  business: Building2,
+  pro: Zap,
+  premium: Crown,
+  enterprise: Building2,
 }
 
 const planColors: Record<string, string> = {
   free: 'from-slate-500 to-slate-600',
-  starter: 'from-blue-500 to-cyan-500',
-  pro: 'from-violet-500 to-purple-600',
-  business: 'from-amber-500 to-orange-500',
+  pro: 'from-blue-500 to-cyan-500',
+  premium: 'from-violet-500 to-purple-600',
+  enterprise: 'from-amber-500 to-orange-500',
 }
 
 const featureLabels: Record<string, string> = {
@@ -233,11 +233,11 @@ export default function BillingPage() {
                   className={cn(
                     'relative overflow-hidden transition-all duration-300 card-hover-lift animate-fade-in-up',
                     isCurrentPlan && 'ring-2 ring-blue-500 shadow-glow-primary',
-                    plan.name === 'pro' && 'gradient-border-animated border-violet-300 dark:border-violet-700'
+                    plan.name === 'premium' && 'gradient-border-animated border-violet-300 dark:border-violet-700'
                   )}
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  {plan.name === 'pro' && (
+                  {plan.name === 'premium' && (
                     <div className="absolute top-0 right-0 bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs px-3 py-1 rounded-bl-lg animate-pulse-glow">
                       Popüler
                     </div>
@@ -366,9 +366,9 @@ export default function BillingPage() {
               </p>
             </div>
             <div>
-              <h4 className="font-medium mb-1">Deneme süresi ne kadar?</h4>
+              <h4 className="font-medium mb-1">Ücretli planlar nasıl başlar?</h4>
               <p className="text-sm text-muted-foreground">
-                Ücretli planlar için 14 günlük ücretsiz deneme süresi sunuyoruz. Bu sürede tüm özellikleri test edebilirsiniz.
+                Ücretli planlar Stripe checkout tamamlandıktan sonra etkinleşir. Demo ve staging ortamlarında canlı ödeme alınmaz.
               </p>
             </div>
           </CardContent>

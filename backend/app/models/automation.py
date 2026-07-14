@@ -7,6 +7,7 @@ for the n8n workflow engine integration.
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 from enum import Enum
 from typing import Optional
 
@@ -156,13 +157,13 @@ class AutomationRun(Base):
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     
@@ -178,40 +179,40 @@ class AutomationRun(Base):
     def mark_running(self, n8n_execution_id: Optional[str] = None):
         """Mark the run as currently executing."""
         self.status = AutomationRunStatus.RUNNING.value
-        self.started_at = datetime.utcnow()
+        self.started_at = utc_now_naive()
         if n8n_execution_id:
             self.n8n_execution_id = n8n_execution_id
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now_naive()
     
     def mark_success(self, response_payload: Optional[dict] = None):
         """Mark the run as successful."""
         self.status = AutomationRunStatus.SUCCESS.value
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utc_now_naive()
         if self.started_at:
             self.duration_ms = int((self.completed_at - self.started_at).total_seconds() * 1000)
         if response_payload:
             self.response_payload = response_payload
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now_naive()
     
     def mark_failed(self, error_message: str, response_payload: Optional[dict] = None):
         """Mark the run as failed."""
         self.status = AutomationRunStatus.FAILED.value
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utc_now_naive()
         self.error_message = error_message
         if self.started_at:
             self.duration_ms = int((self.completed_at - self.started_at).total_seconds() * 1000)
         if response_payload:
             self.response_payload = response_payload
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now_naive()
     
     def mark_timeout(self):
         """Mark the run as timed out."""
         self.status = AutomationRunStatus.TIMEOUT.value
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utc_now_naive()
         self.error_message = "Request timed out waiting for n8n response"
         if self.started_at:
             self.duration_ms = int((self.completed_at - self.started_at).total_seconds() * 1000)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now_naive()
 
 
 class TenantAutomationSettings(Base):
@@ -307,13 +308,13 @@ class TenantAutomationSettings(Base):
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False
     )
     

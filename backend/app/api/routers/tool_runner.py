@@ -23,6 +23,7 @@ from app.schemas.tool_runner import (
 )
 from app.services.artifact_service import ArtifactService
 from app.services.tool_runner_service import PlanLimitExceededError, ToolRunnerService
+from app.core.rate_limit import rate_limit_key, require_rate_limit, tool_run_rate_limiter
 
 
 router = APIRouter(prefix="/tools", tags=["Tool Runner"])
@@ -56,6 +57,11 @@ async def upsert_tool_settings(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:install"])),
 ) -> ToolRegistryItem:
+    require_rate_limit(
+        tool_run_rate_limiter,
+        rate_limit_key(request, "tool-run", current_tenant.id, current_user.id),
+        "Çok fazla tool çalıştırma isteği. Lütfen daha sonra tekrar deneyin.",
+    )
     service = ToolRunnerService(db)
     try:
         service.upsert_tenant_tool(
@@ -87,6 +93,11 @@ async def run_tool(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"])),
 ) -> ToolRunResponse:
+    require_rate_limit(
+        tool_run_rate_limiter,
+        rate_limit_key(request, "tool-run", current_tenant.id, current_user.id),
+        "Çok fazla tool çalıştırma isteği. Lütfen daha sonra tekrar deneyin.",
+    )
     service = ToolRunnerService(db)
     try:
         return await service.run_tool(

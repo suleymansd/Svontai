@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarCheck, Loader2, Plus } from 'lucide-react'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -41,7 +41,7 @@ export default function AppointmentsPage() {
     reminder_before_minutes: '60',
   })
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     setLoading(true)
     try {
       const response = await appointmentsApi.list()
@@ -55,12 +55,12 @@ export default function AppointmentsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
 
   useEffect(() => {
     fetchAppointments()
     appointmentsApi.sendReminders().catch(() => undefined)
-  }, [])
+  }, [fetchAppointments])
 
   const columns: DataColumn<Appointment>[] = useMemo(() => [
     { key: 'customer_name', header: 'Müşteri', render: (row) => <span className="font-medium">{row.customer_name}</span> },

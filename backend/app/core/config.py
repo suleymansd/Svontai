@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     SUPER_ADMIN_REQUIRE_2FA: bool = False
     BOOTSTRAP_ADMIN_EMAIL: str = ""
     ALLOW_ADMIN_PLAN_OVERRIDE: bool = False
+    ALLOW_DEMO_SEED: bool = False
 
     # API key hashing (separate secret recommended; falls back to JWT_SECRET_KEY)
     API_KEY_HASH_SECRET: str = ""
@@ -149,7 +150,7 @@ class Settings(BaseSettings):
     USE_N8N: bool = False
     
     # n8n Base URL (internal network or external)
-    N8N_BASE_URL: str = "http://n8n:5678"
+    N8N_BASE_URL: str = ""
     
     # Optional n8n API key for authenticated requests
     N8N_API_KEY: Optional[str] = None
@@ -163,6 +164,11 @@ class Settings(BaseSettings):
     # Voice Gateway Integration (HMAC)
     # ===========================================
     VOICE_GATEWAY_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-voice-gateway-to-svontai"
+    VOICE_GATEWAY_PUBLIC_URL: str = ""
+    VOICE_OUTBOUND_MODE: Literal["dry_run", "live"] = "dry_run"
+    VOICE_OUTBOUND_PROVIDER: Literal["twilio"] = "twilio"
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
     
     # Default workflow ID for incoming WhatsApp messages
     N8N_INCOMING_WORKFLOW_ID: str = ""
@@ -267,6 +273,51 @@ class Settings(BaseSettings):
         """
         if self.ENVIRONMENT != "prod":
             return self
+
+        missing_real_time_config: list[str] = []
+        if not self.EMAIL_ENABLED:
+            missing_real_time_config.append("EMAIL_ENABLED=true")
+        if self.EMAIL_PROVIDER == "resend" and not self.RESEND_API_KEY.strip():
+            missing_real_time_config.append("RESEND_API_KEY")
+        if self.EMAIL_PROVIDER == "smtp" and (
+            not self.SMTP_HOST.strip() or not self.SMTP_USERNAME.strip() or not self.SMTP_PASSWORD.strip()
+        ):
+            missing_real_time_config.append("SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD")
+        if not self.PAYMENTS_ENABLED:
+            missing_real_time_config.append("PAYMENTS_ENABLED=true")
+        if (
+            not self.STRIPE_SECRET_KEY.strip()
+            or not self.STRIPE_WEBHOOK_SECRET.strip()
+            or not self.STRIPE_SUCCESS_URL.strip()
+            or not self.STRIPE_CANCEL_URL.strip()
+            or not self.STRIPE_PORTAL_RETURN_URL.strip()
+            or not self.STRIPE_PRICE_IDS
+        ):
+            missing_real_time_config.append("Stripe live checkout/webhook/price envs")
+        if not self.USE_N8N:
+            missing_real_time_config.append("USE_N8N=true")
+        if not self.N8N_BASE_URL.strip() or not self.N8N_INCOMING_WORKFLOW_ID.strip():
+            missing_real_time_config.append("N8N_BASE_URL/N8N_INCOMING_WORKFLOW_ID")
+        if self.ARTIFACT_STORAGE_PROVIDER != "supabase":
+            missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=supabase")
+        if (
+            not self.SUPABASE_URL.strip()
+            or not self.SUPABASE_SERVICE_ROLE_KEY.strip()
+            or not self.SUPABASE_STORAGE_BUCKET.strip()
+            or not self.ARTIFACT_SIGNING_SECRET.strip()
+        ):
+            missing_real_time_config.append("Supabase artifact storage envs")
+        if self.WEBHOOK_PUBLIC_URL.startswith("http://localhost") or self.BACKEND_URL.startswith("http://localhost"):
+            missing_real_time_config.append("public WEBHOOK_PUBLIC_URL/BACKEND_URL")
+        if self.FRONTEND_URL.startswith("http://localhost"):
+            missing_real_time_config.append("public FRONTEND_URL")
+        if self.ALLOW_DEMO_SEED:
+            missing_real_time_config.append("ALLOW_DEMO_SEED=false")
+        if missing_real_time_config:
+            raise ValueError(
+                "FATAL: Production must use real-time external services and real credentials. "
+                "Missing or invalid config: " + ", ".join(missing_real_time_config)
+            )
         
         # Check JWT secret
         if self.JWT_SECRET_KEY in INSECURE_DEFAULT_SECRETS:
@@ -296,6 +347,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "FATAL: VOICE_GATEWAY_TO_SVONTAI_SECRET is set to an insecure default value. "
                 "You MUST set a secure, randomly generated secret in production."
+            )
+        if self.VOICE_OUTBOUND_MODE == "live" and (
+            not self.VOICE_GATEWAY_PUBLIC_URL.strip()
+            or not self.TWILIO_ACCOUNT_SID.strip()
+            or not self.TWILIO_AUTH_TOKEN.strip()
+        ):
+            raise ValueError(
+                "FATAL: VOICE_OUTBOUND_MODE=live requires VOICE_GATEWAY_PUBLIC_URL, "
+                "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
             )
         
         return self

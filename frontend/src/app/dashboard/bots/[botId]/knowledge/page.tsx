@@ -128,7 +128,7 @@ export default function KnowledgeBasePage() {
     setIsDialogOpen(true)
   }
 
-  const useExample = (example: typeof exampleItems[0]) => {
+  const applyExample = (example: typeof exampleItems[0]) => {
     setFormData(example)
     setIsDialogOpen(true)
   }
@@ -256,7 +256,7 @@ export default function KnowledgeBasePage() {
                 <Card 
                   key={i} 
                   className="cursor-pointer hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
-                  onClick={() => useExample(example)}
+                  onClick={() => applyExample(example)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">

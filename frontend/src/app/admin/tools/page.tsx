@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, BadgeCheck } from 'lucide-react'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -70,7 +70,7 @@ export default function ToolsAdminPage() {
   const [activeTool, setActiveTool] = useState<Tool | null>(null)
   const [form, setForm] = useState({ ...emptyToolForm })
 
-  const fetchTools = async () => {
+  const fetchTools = useCallback(async () => {
     try {
       setLoading(true)
       const response = await adminApi.listTools({ page, page_size: 20, search: search || undefined })
@@ -86,11 +86,11 @@ export default function ToolsAdminPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, toast])
 
   useEffect(() => {
     fetchTools()
-  }, [page, search])
+  }, [fetchTools])
 
   const columns: DataColumn<Tool>[] = useMemo(() => [
     {
@@ -151,6 +151,7 @@ export default function ToolsAdminPage() {
         </div>
       )
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [])
 
   const openCreate = () => {

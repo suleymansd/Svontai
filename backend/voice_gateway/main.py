@@ -151,6 +151,56 @@ async def twilio_inbound_voice(request: Request) -> Response:
     return Response(content=twiml, media_type="application/xml")
 
 
+@app.post("/twilio/voice/outbound")
+async def twilio_outbound_voice(request: Request) -> Response:
+    """
+    Twilio Voice webhook for outbound calls created by the SmartWA worker.
+
+    The worker creates the call with:
+      https://<VOICE_GATEWAY_PUBLIC_URL>/twilio/voice/outbound?tenantId=<tenant>&jobId=<job>
+    """
+    params = request.query_params
+    tenant_id = params.get("tenantId", "")
+    job_id = params.get("jobId", "")
+    form = await request.form()
+    to_number = str(form.get("To") or "").strip()
+    from_number = str(form.get("From") or "").strip()
+    call_sid = str(form.get("CallSid") or "").strip()
+
+    if not tenant_id or not call_sid:
+        return PlainTextResponse("Bad Request", status_code=status.HTTP_400_BAD_REQUEST)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await _svontai_post_voice_event(
+        {
+            "tenantId": str(tenant_id),
+            "eventType": "voice_call_started",
+            "eventId": f"twilio:{call_sid}:outbound:started",
+            "from": f"tel:{from_number}",
+            "to": f"tel:{to_number}",
+            "timestamp": now,
+            "call": {
+                "provider": "twilio",
+                "provider_call_id": call_sid,
+                "direction": "outbound",
+                "status": "started",
+                "started_at": now,
+            },
+            "metadata": {"outbound_job_id": job_id},
+        }
+    )
+
+    action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn=1"
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Filiz">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Say voice="Polly.Filiz">Yanıt alamadım. Daha sonra tekrar deneyebiliriz.</Say>
+  <Hangup />
+</Response>"""
+    return Response(content=twiml, media_type="application/xml")
+
+
 @app.post("/twilio/voice/intent")
 async def twilio_voice_intent(request: Request) -> Response:
     """
@@ -233,13 +283,18 @@ async def twilio_voice_status(request: Request) -> Response:
     """
     params = request.query_params
     tenant_id = params.get("tenantId", "")
-    call_sid = params.get("callSid", "")
     from_number = params.get("from", "")
     to_number = params.get("to", "")
 
     form = await request.form()
+    call_sid = params.get("callSid", "") or str(form.get("CallSid") or "").strip()
     call_status = str(form.get("CallStatus") or "").strip()
     call_duration = str(form.get("CallDuration") or "").strip()
+    if not from_number:
+        from_number = str(form.get("From") or "").strip()
+    if not to_number:
+        to_number = str(form.get("To") or "").strip()
+    direction = params.get("direction", "inbound")
 
     try:
         duration_seconds = int(call_duration) if call_duration else 0
@@ -259,7 +314,7 @@ async def twilio_voice_status(request: Request) -> Response:
                 "call": {
                     "provider": "twilio",
                     "provider_call_id": call_sid,
-                    "direction": "inbound",
+                    "direction": direction,
                     "status": call_status,
                     "ended_at": now,
                     "duration_seconds": duration_seconds,

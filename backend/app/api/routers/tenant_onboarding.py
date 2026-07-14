@@ -37,6 +37,9 @@ class OnboardingStatusResponse(BaseModel):
     current_step: str
     progress_percentage: int
     dismissed: bool
+    setup_mode: str
+    concierge_status: str | None = None
+    business_profile_status: str | None = None
     steps: list[StepResponse]
 
 
@@ -48,6 +51,17 @@ class NextActionResponse(BaseModel):
 
 class CompleteStepRequest(BaseModel):
     step_key: str
+
+
+class BusinessProfileRequest(BaseModel):
+    setup_mode: str = "self_serve"
+    industry: str
+    primary_goal: str
+    tone: str = "professional"
+    handoff_rules: list[str] = []
+    website_url: str | None = None
+    instagram_url: str | None = None
+    business_summary: str | None = None
 
 
 # Endpoints
@@ -74,6 +88,32 @@ async def complete_onboarding_step(
     """Mark an onboarding step as completed."""
     service = TenantOnboardingService(db)
     return service.complete_step(tenant.id, request.step_key)
+
+
+@router.post("/business-profile", response_model=OnboardingStatusResponse)
+async def save_business_profile(
+    request: BusinessProfileRequest,
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
+):
+    """Save guided business answers collected during onboarding."""
+    _ = current_user
+    service = TenantOnboardingService(db)
+    return service.save_business_profile(tenant, request.model_dump())
+
+
+@router.post("/run-autopilot", response_model=OnboardingStatusResponse)
+async def run_onboarding_autopilot(
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"]))
+):
+    """Run autonomous setup after the user finishes guided onboarding."""
+    service = TenantOnboardingService(db)
+    return service.run_autopilot_setup(tenant, current_user)
 
 
 @router.post("/dismiss", response_model=OnboardingStatusResponse)

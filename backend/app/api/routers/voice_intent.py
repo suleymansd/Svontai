@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.voice_security import verify_voice_gateway_request_dependency
@@ -27,6 +27,8 @@ router = APIRouter(prefix="/api/v1/voice", tags=["Voice (Gateway)"])
 
 
 class VoiceIntentRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: UUID = Field(..., alias="tenantId")
     event_type: str = Field(..., alias="eventType")
     event_id: str = Field(..., alias="eventId")
@@ -38,19 +40,16 @@ class VoiceIntentRequest(BaseModel):
     call: dict | None = None
     metadata: dict | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class VoiceIntentResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     run_id: str | None = Field(default=None, alias="runId")
     response_text: str = Field(..., alias="responseText")
     end_call: bool = Field(default=False, alias="endCall")
     raw: dict | None = None
 
-    class Config:
-        populate_by_name = True
 
 
 @router.post("/intent", response_model=VoiceIntentResponse)

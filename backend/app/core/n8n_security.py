@@ -12,6 +12,7 @@ import time
 import logging
 from typing import Optional, Tuple
 from datetime import datetime, timedelta
+from app.core.time import utc_now_naive
 
 from fastapi import Request, HTTPException, status
 
@@ -228,8 +229,8 @@ def create_n8n_jwt_token(tenant_id: str, expires_minutes: int = 5) -> str:
     payload = {
         "tenant_id": str(tenant_id),
         "type": "n8n_callback",
-        "exp": datetime.utcnow() + timedelta(minutes=expires_minutes),
-        "iat": datetime.utcnow()
+        "exp": utc_now_naive() + timedelta(minutes=expires_minutes),
+        "iat": utc_now_naive()
     }
     
     return jwt.encode(

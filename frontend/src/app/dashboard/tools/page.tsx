@@ -1,6 +1,5 @@
-import { ToolsPage } from '@/components/tools/ToolsPage'
+import MarketplaceToolsPage from '@/components/tools/MarketplaceToolsPage'
 
 export default function DashboardToolsPage() {
-  return <ToolsPage />
+  return <MarketplaceToolsPage />
 }
-

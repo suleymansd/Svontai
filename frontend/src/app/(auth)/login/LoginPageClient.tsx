@@ -40,7 +40,7 @@ export default function LoginPageClient() {
       const { access_token, refresh_token } = loginResponse.data
 
       localStorage.setItem('access_token', access_token)
-      localStorage.setItem('refresh_token', refresh_token)
+      localStorage.removeItem('refresh_token')
 
       const contextResponse = await meApi.getContext()
       const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data

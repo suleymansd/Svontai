@@ -77,28 +77,28 @@ export default function HomePage() {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-8 animate-fade-in-up">
               <Sparkles className="w-4 h-4 text-yellow-500" />
-              <span className="text-sm font-medium">Yapay Zeka ile Müşteri Desteğinde Devrim</span>
+              <span className="text-sm font-medium">Kurulumu Biz Üstleniyoruz, Sistem Otonom Çalışıyor</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
             
             {/* Headline */}
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-8 animate-fade-in-up stagger-1">
-              WhatsApp Müşteri Desteğinizi{' '}
-              <span className="gradient-text">Otomatikleştirin</span>
+              WhatsApp AI Asistanınızı{' '}
+              <span className="gradient-text">Biz Kurup Çalıştırıyoruz</span>
             </h1>
             
             {/* Subheadline */}
             <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
-              SvontAi ile müşterilerinize 7/24 anında yanıt verin. 
-              Yapay zeka destekli asistanınız hiç uyumaz, tatile çıkmaz 
-              ve her zaman mükemmel hizmet sunar.
+              Uzun kurulum formlarıyla uğraşmayın. Ekibimiz işletme bilginizi işler,
+              botunuzu hazırlar, entegrasyonları izler ve sistem güvenli otonomiyle
+              WhatsApp müşteri akışınızı yürütür.
             </p>
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-3">
               <Link href="/register">
                 <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-lg px-8 h-14 rounded-2xl shadow-2xl shadow-blue-500/30 btn-shine">
-                  14 Gün Ücretsiz Dene
+                  Kurulumu Başlat
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
@@ -106,10 +106,10 @@ export default function HomePage() {
                 size="lg" 
                 variant="outline" 
                 className="w-full sm:w-auto text-lg px-8 h-14 rounded-2xl glass"
-                onClick={() => window.open('https://youtu.be/demo', '_blank')}
+                onClick={() => window.location.href = '/contact'}
               >
                 <Play className="mr-2 w-5 h-5" />
-                Demo İzle
+                Demo Talep Et
               </Button>
             </div>
 
@@ -117,15 +117,15 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center justify-center gap-6 mt-12 animate-fade-in-up stagger-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4 text-green-500" />
-                <span>KVKK Uyumlu</span>
+                <span>KVKK Odaklı</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Zap className="w-4 h-4 text-yellow-500" />
-                <span>3 Saniyede Yanıt</span>
+                <span>Güvenli Otonomi</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Star className="w-4 h-4 text-orange-500" />
-                <span>4.9/5 Müşteri Puanı</span>
+                <span>Concierge Kurulum</span>
               </div>
             </div>
           </div>
@@ -167,30 +167,36 @@ export default function HomePage() {
                       </div>
                       {/* Main Content */}
                       <div className="col-span-3 space-y-4">
-                        {/* Stats */}
+                        {/* Launch state preview without fake metrics */}
                         <div className="grid grid-cols-3 gap-4">
                           {[
-                            { color: 'from-blue-500 to-cyan-500', value: '2,847' },
-                            { color: 'from-violet-500 to-purple-500', value: '156' },
-                            { color: 'from-green-500 to-emerald-500', value: '%98' }
+                            { color: 'from-blue-500 to-cyan-500', title: 'Bilgi', line: 'Formasyon' },
+                            { color: 'from-violet-500 to-purple-500', title: 'İzin', line: 'Kontrol' },
+                            { color: 'from-green-500 to-emerald-500', title: 'Bot', line: 'Hazır' }
                           ].map((stat, i) => (
                             <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg">
                               <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stat.color} mb-3`} />
-                              <div className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</div>
-                              <div className="h-2 w-20 bg-slate-200 dark:bg-slate-700 rounded mt-1" />
+                              <div className="text-sm font-semibold text-slate-900 dark:text-white">{stat.title}</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">{stat.line}</div>
                             </div>
                           ))}
                         </div>
-                        {/* Chart Area */}
+                        {/* Pipeline Area */}
                         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg flex-1">
-                          <div className="h-3 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
-                          <div className="flex items-end gap-2 h-32">
-                            {[40, 65, 45, 80, 55, 90, 70, 85, 60, 75, 95, 80].map((h, i) => (
-                              <div 
-                                key={i} 
-                                className="flex-1 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t-lg"
-                                style={{ height: `${h}%` }}
-                              />
+                          <div className="h-3 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-5" />
+                          <div className="space-y-4">
+                            {[
+                              'Concierge bilgi formasyonu',
+                              'Meta WhatsApp izin kontrolü',
+                              'Otonom sağlık ve incident takibi',
+                            ].map((label, i) => (
+                              <div key={label} className="flex items-center gap-3">
+                                <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${i === 0 ? 'from-blue-500 to-cyan-500' : i === 1 ? 'from-violet-500 to-purple-500' : 'from-green-500 to-emerald-500'}`} />
+                                <div className="flex-1">
+                                  <div className="h-2.5 w-4/5 rounded bg-slate-200 dark:bg-slate-700" />
+                                  <span className="sr-only">{label}</span>
+                                </div>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -210,10 +216,10 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto relative">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
-              { value: '10K+', label: 'Aktif Kullanıcı', icon: Users },
-              { value: '5M+', label: 'Mesaj Yanıtlandı', icon: MessageSquare },
-              { value: '%99.9', label: 'Uptime', icon: Zap },
-              { value: '<2s', label: 'Ort. Yanıt Süresi', icon: Clock },
+              { value: 'Tek Panel', label: 'Otonom Kontrol Merkezi', icon: Users },
+              { value: '7/24', label: 'WhatsApp Yanıt Akışı', icon: MessageSquare },
+              { value: 'Riskli Onay', label: 'Sadece Gerektiğinde', icon: Shield },
+              { value: 'Ajans', label: 'Çoklu Müşteri Yönetimi', icon: Clock },
             ].map((stat, i) => (
               <div key={i} className="text-center group">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-violet-500/10 mb-4 group-hover:scale-110 transition-transform">
@@ -254,7 +260,7 @@ export default function HomePage() {
               {
                 icon: Brain,
                 title: 'Akıllı AI Yanıtları',
-                description: 'GPT-4 tabanlı yapay zeka, müşterilerinize doğal ve bağlama uygun yanıtlar verir.',
+                description: 'İşletme bilgi formasyonunuzla hazırlanan yapay zeka, müşterilerinize doğal ve bağlama uygun yanıtlar verir.',
                 color: 'from-violet-500 to-purple-500'
               },
               {
@@ -277,8 +283,8 @@ export default function HomePage() {
               },
               {
                 icon: Shield,
-                title: 'Güvenli & KVKK Uyumlu',
-                description: 'Verileriniz şifreli, güvenli sunucularda saklanır. Tam KVKK uyumluluğu.',
+                title: 'Güvenli Otonomi',
+                description: 'Tenant izolasyonu, rol bazlı erişim, audit log ve incident takibiyle kontrollü işletim.',
                 color: 'from-teal-500 to-cyan-500'
               },
             ].map((feature, i) => (
@@ -478,11 +484,11 @@ export default function HomePage() {
               },
               {
                 q: 'Deneme süresi var mı?',
-                a: 'Evet! Tüm planlarımız için 14 günlük ücretsiz deneme süresi sunuyoruz. Kredi kartı bilgisi gerekmez, istediğiniz zaman iptal edebilirsiniz.'
+                a: 'Demo workspace ile ürünü risksiz inceleyebilirsiniz. Ücretli planlar Stripe checkout üzerinden etkinleşir.'
               },
               {
                 q: 'Verilerim güvende mi?',
-                a: 'Kesinlikle. Tüm verileriniz 256-bit SSL şifreleme ile korunur ve Türkiye\'deki KVKK uyumlu veri merkezlerinde saklanır.'
+                a: 'Tenant izolasyonu, RBAC, audit log, güvenli secret yönetimi ve incident takibi üzerine kurulu bir güvenlik modeli uygulanır.'
               },
               {
                 q: 'Mevcut sistemlerimle entegre olabilir mi?',
@@ -520,13 +526,12 @@ export default function HomePage() {
                 Müşteri desteğinizi<br />dönüştürmeye hazır mısınız?
               </h2>
               <p className="text-xl text-blue-100 mb-10 max-w-2xl mx-auto">
-                14 günlük ücretsiz deneme ile SvontAi'nın gücünü keşfedin.
-                Kredi kartı gerekmez.
+                Demo workspace açın veya satış ekibiyle konuşup concierge kurulum sürecini başlatın.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/register">
                   <Button size="lg" className="w-full sm:w-auto bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 h-14 rounded-2xl font-semibold shadow-xl">
-                    Ücretsiz Başla
+                    Kurulumu Başlat
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </Link>
@@ -559,27 +564,25 @@ export default function HomePage() {
               <ul className="space-y-2 text-muted-foreground">
                 <li><Link href="#features" className="hover:text-foreground transition-colors">Özellikler</Link></li>
                 <li><Link href="#pricing" className="hover:text-foreground transition-colors">Fiyatlar</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">API</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Entegrasyonlar</Link></li>
+                <li><Link href="/docs" className="hover:text-foreground transition-colors">Dokümanlar</Link></li>
+                <li><Link href="/tools" className="hover:text-foreground transition-colors">Araçlar</Link></li>
               </ul>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4">Şirket</h4>
               <ul className="space-y-2 text-muted-foreground">
-                <li><Link href="#" className="hover:text-foreground transition-colors">Hakkımızda</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Blog</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Kariyer</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">İletişim</Link></li>
+                <li><Link href="/security" className="hover:text-foreground transition-colors">Güvenlik</Link></li>
+                <li><Link href="/contact" className="hover:text-foreground transition-colors">İletişim</Link></li>
               </ul>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4">Yasal</h4>
               <ul className="space-y-2 text-muted-foreground">
-                <li><Link href="#" className="hover:text-foreground transition-colors">Gizlilik Politikası</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Kullanım Koşulları</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">KVKK</Link></li>
+                <li><Link href="/privacy" className="hover:text-foreground transition-colors">Gizlilik Politikası</Link></li>
+                <li><Link href="/terms" className="hover:text-foreground transition-colors">Kullanım Koşulları</Link></li>
+                <li><Link href="/security" className="hover:text-foreground transition-colors">KVKK ve Güvenlik</Link></li>
               </ul>
             </div>
           </div>

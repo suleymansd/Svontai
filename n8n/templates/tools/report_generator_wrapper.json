@@ -1,0 +1,55 @@
+{
+  "name": "SvontAI - Tool Wrapper - report_generator v1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "wrapper-trigger",
+      "name": "Wrapper Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst requestId = input.request_id || input.requestId || '';\nconst toolInput = input.tool_input || input.toolInput || {};\nconst metrics = toolInput.metrics || { leads: 0, meetings: 0, wins: 0 };\nconst report = {\n  period: toolInput.period || 'weekly',\n  generated_at: new Date().toISOString(),\n  kpis: {\n    total_leads: Number(metrics.leads || 0),\n    meetings_booked: Number(metrics.meetings || 0),\n    won_deals: Number(metrics.wins || 0)\n  },\n  notes: toolInput.notes || 'Rapor otomatik olarak oluşturuldu.'\n};\nreturn [{ json: { request_id: requestId, success: true, data: { summary: 'Rapor başarıyla oluşturuldu.', report_json: report }, error: null, usage: { time_ms: 240, tokens: 90, cost: 0.0009 }, artifacts: [{ type: 'text', name: 'report.json', url: '', meta: { report } }] } }];"
+      },
+      "id": "build-report",
+      "name": "Build Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Wrapper Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    "svontai",
+    "tool",
+    "runner",
+    "v1",
+    "staging"
+  ],
+  "versionId": "report-generator-wrapper-v1"
+}

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from app.core.time import utc_now_naive
 
 from sqlalchemy import String, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,5 +35,5 @@ class Tool(Base):
     required_integrations_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     n8n_workflow_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)

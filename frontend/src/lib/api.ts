@@ -1,17 +1,12 @@
 import axios from 'axios'
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
+import { normalizeApiUrl } from './api-url'
 
-function normalizeApiUrl(value?: string): string {
-  const raw = (value || '').trim()
-  if (!raw) return 'http://localhost:8000'
-  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, '')
-  return `https://${raw.replace(/\/+$/, '')}`
-}
-
-const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
+export const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
 
 export const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -49,20 +44,18 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem('refresh_token')
-        if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          })
+        const response = await axios.post(
+          `${API_URL}/auth/refresh`,
+          refreshToken ? { refresh_token: refreshToken } : {},
+          { withCredentials: true }
+        )
 
-          const { access_token, refresh_token: newRefreshToken } = response.data
-          localStorage.setItem('access_token', access_token)
-          if (newRefreshToken) {
-            localStorage.setItem('refresh_token', newRefreshToken)
-          }
+        const { access_token } = response.data
+        localStorage.setItem('access_token', access_token)
+        localStorage.removeItem('refresh_token')
 
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
-          return api(originalRequest)
-        }
+        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        return api(originalRequest)
       } catch (refreshError) {
         // Refresh failed, redirect to login
         localStorage.removeItem('access_token')
@@ -93,6 +86,8 @@ export const authApi = {
   
   refresh: (refresh_token: string) =>
     api.post('/auth/refresh', { refresh_token }),
+  refreshWithCookie: () => api.post('/auth/refresh', {}),
+  logout: () => api.post('/auth/logout'),
 
   requestPasswordReset: (email: string) =>
     api.post('/auth/password-reset/request', { email }),
@@ -207,6 +202,17 @@ export const callsApi = {
   summary: (id: string) => api.get(`/calls/${id}/summary`),
 }
 
+export const voiceAutomationApi = {
+  getSettings: () => api.get('/voice-automation/settings'),
+  updateSettings: (data: Record<string, unknown>) => api.patch('/voice-automation/settings', data),
+  listIntents: (params?: { status?: string; limit?: number }) =>
+    api.get('/voice-automation/intents', { params }),
+  listJobs: (params?: { status?: string; limit?: number }) =>
+    api.get('/voice-automation/jobs', { params }),
+  testCall: (data: { customer_phone: string; customer_name?: string; reason?: string }) =>
+    api.post('/voice-automation/test-call', data),
+}
+
 // WhatsApp API
 export const whatsappApi = {
   getIntegration: (botId: string) =>
@@ -242,6 +248,23 @@ export const adminApi = {
     api.patch(`/admin/tenants/${id}/feature-flags`, { enabled_flags }),
   getTenantRealEstatePack: (id: string) =>
     api.get(`/admin/tenants/${id}/real-estate-pack`),
+  getLaunchBoard: (params?: { search?: string; stage?: string; limit?: number }) =>
+    api.get('/admin/launch-board', { params }),
+  updateLaunchConcierge: (tenantId: string, data: {
+    status: 'pending' | 'in_progress' | 'ready_for_review' | 'launched' | 'blocked'
+    note?: string
+    create_ticket?: boolean
+  }) => api.patch(`/admin/launch-board/${tenantId}/concierge`, data),
+  updateTenantBusinessProfile: (tenantId: string, data: {
+    industry: string
+    tone: string
+    summary: string
+    services: string[]
+    faq?: Array<Record<string, unknown>>
+    status: 'customer_collected' | 'admin_enriched' | 'ready'
+  }) => api.patch(`/admin/tenants/${tenantId}/business-profile`, data),
+  runTenantAutopilot: (tenantId: string) => api.post(`/admin/tenants/${tenantId}/autopilot/run`),
+  launchTenant: (tenantId: string) => api.post(`/admin/tenants/${tenantId}/launch`),
   updateTenantRealEstatePack: (id: string, data: {
     enabled: boolean
     lead_limit_monthly: number
@@ -367,6 +390,16 @@ export const billingApi = {
 export const setupOnboardingApi = {
   getStatus: () => api.get('/onboarding/setup/status'),
   completeStep: (stepKey: string) => api.post('/onboarding/setup/complete-step', { step_key: stepKey }),
+  saveBusinessProfile: (data: {
+    industry: string
+    primary_goal: string
+    tone: string
+    handoff_rules: string[]
+    website_url?: string
+    instagram_url?: string
+    business_summary?: string
+  }) => api.post('/onboarding/setup/business-profile', data),
+  runAutopilot: () => api.post('/onboarding/setup/run-autopilot'),
   dismiss: () => api.post('/onboarding/setup/dismiss'),
   checkProgress: () => api.post('/onboarding/setup/check-progress'),
   getNextAction: () => api.get('/onboarding/setup/next-action'),
@@ -655,6 +688,22 @@ export const toolMarketplaceApi = {
 // Integrations API
 export const integrationsApi = {
   getStatus: () => api.get('/integrations/status'),
+  getDiagnostics: () => api.get('/integrations/diagnostics'),
+  repair: (provider: string) => api.post(`/integrations/${provider}/repair`),
+}
+
+export const autopilotApi = {
+  getStatus: () => api.get('/setup/autopilot/status'),
+  run: () => api.post('/setup/autopilot/run'),
+}
+
+export const agencyApi = {
+  listClients: () => api.get('/agency/clients'),
+  createClient: (data: { client_tenant_id: string; notes?: string }) => api.post('/agency/clients', data),
+  getClientHealth: (tenantId: string) => api.get(`/agency/clients/${tenantId}/health`),
+  updateClient: (relationshipId: string, data: { status?: 'active' | 'paused' | 'archived'; notes?: string }) =>
+    api.patch(`/agency/clients/${relationshipId}`, data),
+  archiveClient: (relationshipId: string) => api.delete(`/agency/clients/${relationshipId}`),
 }
 
 // System Events API

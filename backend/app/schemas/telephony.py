@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TelephonyNumberCreate(BaseModel):
@@ -10,6 +10,8 @@ class TelephonyNumberCreate(BaseModel):
 
 
 class TelephonyNumberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     tenant_id: str
     provider: str
@@ -20,15 +22,11 @@ class TelephonyNumberResponse(BaseModel):
     created_at: str
     updated_at: str
 
-    class Config:
-        from_attributes = True
-
 
 class TelephonyResolveResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(..., alias="tenantId")
     provider: str
     phone_number: str = Field(..., alias="phoneNumber")
-
-    class Config:
-        populate_by_name = True
 

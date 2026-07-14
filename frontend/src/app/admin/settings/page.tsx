@@ -13,7 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { adminApi } from '@/lib/api'
+import { API_URL, adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -72,7 +72,7 @@ export default function SettingsPage() {
   }
 
   const envVars = [
-    { name: 'NEXT_PUBLIC_BACKEND_URL', value: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000', sensitive: false },
+    { name: 'NEXT_PUBLIC_BACKEND_URL', value: API_URL, sensitive: false },
     { name: 'DATABASE_URL', value: '••••••••', sensitive: true },
     { name: 'OPENAI_API_KEY', value: '••••••••', sensitive: true },
     { name: 'JWT_SECRET', value: '••••••••', sensitive: true },
