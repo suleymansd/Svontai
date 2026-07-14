@@ -37,6 +37,7 @@ PURPOSES = {
     "Gemini - Meeting Summary": "meeting_summary",
     "Gemini - Report Generator": "report_generator",
 }
+RESPONSE_NODES = {"Edit Fields1", "Edit Fields3"}
 MANAGED_NODES = {"Verify Signature", "Auth OK?", "Auth Fail", "Unsupported Tool"}
 
 
@@ -161,6 +162,15 @@ def _unsupported_node() -> dict:
     }
 
 
+def _standard_response_parameters() -> dict:
+    return {
+        "jsCode": r"""const response = $input.first().json || {};
+const request = $('Verify Signature').first().json || {};
+const summary = String(response.output?.[0]?.content?.[0]?.text || response.content?.[0]?.text || response.text || '').trim();
+return [{json:{request_id:request.request_id||'',success:Boolean(summary),data:summary?{summary}:{},error:summary?null:{message:'AI returned an empty response',code:'EMPTY_AI_RESPONSE'},usage:{time_ms:0,tokens:null,cost:null},artifacts:[]}}];"""
+    }
+
+
 def _rename_connections(connections: dict) -> dict:
     renamed = {}
     for source, outputs in connections.items():
@@ -192,6 +202,11 @@ def migrate(workflow: dict) -> dict:
             node["type"] = "n8n-nodes-base.httpRequest"
             node["typeVersion"] = 4.4
             node["parameters"] = _http_parameters(PURPOSES[node["name"]])
+            node.pop("credentials", None)
+        elif node["name"] in RESPONSE_NODES:
+            node["type"] = "n8n-nodes-base.code"
+            node["typeVersion"] = 2
+            node["parameters"] = _standard_response_parameters()
             node.pop("credentials", None)
         nodes.append(node)
 

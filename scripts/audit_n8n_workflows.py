@@ -22,6 +22,8 @@ NODE_REFERENCE_PATTERNS = (
     re.compile(r'\$node\[\s*["\']([^"\']+)["\']\s*\]'),
     re.compile(r'\$\(\s*["\']([^"\']+)["\']\s*\)'),
 )
+TOOL_RESPONSE_NODES = {"Edit Fields1", "Edit Fields3", "Unsupported Tool", "Auth Fail"}
+WHATSAPP_JSON_REQUEST_NODES = {"Upsert Lead", "Generate Gemini Reply", "Send WhatsApp Reply"}
 
 
 def _api() -> tuple[str, dict[str, str]]:
@@ -140,6 +142,24 @@ def _audit_workflow(workflow: dict) -> list[str]:
                 issues.append(f"{name}: risky endpoint marker {marker} in {node_name}")
         for reference in sorted(_node_references(node.get("parameters", {})) - node_name_set):
             issues.append(f"{name}: {node_name} references missing node {reference}")
+
+    nodes_by_name = {node.get("name"): node for node in nodes}
+    if name == "svontai-tool-runner":
+        for response_node_name in TOOL_RESPONSE_NODES:
+            response_node = nodes_by_name.get(response_node_name)
+            code = str((response_node or {}).get("parameters", {}).get("jsCode") or "")
+            if (response_node or {}).get("type") != "n8n-nodes-base.code":
+                issues.append(f"{name}: {response_node_name} must be a code response node")
+                continue
+            if not all(fragment in code for fragment in ("request_id", "success", "data", "error", "artifacts")):
+                issues.append(f"{name}: {response_node_name} does not return the standard response envelope")
+
+    if name == "SvontAI - WhatsApp Gemini v1":
+        for request_node_name in WHATSAPP_JSON_REQUEST_NODES:
+            request_node = nodes_by_name.get(request_node_name)
+            json_body = str((request_node or {}).get("parameters", {}).get("jsonBody") or "").strip()
+            if not json_body.startswith("={{ {"):
+                issues.append(f"{name}: {request_node_name} uses an invalid n8n JSON body expression")
 
     return issues
 
