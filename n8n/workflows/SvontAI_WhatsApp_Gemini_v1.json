@@ -1,0 +1,174 @@
+{
+  "name": "SvontAI - WhatsApp Gemini v1",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "nodes": [
+    {
+      "id": "wa-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-900, 0],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "svontai-whatsapp-v2",
+        "responseMode": "responseNode",
+        "options": {"rawBody": true}
+      }
+    },
+    {
+      "id": "wa-normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-680, 0],
+      "parameters": {
+        "jsCode": "const req = $input.first().json;\nlet body = req.body;\nif (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }\nreturn [{ json: { ...body, headers: req.headers || {}, originalBody: body } }];"
+      }
+    },
+    {
+      "id": "wa-verify",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-460, 0],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst input = $input.first().json;\nconst headers = input.headers || {};\nconst header = (name) => { const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase()); return key ? headers[key] : undefined; };\nconst stable = (obj) => { if (obj === null || obj === undefined || typeof obj !== 'object') return obj; if (Array.isArray(obj)) return obj.map(stable); const out = {}; for (const key of Object.keys(obj).sort()) out[key] = stable(obj[key]); return out; };\nconst timestamp = Number(header('X-SvontAI-Timestamp'));\nconst signature = String(header('X-SvontAI-Signature') || '');\nconst secret = $env.SVONTAI_TO_N8N_SECRET || '';\nlet authOk = false; let authError = '';\nif (!secret) authError = 'Missing shared secret';\nelse if (!Number.isFinite(timestamp) || !signature) authError = 'Missing signature headers';\nelse if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) authError = 'Signature expired';\nelse { const payload = JSON.stringify(stable(input.originalBody || {})); const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${payload}`, 'utf8').digest('hex'); const actualBuffer = Buffer.from(signature); const expectedBuffer = Buffer.from(expected); authOk = actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer); if (!authOk) authError = 'Invalid signature'; }\nreturn [{ json: { ...input, authOk, authError } }];"
+      }
+    },
+    {
+      "id": "wa-auth-if",
+      "name": "Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-240, 0],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "typeValidation": "strict"},
+          "conditions": [{"leftValue": "={{ $json.authOk }}", "rightValue": true, "operator": {"type": "boolean", "operation": "isEqual"}}]
+        }
+      }
+    },
+    {
+      "id": "wa-auth-fail",
+      "name": "Auth Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 200],
+      "parameters": {
+        "jsCode": "const input = $input.first().json; return [{ json: { ...input, ok: false, error: input.authError || 'Authentication failed' } }];"
+      }
+    },
+    {
+      "id": "wa-lead",
+      "name": "Upsert Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [0, -100],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.leads_upsert }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "=Bearer {{ $node[\"Normalize\"].json.svontai.token }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"phone\":$node[\"Normalize\"].json.from,\"source\":\"whatsapp\",\"status\":\"new\"}",
+        "options": {"timeout": 10000}
+      }
+    },
+    {
+      "id": "wa-ai",
+      "name": "Generate Gemini Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [240, -100],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.ai_reply }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "=Bearer {{ $node[\"Normalize\"].json.svontai.token }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"botId\":$node[\"Normalize\"].json.metadata.bot_id || $node[\"Normalize\"].json.extra.bot_id,\"conversationId\":$node[\"Normalize\"].json.metadata.conversation_id || $node[\"Normalize\"].json.extra.conversation_id,\"message\":$node[\"Normalize\"].json.text}",
+        "options": {"timeout": 30000}
+      }
+    },
+    {
+      "id": "wa-reply-if",
+      "name": "Should Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, -100],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "typeValidation": "strict"},
+          "conditions": [{"leftValue": "={{ $json.shouldReply }}", "rightValue": true, "operator": {"type": "boolean", "operation": "isEqual"}}]
+        }
+      }
+    },
+    {
+      "id": "wa-send",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, -180],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.whatsapp_send }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "=Bearer {{ $node[\"Normalize\"].json.svontai.token }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"to\":$node[\"Normalize\"].json.from,\"text\":$node[\"Generate Gemini Reply\"].json.replyText,\"botId\":$node[\"Normalize\"].json.metadata.bot_id || $node[\"Normalize\"].json.extra.bot_id,\"meta\":{\"runId\":$node[\"Normalize\"].json.runId,\"n8nExecutionId\":$execution.id}}",
+        "options": {"timeout": 20000}
+      }
+    },
+    {
+      "id": "wa-skipped",
+      "name": "Reply Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 20],
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, skipped: true } }];"
+      }
+    },
+    {
+      "id": "wa-respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 0],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success !== false && $json.ok !== false, executionId: $execution.id, error: $json.error || null } }}",
+        "options": {"responseCode": 200}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {"main": [[{"node": "Normalize", "type": "main", "index": 0}]]},
+    "Normalize": {"main": [[{"node": "Verify Signature", "type": "main", "index": 0}]]},
+    "Verify Signature": {"main": [[{"node": "Auth OK?", "type": "main", "index": 0}]]},
+    "Auth OK?": {"main": [[{"node": "Upsert Lead", "type": "main", "index": 0}], [{"node": "Auth Fail", "type": "main", "index": 0}]]},
+    "Auth Fail": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Upsert Lead": {"main": [[{"node": "Generate Gemini Reply", "type": "main", "index": 0}]]},
+    "Generate Gemini Reply": {"main": [[{"node": "Should Reply?", "type": "main", "index": 0}]]},
+    "Should Reply?": {"main": [[{"node": "Send WhatsApp Reply", "type": "main", "index": 0}], [{"node": "Reply Skipped", "type": "main", "index": 0}]]},
+    "Send WhatsApp Reply": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Reply Skipped": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  }
+}

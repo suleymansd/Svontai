@@ -583,7 +583,13 @@ async def handle_incoming_message(
         logger.info("should_use_n8n(%s): %s", tenant_id_str, should_route_n8n)
 
         if should_route_n8n:
-            workflow_id = "svontai-whatsapp-incoming"
+            workflow_id = n8n_client.get_workflow_id(
+                tenant_uuid,
+                AutomationChannel.WHATSAPP.value,
+            )
+            if not workflow_id:
+                logger.error("No WhatsApp n8n workflow configured for tenant %s", tenant_id_str)
+                return
             logger.info("resolved workflow_id: %s", workflow_id)
             logger.info(
                 "Routing message %s to n8n for tenant %s with workflow %s",

@@ -271,7 +271,11 @@ C: {item.answer}
         
         # Add conversation context with memory window
         if conversation.messages:
-            context = self._build_conversation_context(conversation.messages, memory_window)
+            context_messages = conversation.messages
+            last_message = context_messages[-1]
+            if last_message.sender != "bot" and last_message.content == last_user_message:
+                context_messages = context_messages[:-1]
+            context = self._build_conversation_context(context_messages, memory_window)
             messages.extend(context)
         
         # Add current user message

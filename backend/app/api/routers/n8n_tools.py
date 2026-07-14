@@ -18,11 +18,15 @@ from sqlalchemy.orm import Session
 
 from app.core.n8n_security import verify_n8n_bearer_token
 from app.db.session import get_db
+from app.models.bot import Bot
 from app.models.call import Call
 from app.models.call import CallTranscript
+from app.models.conversation import Conversation, ConversationStatus
+from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
 from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
+from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
 
@@ -52,6 +56,65 @@ async def _verify_tenant(request: Request, tenant_id: str) -> None:
     verified_tenant_id = auth.get("tenant_id")
     if verified_tenant_id and verified_tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant mismatch")
+
+
+class AIReplyRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: str = Field(..., alias="tenantId")
+    bot_id: str = Field(..., alias="botId")
+    conversation_id: str = Field(..., alias="conversationId")
+    message: str
+
+
+class AIReplyResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    ok: bool = True
+    should_reply: bool = Field(..., alias="shouldReply")
+    reply_text: str = Field(default="", alias="replyText")
+    handoff_required: bool = Field(default=False, alias="handoffRequired")
+
+
+@router.post("/ai/reply", response_model=AIReplyResponse)
+async def generate_ai_reply(
+    request: Request,
+    body: AIReplyRequest,
+    db: Session = Depends(get_db),
+) -> AIReplyResponse:
+    """Generate a tenant-scoped bot reply for a verified n8n workflow."""
+    await _verify_tenant(request, body.tenant_id)
+    try:
+        tenant_id = UUID(body.tenant_id)
+        bot_id = UUID(body.bot_id)
+        conversation_id = UUID(body.conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant, bot or conversation ID") from exc
+
+    bot = db.query(Bot).filter(
+        Bot.id == bot_id,
+        Bot.tenant_id == tenant_id,
+        Bot.is_active.is_(True),
+    ).first()
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.bot_id == bot_id,
+    ).first()
+    if bot is None or conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot or conversation not found")
+
+    if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+        return AIReplyResponse(shouldReply=False, handoffRequired=True)
+
+    knowledge_items = db.query(BotKnowledgeItem).filter(BotKnowledgeItem.bot_id == bot_id).all()
+    reply = await ai_service.generate_reply(
+        bot=bot,
+        knowledge_items=knowledge_items,
+        conversation=conversation,
+        last_user_message=body.message,
+        bot_settings=bot.settings,
+    )
+    return AIReplyResponse(shouldReply=bool(reply.strip()), replyText=reply)
 
 
 class LeadUpsertRequest(BaseModel):

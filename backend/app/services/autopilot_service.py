@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.time import utc_now
 from app.models.autopilot import AgencyClient, IntegrationHealthCheck, SetupRun
-from app.models.automation import AutomationRun
+from app.models.automation import AutomationRun, TenantAutomationSettings
 from app.models.bot import Bot
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.incident import Incident
@@ -57,6 +57,20 @@ class AutopilotService:
         if subscription is None:
             SubscriptionService(self.db).create_subscription(tenant.id, "free")
             actions.append({"key": "subscription_created", "label": "Varsayılan abonelik oluşturuldu"})
+
+        automation_settings = self.db.query(TenantAutomationSettings).filter(
+            TenantAutomationSettings.tenant_id == str(tenant.id)
+        ).first()
+        if automation_settings is None:
+            automation_settings = TenantAutomationSettings(
+                tenant_id=str(tenant.id),
+                use_n8n=settings.USE_N8N,
+                default_workflow_id=settings.N8N_INCOMING_WORKFLOW_ID or None,
+                whatsapp_workflow_id=settings.N8N_INCOMING_WORKFLOW_ID or None,
+            )
+            self.db.add(automation_settings)
+            self.db.commit()
+            actions.append({"key": "automation_configured", "label": "Otonom workflow ayarları oluşturuldu"})
 
         business_profile = self._business_profile(tenant)
         bot = self.db.query(Bot).filter(Bot.tenant_id == tenant.id).order_by(Bot.created_at.asc()).first()

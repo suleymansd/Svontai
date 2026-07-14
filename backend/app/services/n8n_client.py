@@ -364,6 +364,7 @@ class N8NClient:
                     "notes_create": f"{base_url}/api/v1/n8n/notes/create",
                     "usage_increment": f"{base_url}/api/v1/n8n/usage/increment",
                     "audit_log": f"{base_url}/api/v1/n8n/audit/log",
+                    "ai_reply": f"{base_url}/api/v1/n8n/ai/reply",
                     "calls_resolve": f"{base_url}/api/v1/n8n/calls/resolve",
                     "calls_transcript": f"{base_url}/api/v1/n8n/calls/transcript",
                     "re_listings_search": f"{base_url}/api/v1/n8n/real-estate/listings/search",
