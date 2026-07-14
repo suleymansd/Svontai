@@ -275,6 +275,8 @@ class Settings(BaseSettings):
             return self
 
         missing_real_time_config: list[str] = []
+        if not self.OPENAI_API_KEY.strip():
+            missing_real_time_config.append("OPENAI_API_KEY")
         if not self.EMAIL_ENABLED:
             missing_real_time_config.append("EMAIL_ENABLED=true")
         if self.EMAIL_PROVIDER == "resend" and not self.RESEND_API_KEY.strip():

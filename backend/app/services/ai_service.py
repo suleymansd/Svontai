@@ -27,7 +27,9 @@ class AIService:
     
     def __init__(self):
         """Initialize the OpenAI client."""
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client: Optional[AsyncOpenAI] = None
+        if settings.OPENAI_API_KEY.strip():
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
         
         # Default safety settings
@@ -43,6 +45,12 @@ class AIService:
                 "legal advice"
             ]
         }
+
+    def _get_client(self) -> AsyncOpenAI:
+        """Return the configured client without breaking non-AI application flows."""
+        if self.client is None:
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        return self.client
     
     def _get_tone_instructions(self, tone: str) -> str:
         """Get tone-specific instructions."""
@@ -265,7 +273,7 @@ C: {item.answer}
         messages.append({"role": "user", "content": last_user_message})
         
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._get_client().chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=max_tokens,
@@ -314,7 +322,7 @@ C: {item.answer}
         ])
         
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._get_client().chat.completions.create(
                 model=self.model,
                 messages=[
                     {
