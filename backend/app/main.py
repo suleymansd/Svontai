@@ -320,10 +320,12 @@ async def lifespan(app: FastAPI):
 
     reminder_task: asyncio.Task | None = None
     real_estate_task: asyncio.Task | None = None
-    if settings.APPOINTMENT_REMINDER_ENABLED and settings.EMAIL_ENABLED:
-        reminder_task = asyncio.create_task(_appointment_reminder_loop())
-    if settings.REAL_ESTATE_AUTOMATION_ENABLED:
-        real_estate_task = asyncio.create_task(_real_estate_automation_loop())
+    if settings.RUN_SCHEDULED_JOBS_IN_WEB:
+        logger.warning("Scheduled jobs are running in the web process; use only for local development")
+        if settings.APPOINTMENT_REMINDER_ENABLED and settings.EMAIL_ENABLED:
+            reminder_task = asyncio.create_task(_appointment_reminder_loop())
+        if settings.REAL_ESTATE_AUTOMATION_ENABLED:
+            real_estate_task = asyncio.create_task(_real_estate_automation_loop())
     
     # Initialize default plans if needed
     from app.db.session import SessionLocal

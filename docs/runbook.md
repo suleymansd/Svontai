@@ -93,6 +93,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 ### Deployment checks
 - Railway web service command must run `alembic upgrade head` before API start.
 - Railway worker service must run `python -m app.worker`.
+- Railway web service must set `RUN_SCHEDULED_JOBS_IN_WEB=false`; the worker owns scheduled jobs.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
 - Alembic head must include revision `035`.

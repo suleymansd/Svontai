@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     # Appointment reminders (background loop)
     APPOINTMENT_REMINDER_ENABLED: bool = True
     APPOINTMENT_REMINDER_INTERVAL_SECONDS: int = 60
+    RUN_SCHEDULED_JOBS_IN_WEB: bool = False
 
     # Real Estate automation scheduler
     REAL_ESTATE_AUTOMATION_ENABLED: bool = True
