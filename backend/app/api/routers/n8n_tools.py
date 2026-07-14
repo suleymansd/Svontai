@@ -205,6 +205,8 @@ class LeadUpsertRequest(BaseModel):
     tags: list[str] | None = None
     notes: str | None = None
     extra_data: dict | None = Field(default=None, alias="extraData")
+    bot_id: str | None = Field(default=None, alias="botId")
+    conversation_id: str | None = Field(default=None, alias="conversationId")
 
     # Optional: link an existing call to this lead
     call_provider: str | None = Field(default=None, alias="callProvider")
@@ -416,6 +418,29 @@ async def upsert_lead(
     phone_norm = _normalize_phone(body.phone)
     email_norm = (body.email or "").strip().lower() or None
 
+    bot_uuid: UUID | None = None
+    conversation_uuid: UUID | None = None
+    try:
+        bot_uuid = UUID(body.bot_id) if body.bot_id else None
+        conversation_uuid = UUID(body.conversation_id) if body.conversation_id else None
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bot or conversation ID") from exc
+
+    bot: Bot | None = None
+    if bot_uuid:
+        bot = db.query(Bot).filter(Bot.id == bot_uuid, Bot.tenant_id == tenant_uuid).first()
+        if bot is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
+    if conversation_uuid:
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_uuid).first()
+        if conversation is None or (bot_uuid and conversation.bot_id != bot_uuid):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+        if not bot_uuid:
+            bot = db.query(Bot).filter(Bot.id == conversation.bot_id, Bot.tenant_id == tenant_uuid).first()
+            if bot is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            bot_uuid = bot.id
+
     if not phone_norm and not email_norm:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="phone or email is required")
 
@@ -432,6 +457,8 @@ async def upsert_lead(
     if lead is None:
         lead = Lead(
             tenant_id=tenant_uuid,
+            bot_id=bot_uuid,
+            conversation_id=conversation_uuid,
             phone=phone_norm,
             email=email_norm,
             name=(body.name or None),
@@ -474,6 +501,12 @@ async def upsert_lead(
             updated = True
         if body.extra_data is not None:
             lead.extra_data = dict(body.extra_data)
+            updated = True
+        if bot_uuid is not None and bot_uuid != lead.bot_id:
+            lead.bot_id = bot_uuid
+            updated = True
+        if conversation_uuid is not None and conversation_uuid != lead.conversation_id:
+            lead.conversation_id = conversation_uuid
             updated = True
 
         if updated:

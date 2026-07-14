@@ -18,6 +18,15 @@ REMOVE_NODES = {
     "AR - Normalize Input",
     "Message a model2",
     "AR - Extract Router",
+    "Prepare PDF Input",
+    "OpenAI - PDF Summary",
+    "Gemini - PDF Summary",
+    "Build PDF Summary Response",
+    "Get many messages",
+    "Parse tool_input",
+    "HTTP Request",
+    "Upload file",
+    "Clarify Response",
 }
 RENAME_NODES = {
     "Message a model": "Gemini - Meeting Summary",
@@ -26,10 +35,9 @@ RENAME_NODES = {
 }
 PURPOSES = {
     "Gemini - Meeting Summary": "meeting_summary",
-    "Gemini - PDF Summary": "pdf_summary",
     "Gemini - Report Generator": "report_generator",
 }
-SECURITY_NODES = {"Verify Signature", "Auth OK?", "Auth Fail"}
+MANAGED_NODES = {"Verify Signature", "Auth OK?", "Auth Fail", "Unsupported Tool"}
 
 
 def _api() -> tuple[str, dict[str, str]]:
@@ -140,6 +148,19 @@ return [{ json: { ...body, authOk, authError } }];"""
     ]
 
 
+def _unsupported_node() -> dict:
+    return {
+        "id": "tool-unsupported",
+        "name": "Unsupported Tool",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [250, 650],
+        "parameters": {
+            "jsCode": "return [{json:{request_id:$json.request_id||'',success:false,data:{},error:{message:`Unsupported or unavailable tool: ${$json.tool_slug||'unknown'}`,code:'UNSUPPORTED_TOOL_SLUG'},usage:{time_ms:0,tokens:null,cost:null},artifacts:[]}}];"
+        },
+    }
+
+
 def _rename_connections(connections: dict) -> dict:
     renamed = {}
     for source, outputs in connections.items():
@@ -163,7 +184,7 @@ def _rename_connections(connections: dict) -> dict:
 def migrate(workflow: dict) -> dict:
     nodes = []
     for original in workflow["nodes"]:
-        if original["name"] in REMOVE_NODES or original["name"] in SECURITY_NODES:
+        if original["name"] in REMOVE_NODES or original["name"] in MANAGED_NODES:
             continue
         node = dict(original)
         node["name"] = RENAME_NODES.get(node["name"], node["name"])
@@ -175,6 +196,7 @@ def migrate(workflow: dict) -> dict:
         nodes.append(node)
 
     nodes.extend(_security_nodes())
+    nodes.append(_unsupported_node())
     connections = _rename_connections(workflow["connections"])
     connections["Webhook"] = {"main": [[{"node": "Verify Signature", "type": "main", "index": 0}]]}
     connections["Verify Signature"] = {"main": [[{"node": "Auth OK?", "type": "main", "index": 0}]]}
@@ -185,6 +207,18 @@ def migrate(workflow: dict) -> dict:
         ]
     }
     connections["Auth Fail"] = {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]}
+    connections["Switch"] = {
+        "main": [
+            [{"node": "Prepare Meeting Input", "type": "main", "index": 0}],
+            [{"node": "Unsupported Tool", "type": "main", "index": 0}],
+            [{"node": "Unsupported Tool", "type": "main", "index": 0}],
+            [{"node": "Unsupported Tool", "type": "main", "index": 0}],
+            [{"node": "Edit Fields", "type": "main", "index": 0}],
+            [{"node": "Unsupported Tool", "type": "main", "index": 0}],
+            [{"node": "Unsupported Tool", "type": "main", "index": 0}],
+        ]
+    }
+    connections["Unsupported Tool"] = {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]}
 
     replacements = {**RENAME_NODES, "Edit Fields2": "Verify Signature"}
     for node in nodes:

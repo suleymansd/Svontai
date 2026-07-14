@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.tool_capabilities import N8N_RUNNER_SUPPORTED_TOOL_SLUGS
 from app.models.tool import Tool
 
 
@@ -171,7 +172,7 @@ INITIAL_TOOL_DEFINITIONS: list[dict] = [
         "name": "Meeting Summary",
         "description": "Toplantı notlarını aksiyon maddeleriyle özetler.",
         "category": "productivity",
-        "required_integrations_json": ["openai"],
+        "required_integrations_json": ["ai_provider"],
         "required_plan": "premium",
     },
     {
@@ -198,7 +199,7 @@ INITIAL_TOOL_DEFINITIONS: list[dict] = [
         "name": "Report Generator",
         "description": "Verilerden özet rapor üretir.",
         "category": "analytics",
-        "required_integrations_json": ["openai"],
+        "required_integrations_json": ["ai_provider"],
         "required_plan": "enterprise",
     },
 ]
@@ -208,6 +209,7 @@ def seed_initial_tools(db: Session) -> dict:
     created = 0
     updated = 0
     for item in INITIAL_TOOL_DEFINITIONS:
+        is_implemented = item["slug"] in N8N_RUNNER_SUPPORTED_TOOL_SLUGS
         tool = db.query(Tool).filter(Tool.key == item["key"]).first()
         if not tool:
             tool = Tool(
@@ -216,9 +218,9 @@ def seed_initial_tools(db: Session) -> dict:
                 name=item["name"],
                 description=item["description"],
                 category=item["category"],
-                status="active",
+                status="active" if is_implemented else "draft",
                 is_public=True,
-                coming_soon=False,
+                coming_soon=not is_implemented,
                 is_premium=item.get("required_plan") in {"premium", "enterprise"},
                 required_plan=item.get("required_plan"),
                 required_integrations_json=item["required_integrations_json"],
@@ -238,10 +240,9 @@ def seed_initial_tools(db: Session) -> dict:
             tool.required_integrations_json = item["required_integrations_json"]
             tool.input_schema_json = item.get("input_schema_json", tool.input_schema_json or {})
             tool.output_schema_json = item.get("output_schema_json", tool.output_schema_json or {})
-            if item.get("n8n_workflow_id"):
-                tool.n8n_workflow_id = item["n8n_workflow_id"]
-            if tool.status not in {"active", "draft", "disabled"}:
-                tool.status = "active"
+            tool.n8n_workflow_id = item.get("n8n_workflow_id") if is_implemented else None
+            tool.coming_soon = not is_implemented
+            tool.status = "active" if is_implemented else "draft"
             updated += 1
 
     db.commit()

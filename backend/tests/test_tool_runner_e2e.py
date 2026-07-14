@@ -20,18 +20,13 @@ from app.services.tool_seed_service import seed_initial_tools
 
 TOOL_CASES = [
     {
-        "slug": "pdf_to_word",
-        "input": {"pdf_url": "https://example.com/source.pdf", "output_name": "offer"},
-        "expected_data_key": "document_url",
+        "slug": "meeting_summary",
+        "input": {"text": "Toplantı notları"},
+        "expected_data_key": "summary",
     },
     {
-        "slug": "drive_save_file",
-        "input": {"file_url": "https://example.com/source.pdf", "file_name": "source.pdf"},
-        "expected_data_key": "drive_file_url",
-    },
-    {
-        "slug": "gmail_summary",
-        "input": {"query": "from:client@example.com", "max_messages": 5},
+        "slug": "report_generator",
+        "input": {"text": "Aylık performans verileri"},
         "expected_data_key": "summary",
     },
 ]
@@ -191,6 +186,7 @@ def test_tools_marketplace_endpoints_and_run_detail(client, monkeypatch):
     db = session_module.SessionLocal()
     try:
         seed_initial_tools(db)
+        SubscriptionService(db).upgrade_plan(UUID(tenant_id), "enterprise")
     finally:
         db.close()
 
@@ -220,8 +216,8 @@ def test_tools_marketplace_endpoints_and_run_detail(client, monkeypatch):
 
         run_payload = {
             "requestId": "marketplace-run-001",
-            "toolSlug": "pdf_summary",
-            "toolInput": {"pdf_url": "https://example.com/source.pdf"},
+            "toolSlug": "meeting_summary",
+            "toolInput": {"text": "Toplantı notları"},
             "context": {"locale": "tr-TR", "timezone": "Europe/Istanbul", "channel": "web", "memory": {}},
         }
         run_resp = client.post("/tools/run", json=run_payload, headers=headers)
@@ -274,7 +270,7 @@ def test_integrations_status_endpoint(client):
     response = client.get("/integrations/status", headers=headers)
     assert response.status_code == 200, response.text
     payload = response.json()
-    for key in ["google_drive", "gmail", "google_sheets", "google_calendar", "openai", "document_converter", "whatsapp_cloud", "n8n"]:
+    for key in ["google_drive", "gmail", "google_sheets", "google_calendar", "openai", "ai_provider", "document_converter", "whatsapp_cloud", "n8n"]:
         assert key in payload
         assert payload[key]["status"] in ("connected", "missing", "expired")
 
@@ -322,7 +318,7 @@ def test_premium_tool_gating_for_free_plan(client):
     db = session_module.SessionLocal()
     try:
         seed_initial_tools(db)
-        premium_tool = db.query(Tool).filter(Tool.slug == "gmail_summary").first()
+        premium_tool = db.query(Tool).filter(Tool.slug == "meeting_summary").first()
         assert premium_tool is not None
         premium_tool.is_premium = True
         db.commit()
@@ -331,8 +327,8 @@ def test_premium_tool_gating_for_free_plan(client):
 
     payload = {
         "requestId": "premium-gating-001",
-        "toolSlug": "gmail_summary",
-        "toolInput": {"query": "from:test@example.com"},
+        "toolSlug": "meeting_summary",
+        "toolInput": {"text": "Toplantı notları"},
         "context": {"locale": "tr-TR", "timezone": "Europe/Istanbul", "channel": "web", "memory": {}},
     }
     response = client.post("/tools/run", json=payload, headers=headers)

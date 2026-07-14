@@ -21,9 +21,11 @@ def test_seed_initial_tools_creates_agent_router_once(client):
         tool = db.query(Tool).filter(Tool.slug == "agent_router").first()
         assert tool is not None
         assert tool.key == "agent_router"
-        assert tool.n8n_workflow_id == "svontai-tool-runner"
+        assert tool.n8n_workflow_id is None
         assert tool.required_plan == "free"
         assert tool.required_integrations_json == ["openai"]
+        assert tool.status == "draft"
+        assert tool.coming_soon is True
 
         total = db.query(Tool).filter(Tool.slug == "agent_router").count()
         assert total == 1

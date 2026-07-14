@@ -7,6 +7,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.plans import PLAN_MONTHLY_TOOL_RUN_LIMITS
 from app.models.subscription import TenantSubscription
+from app.models.tool import Tool
 from app.models.tool_run import ToolRun
 from app.services.payment_service import CheckoutSessionResult, PaymentService
 from app.services.tool_seed_service import seed_initial_tools
@@ -63,12 +64,15 @@ def test_monthly_limit_enforced_for_tools_run(client):
         db = session_module.SessionLocal()
         try:
             seed_initial_tools(db)
+            tool = db.query(Tool).filter(Tool.slug == "meeting_summary").one()
+            tool.required_plan = "free"
+            tool.is_premium = False
             db.add(
                 ToolRun(
                     request_id="already-used-run",
                     tenant_id=UUID(tenant_id),
                     user_id=None,
-                    tool_slug="pdf_summary",
+                    tool_slug="meeting_summary",
                     status="success",
                     tool_input_json={},
                     output_json={"summary": "done"},
@@ -83,8 +87,8 @@ def test_monthly_limit_enforced_for_tools_run(client):
 
         payload = {
             "requestId": "new-run-over-limit",
-            "toolSlug": "pdf_summary",
-            "toolInput": {"pdf_url": "https://example.com/source.pdf"},
+            "toolSlug": "meeting_summary",
+            "toolInput": {"text": "Toplanti notlari"},
             "context": {"locale": "tr-TR", "timezone": "Europe/Istanbul", "channel": "web", "memory": {}},
         }
         response = client.post("/tools/run", json=payload, headers=headers)

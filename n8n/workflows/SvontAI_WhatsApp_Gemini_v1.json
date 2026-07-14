@@ -102,7 +102,7 @@
         ]},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"phone\":$node[\"Normalize\"].json.from,\"source\":\"whatsapp\",\"status\":\"new\"}",
+        "jsonBody": "={{ { tenantId: $node[\"Normalize\"].json.tenantId, phone: $node[\"Normalize\"].json.from, source: 'whatsapp', status: 'new', botId: $node[\"Normalize\"].json.metadata?.bot_id, conversationId: $node[\"Normalize\"].json.metadata?.conversation_id } }}",
         "options": {"timeout": 10000}
       }
     },
@@ -122,7 +122,7 @@
         ]},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"botId\":$node[\"Normalize\"].json.metadata.bot_id || $node[\"Normalize\"].json.extra.bot_id,\"conversationId\":$node[\"Normalize\"].json.metadata.conversation_id || $node[\"Normalize\"].json.extra.conversation_id,\"message\":$node[\"Normalize\"].json.text}",
+        "jsonBody": "={{ { tenantId: $node[\"Normalize\"].json.tenantId, botId: $node[\"Normalize\"].json.metadata?.bot_id, conversationId: $node[\"Normalize\"].json.metadata?.conversation_id, message: $node[\"Normalize\"].json.text } }}",
         "options": {"timeout": 30000}
       }
     },
@@ -155,7 +155,7 @@
         ]},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"tenantId\":$node[\"Normalize\"].json.tenantId,\"to\":$node[\"Normalize\"].json.from,\"text\":$node[\"Generate Gemini Reply\"].json.replyText,\"botId\":$node[\"Normalize\"].json.metadata.bot_id || $node[\"Normalize\"].json.extra.bot_id,\"meta\":{\"runId\":$node[\"Normalize\"].json.runId,\"n8nExecutionId\":$execution.id}}",
+        "jsonBody": "={{ { tenantId: $node[\"Normalize\"].json.tenantId, to: $node[\"Normalize\"].json.from, text: $node[\"Generate Gemini Reply\"].json.replyText, botId: $node[\"Normalize\"].json.metadata?.bot_id, meta: { runId: $node[\"Normalize\"].json.runId, n8nExecutionId: $execution.id } } }}",
         "options": {"timeout": 20000}
       }
     },

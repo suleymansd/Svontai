@@ -56,6 +56,7 @@ class IntegrationStatusResponse(BaseModel):
     google_drive: IntegrationStatusItem
     gmail: IntegrationStatusItem
     openai: IntegrationStatusItem
+    ai_provider: IntegrationStatusItem
     google_sheets: IntegrationStatusItem
     document_converter: IntegrationStatusItem
     whatsapp_cloud: IntegrationStatusItem
@@ -162,7 +163,9 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
         ),
+        # Keep ``openai`` for older clients while tools use the provider-neutral key.
         openai=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
+        ai_provider=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
         document_converter=IntegrationStatusItem(status="connected" if document_converter_connected else "missing"),
         whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_connected else "missing"),
         n8n=IntegrationStatusItem(status="connected" if n8n_connected else "missing"),

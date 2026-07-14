@@ -195,6 +195,46 @@ class TestWebhookTimeout:
         assert elapsed < 0.1, f"Adding background task took {elapsed}s"
 
 
+class TestWorkflowResultHandling:
+    @pytest.mark.asyncio
+    async def test_business_failure_is_not_marked_success(self):
+        from app.services.n8n_client import N8NClient
+
+        mock_db = MagicMock()
+        run = MagicMock()
+        run.id = uuid.uuid4()
+        response = MagicMock()
+        response.content = b'{"success":false}'
+        response.json.return_value = {
+            "success": False,
+            "executionId": "exec-failed",
+            "error": {"message": "provider unavailable", "code": "PROVIDER_DOWN"},
+        }
+        response.raise_for_status.return_value = None
+
+        http_client = AsyncMock()
+        http_client.post.return_value = response
+        context = AsyncMock()
+        context.__aenter__.return_value = http_client
+        context.__aexit__.return_value = None
+
+        service = N8NClient(mock_db)
+        with patch.object(service, "get_n8n_url", return_value="https://n8n.example.com"), patch(
+            "app.services.n8n_client.httpx.AsyncClient",
+            return_value=context,
+        ):
+            result = await service.trigger_workflow(
+                workflow_id="secure-workflow",
+                payload={"event": "test"},
+                tenant_id=uuid.uuid4(),
+                run=run,
+            )
+
+        assert result["success"] is False
+        run.mark_failed.assert_called_once_with("provider unavailable", response.json.return_value)
+        run.mark_success.assert_not_called()
+
+
 class TestProductionSecretValidation:
     """Test production secret validation."""
     

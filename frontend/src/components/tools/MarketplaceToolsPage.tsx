@@ -76,6 +76,12 @@ type IntegrationStatusItem = {
 type IntegrationStatusMap = Record<string, IntegrationStatusItem>
 
 const TOOL_FORM_DEFAULTS: Record<string, Record<string, string>> = {
+  meeting_summary: {
+    text: '',
+  },
+  report_generator: {
+    text: '',
+  },
   pdf_summary: {
     pdf_url: '',
     base64_pdf: '',
@@ -162,7 +168,7 @@ export default function MarketplaceToolsPage() {
   const { toast } = useToast()
   const { entitlements } = useAuthStore()
   const queryClient = useQueryClient()
-  const [activeToolSlug, setActiveToolSlug] = useState<string>('pdf_summary')
+  const [activeToolSlug, setActiveToolSlug] = useState<string>('meeting_summary')
   const [formState, setFormState] = useState<Record<string, Record<string, string>>>({
     ...TOOL_FORM_DEFAULTS,
   })
@@ -687,6 +693,10 @@ export default function MarketplaceToolsPage() {
 }
 
 function buildToolInput(toolSlug: string, values: Record<string, string>) {
+  if (toolSlug === 'meeting_summary' || toolSlug === 'report_generator') {
+    return { text: values.text?.trim() || '' }
+  }
+
   if (toolSlug === 'pdf_summary') {
     const payload: Record<string, unknown> = {
       language: values.language || 'tr',
@@ -738,6 +748,24 @@ function ToolInputFields({
   values: Record<string, string>
   onChange: (key: string, value: string) => void
 }) {
+  if (toolSlug === 'meeting_summary' || toolSlug === 'report_generator') {
+    return (
+      <div className="space-y-2">
+        <Label>{toolSlug === 'meeting_summary' ? 'Toplantı Notları' : 'Rapor Verisi'}</Label>
+        <Textarea
+          rows={10}
+          value={values.text || ''}
+          onChange={(e) => onChange('text', e.target.value)}
+          placeholder={
+            toolSlug === 'meeting_summary'
+              ? 'Toplantı konuşmasını veya notlarını buraya yazın.'
+              : 'Raporlanacak verileri ve bulguları buraya yazın.'
+          }
+        />
+      </div>
+    )
+  }
+
   if (toolSlug === 'pdf_summary') {
     return (
       <div className="space-y-3">
@@ -820,7 +848,7 @@ function ToolInputFields({
 
   return (
     <p className="text-sm text-muted-foreground">
-      Bu tool için özel form tanımlı değil. Sadece ilk 4 tool destekleniyor.
+      Bu araç henüz kullanıma hazır değil.
     </p>
   )
 }

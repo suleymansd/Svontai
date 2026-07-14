@@ -331,14 +331,16 @@ async def lifespan(app: FastAPI):
     from app.db.session import SessionLocal
     from app.services.subscription_service import SubscriptionService
     from app.services.rbac_service import RbacService
+    from app.services.tool_seed_service import seed_initial_tools
     
     try:
         db = SessionLocal()
         service = SubscriptionService(db)
         service.get_or_create_free_plan()
         RbacService(db).ensure_defaults()
+        seed_initial_tools(db)
         db.close()
-        logger.info("Default plans initialized")
+        logger.info("Default plans, RBAC and tool catalog initialized")
     except Exception as e:
         logger.warning(f"Could not initialize plans: {e}")
 

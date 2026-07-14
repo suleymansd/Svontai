@@ -495,6 +495,22 @@ class N8NClient:
                 if n8n_execution_id:
                     run.n8n_execution_id = n8n_execution_id
 
+                if response_data.get("success") is False:
+                    raw_error = response_data.get("error")
+                    if isinstance(raw_error, dict):
+                        error_message = str(raw_error.get("message") or raw_error.get("code") or "n8n workflow failed")
+                    else:
+                        error_message = str(raw_error or "n8n workflow failed")
+                    run.mark_failed(error_message, response_data)
+                    self.db.commit()
+                    logger.warning(
+                        "n8n workflow returned a business failure. Run: %s, Execution: %s, Error: %s",
+                        run.id,
+                        n8n_execution_id,
+                        error_message,
+                    )
+                    return response_data
+
                 run.mark_success(response_data)
                 self.db.commit()
 

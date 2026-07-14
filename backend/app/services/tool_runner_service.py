@@ -115,7 +115,12 @@ class ToolRunnerService:
 
         if tenant_tool is not None:
             return (
-                bool(tenant_tool.enabled and access_by_plan),
+                bool(
+                    tenant_tool.enabled
+                    and tool.status == "active"
+                    and not tool.coming_soon
+                    and access_by_plan
+                ),
                 tenant_tool.rate_limit_per_minute if tenant_tool.rate_limit_per_minute is not None else default_rate_limit,
                 required_plan,
             )
@@ -449,6 +454,8 @@ class ToolRunnerService:
             raise ValueError("Tool not found")
 
         tool_slug = tool.slug or tool.key
+        if tool.status != "active" or tool.coming_soon:
+            raise ValueError("Tool is not available")
         tenant_plan_type, _ = self._get_tenant_plan_context(tenant_id)
         required_plan = self._resolve_tool_required_plan(tool)
         if not plan_meets_requirement(tenant_plan_type, required_plan):
