@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     
     # Webhook Configuration
     WEBHOOK_PUBLIC_URL: str = "http://localhost:8000"  # Your public URL for webhooks
+    WEBHOOK_USERNAME: str = ""
+    WEBHOOK_PASSWORD: str = ""
     
     # Encryption
     ENCRYPTION_KEY: str = ""  # 32-byte base64 encoded key, generated if not set
@@ -277,6 +279,8 @@ class Settings(BaseSettings):
         missing_real_time_config: list[str] = []
         if not self.OPENAI_API_KEY.strip():
             missing_real_time_config.append("OPENAI_API_KEY")
+        if not self.WEBHOOK_USERNAME.strip() or not self.WEBHOOK_PASSWORD.strip():
+            missing_real_time_config.append("WEBHOOK_USERNAME/WEBHOOK_PASSWORD")
         if not self.EMAIL_ENABLED:
             missing_real_time_config.append("EMAIL_ENABLED=true")
         if self.EMAIL_PROVIDER == "resend" and not self.RESEND_API_KEY.strip():

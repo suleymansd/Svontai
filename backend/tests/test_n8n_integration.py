@@ -20,6 +20,8 @@ def _prod_real_service_settings(**overrides):
         "JWT_SECRET_KEY": "secure-jwt-key-32-chars-minimum!",
         "VOICE_GATEWAY_TO_SVONTAI_SECRET": "secure-voice-gateway-secret!",
         "OPENAI_API_KEY": "sk-prod-test-key",
+        "WEBHOOK_USERNAME": "prod-webhook-user",
+        "WEBHOOK_PASSWORD": "prod-webhook-password",
         "EMAIL_ENABLED": True,
         "EMAIL_PROVIDER": "resend",
         "RESEND_API_KEY": "re_live_test",
