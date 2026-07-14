@@ -49,7 +49,7 @@
       "parameters": {
         "conditions": {
           "options": {"caseSensitive": true, "typeValidation": "strict"},
-          "conditions": [{"leftValue": "={{ $json.authOk }}", "rightValue": true, "operator": {"type": "boolean", "operation": "isEqual"}}]
+          "conditions": [{"leftValue": "={{ $json.authOk }}", "rightValue": "", "operator": {"type": "boolean", "operation": "true", "singleValue": true}}]
         }
       }
     },
@@ -64,11 +64,34 @@
       }
     },
     {
+      "id": "wa-health-if",
+      "name": "Health Check?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [0, -100],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "typeValidation": "strict"},
+          "conditions": [{"leftValue": "={{ $json.eventType }}", "rightValue": "health_check", "operator": {"type": "string", "operation": "equals"}}]
+        }
+      }
+    },
+    {
+      "id": "wa-health-ok",
+      "name": "Health OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, -220],
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, health: 'ok' } }];"
+      }
+    },
+    {
       "id": "wa-lead",
       "name": "Upsert Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [0, -100],
+      "position": [240, -20],
       "parameters": {
         "method": "POST",
         "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.leads_upsert }}",
@@ -88,7 +111,7 @@
       "name": "Generate Gemini Reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [240, -100],
+      "position": [480, -20],
       "parameters": {
         "method": "POST",
         "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.ai_reply }}",
@@ -108,11 +131,11 @@
       "name": "Should Reply?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [480, -100],
+      "position": [720, -20],
       "parameters": {
         "conditions": {
           "options": {"caseSensitive": true, "typeValidation": "strict"},
-          "conditions": [{"leftValue": "={{ $json.shouldReply }}", "rightValue": true, "operator": {"type": "boolean", "operation": "isEqual"}}]
+          "conditions": [{"leftValue": "={{ $json.shouldReply }}", "rightValue": "", "operator": {"type": "boolean", "operation": "true", "singleValue": true}}]
         }
       }
     },
@@ -121,7 +144,7 @@
       "name": "Send WhatsApp Reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [720, -180],
+      "position": [960, -100],
       "parameters": {
         "method": "POST",
         "url": "={{ $node[\"Normalize\"].json.svontai.endpoints.whatsapp_send }}",
@@ -141,7 +164,7 @@
       "name": "Reply Skipped",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 20],
+      "position": [960, 100],
       "parameters": {
         "jsCode": "return [{ json: { success: true, skipped: true } }];"
       }
@@ -151,7 +174,7 @@
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [980, 0],
+      "position": [1200, 0],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { success: $json.success !== false && $json.ok !== false, executionId: $execution.id, error: $json.error || null } }}",
@@ -163,8 +186,10 @@
     "Webhook Trigger": {"main": [[{"node": "Normalize", "type": "main", "index": 0}]]},
     "Normalize": {"main": [[{"node": "Verify Signature", "type": "main", "index": 0}]]},
     "Verify Signature": {"main": [[{"node": "Auth OK?", "type": "main", "index": 0}]]},
-    "Auth OK?": {"main": [[{"node": "Upsert Lead", "type": "main", "index": 0}], [{"node": "Auth Fail", "type": "main", "index": 0}]]},
+    "Auth OK?": {"main": [[{"node": "Health Check?", "type": "main", "index": 0}], [{"node": "Auth Fail", "type": "main", "index": 0}]]},
     "Auth Fail": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Health Check?": {"main": [[{"node": "Health OK", "type": "main", "index": 0}], [{"node": "Upsert Lead", "type": "main", "index": 0}]]},
+    "Health OK": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
     "Upsert Lead": {"main": [[{"node": "Generate Gemini Reply", "type": "main", "index": 0}]]},
     "Generate Gemini Reply": {"main": [[{"node": "Should Reply?", "type": "main", "index": 0}]]},
     "Should Reply?": {"main": [[{"node": "Send WhatsApp Reply", "type": "main", "index": 0}], [{"node": "Reply Skipped", "type": "main", "index": 0}]]},
