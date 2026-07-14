@@ -29,6 +29,7 @@ PURPOSES = {
     "Gemini - PDF Summary": "pdf_summary",
     "Gemini - Report Generator": "report_generator",
 }
+SECURITY_NODES = {"Verify Signature", "Auth OK?", "Auth Fail"}
 
 
 def _api() -> tuple[str, dict[str, str]]:
@@ -58,33 +59,37 @@ def _http_parameters(purpose: str) -> dict:
     )
     return {
         "method": "POST",
-        "url": f"={{ {source}.svontai.endpoints.ai_generate }}",
+        "url": "={{ " + source + ".svontai.endpoints.ai_generate }}",
         "sendHeaders": True,
         "headerParameters": {
             "parameters": [
-                {"name": "Authorization", "value": f"=Bearer {{{{ {source}.svontai.token }}}}"},
-                {"name": "X-Tenant-Id", "value": f"={{ {source}.tenant_id }}"},
+                {"name": "Authorization", "value": "=Bearer {{ " + source + ".svontai.token }}"},
+                {"name": "X-Tenant-Id", "value": "={{ " + source + ".tenant_id }}"},
                 {"name": "Content-Type", "value": "application/json"},
             ]
         },
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": (
-            f'={{"tenantId":{source}.tenant_id,"purpose":"{purpose}",'
-            f'"text":{text_expression[3:-3]}}}'
+            "={{ { tenantId: "
+            + source
+            + f".tenant_id, purpose: '{purpose}', text: "
+            + text_expression[3:-3]
+            + " } }}"
         ),
         "options": {"timeout": 60000},
     }
 
 
 def _security_nodes() -> list[dict]:
-    verify_code = """const crypto = require('crypto');
+    verify_code = r"""const crypto = require('crypto');
 const req = $input.first().json || {};
 let body = req.body || {};
 if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
 const headers = req.headers || {};
 const header = (name) => { const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase()); return key ? headers[key] : undefined; };
 const stable = (obj) => { if (obj === null || obj === undefined || typeof obj !== 'object') return obj; if (Array.isArray(obj)) return obj.map(stable); const out = {}; for (const key of Object.keys(obj).sort()) out[key] = stable(obj[key]); return out; };
+const canonical = (obj) => JSON.stringify(stable(obj)).replace(/[^\x00-\x7F]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const timestamp = Number(header('X-SvontAI-Timestamp'));
 const signature = String(header('X-SvontAI-Signature') || '');
 const secret = $env.SVONTAI_TO_N8N_SECRET || '';
@@ -92,7 +97,7 @@ let authOk = false; let authError = '';
 if (!secret) authError = 'Missing shared secret';
 else if (!Number.isFinite(timestamp) || !signature) authError = 'Missing signature headers';
 else if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) authError = 'Signature expired';
-else { const payload = JSON.stringify(stable(body)); const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${payload}`, 'utf8').digest('hex'); const a = Buffer.from(signature); const e = Buffer.from(expected); authOk = a.length === e.length && crypto.timingSafeEqual(a, e); if (!authOk) authError = 'Invalid signature'; }
+else { const payload = canonical(body); const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${payload}`, 'utf8').digest('hex'); const a = Buffer.from(signature); const e = Buffer.from(expected); authOk = a.length === e.length && crypto.timingSafeEqual(a, e); if (!authOk) authError = 'Invalid signature'; }
 return [{ json: { ...body, authOk, authError } }];"""
     return [
         {
@@ -158,7 +163,7 @@ def _rename_connections(connections: dict) -> dict:
 def migrate(workflow: dict) -> dict:
     nodes = []
     for original in workflow["nodes"]:
-        if original["name"] in REMOVE_NODES:
+        if original["name"] in REMOVE_NODES or original["name"] in SECURITY_NODES:
             continue
         node = dict(original)
         node["name"] = RENAME_NODES.get(node["name"], node["name"])
@@ -181,7 +186,7 @@ def migrate(workflow: dict) -> dict:
     }
     connections["Auth Fail"] = {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]}
 
-    replacements = {**RENAME_NODES}
+    replacements = {**RENAME_NODES, "Edit Fields2": "Verify Signature"}
     for node in nodes:
         raw = json.dumps(node.get("parameters", {}), ensure_ascii=False)
         for old, new in replacements.items():
@@ -192,7 +197,7 @@ def migrate(workflow: dict) -> dict:
         "name": workflow["name"],
         "nodes": nodes,
         "connections": connections,
-        "settings": workflow.get("settings", {}),
+        "settings": {"executionOrder": workflow.get("settings", {}).get("executionOrder", "v1")},
     }
 
 
@@ -206,6 +211,8 @@ def main() -> int:
             print({"mode": "dry-run", "id": workflow["id"], "active": workflow["active"], "ai_nodes": ai_nodes})
             return 0
         response = client.put(f"{base_url}/api/v1/workflows/{workflow['id']}", headers=headers, json=payload)
+        if response.is_error:
+            print({"status": response.status_code, "body": response.text[:1000]})
         response.raise_for_status()
         updated = response.json()
         print({"mode": "apply", "id": updated["id"], "active": updated["active"], "name": updated["name"]})
