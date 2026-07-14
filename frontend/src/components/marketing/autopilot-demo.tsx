@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react'
 import {
   Bot,
+  BrainCircuit,
   CalendarCheck,
   Check,
-  MessageCircle,
+  Send,
   Sparkles,
   UserPlus,
   Wifi,
@@ -58,45 +59,82 @@ export function AutopilotDemo() {
           ))}
         </div>
 
-        <div className="grid h-[305px] grid-cols-1 gap-3 sm:h-[calc(100%-64px)] sm:grid-cols-[1.5fr_0.8fr]">
-          <section className="relative overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <header className="flex h-12 items-center justify-between border-b border-slate-100 px-3 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                  <MessageCircle className="h-3.5 w-3.5" />
+        <div className="grid h-[330px] grid-cols-1 gap-3 sm:h-[calc(100%-64px)] sm:grid-cols-[1.5fr_0.8fr]">
+          <section className="relative overflow-hidden rounded-md border border-slate-200 bg-white p-3 shadow-sm sm:p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="grid h-full grid-cols-[0.85fr_1.15fr] items-center gap-3 sm:gap-5">
+              <div className="sv-demo-phone relative mx-auto h-[274px] w-[142px] rounded-[24px] border-[5px] border-slate-900 bg-[#efeae2] shadow-xl sm:h-[310px] sm:w-[164px]">
+                <div className="absolute left-1/2 top-0 z-20 h-3 w-14 -translate-x-1/2 rounded-b-xl bg-slate-900" />
+                <div className="flex h-11 items-end gap-1.5 bg-[#075e54] px-2 pb-1.5 text-white">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15">
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[8px] font-semibold sm:text-[9px]">SvontAI İşletme</p>
+                    <p className="text-[7px] text-emerald-100">çevrimiçi</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-900 sm:text-xs dark:text-white">WhatsApp görüşmesi</p>
-                  <p className="text-[9px] text-emerald-600 sm:text-[10px]">AI asistan yanıtlıyor</p>
+
+                <div className="sv-demo-phone-chat relative h-[calc(100%-68px)] overflow-hidden px-2 py-3">
+                  <div className="sv-demo-reveal ml-auto max-w-[92%] rounded-md rounded-tr-sm bg-[#d9fdd3] px-2 py-1.5 text-[8px] leading-snug text-slate-800 shadow-sm sm:text-[9px]" style={{ '--demo-step': 1 } as CSSProperties}>
+                    Yarın 14.00 için randevu alabilir miyim?
+                    <span className="mt-0.5 block text-right text-[6px] text-slate-500">12:42 ✓✓</span>
+                  </div>
+
+                  <div className="sv-demo-thinking sv-demo-reveal mt-2 flex w-fit items-center gap-1 rounded-md bg-white px-2 py-1.5 shadow-sm" style={{ '--demo-step': 2 } as CSSProperties} aria-label="AI yanıt hazırlıyor">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+
+                  <div className="sv-demo-reveal mt-2 max-w-[94%] rounded-md rounded-tl-sm bg-white px-2 py-1.5 text-[8px] leading-snug text-slate-800 shadow-sm sm:text-[9px]" style={{ '--demo-step': 4 } as CSSProperties}>
+                    Tabii. Randevunuz yarın 14.00 için oluşturuldu.
+                    <span className="mt-0.5 block text-right text-[6px] text-slate-400">12:42</span>
+                  </div>
+
+                  <div className="sv-demo-reveal mt-2 flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1.5 text-[7px] font-medium text-emerald-700" style={{ '--demo-step': 6 } as CSSProperties}>
+                    <CalendarCheck className="h-3 w-3" /> Takvime eklendi
+                  </div>
+                </div>
+
+                <div className="absolute bottom-1.5 left-2 right-2 flex h-6 items-center rounded-full bg-white px-2 shadow-sm">
+                  <span className="text-[6px] text-slate-400">Mesaj</span>
+                  <Send className="ml-auto h-2.5 w-2.5 text-[#075e54]" />
                 </div>
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] text-slate-500 dark:bg-slate-800">Canlı akış</span>
-            </header>
 
-            <div className="space-y-3 p-3 sm:p-4">
-              <div className="sv-demo-message sv-demo-reveal ml-auto max-w-[82%] rounded-md rounded-br-sm bg-emerald-100 px-3 py-2 text-[10px] leading-relaxed text-emerald-950 sm:text-xs" style={{ '--demo-step': 1 } as CSSProperties}>
-                Yarın saat 14.00 için randevu alabilir miyim?
-                <span className="mt-1 block text-right text-[8px] text-emerald-700">12:42 ✓✓</span>
+              <div className="relative flex h-full min-w-0 flex-col justify-center">
+                <div className="sv-demo-flow-track absolute -left-5 top-1/2 hidden h-px w-8 bg-blue-200 sm:block">
+                  <span className="sv-demo-flow-dot" />
+                </div>
+
+                <div className="mb-3 text-center">
+                  <div className="sv-demo-ai-core relative mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/25 sm:h-16 sm:w-16">
+                    <BrainCircuit className="h-7 w-7 sm:h-8 sm:w-8" />
+                    <span className="absolute inset-[-7px] rounded-full border border-blue-400/40" />
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-900 sm:text-xs dark:text-white">SvontAI Otonom Motor</p>
+                  <p className="text-[8px] text-slate-500 sm:text-[9px]">Mesajı anlar ve işlemi tamamlar</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  {[
+                    ['Mesaj anlaşıldı', 2],
+                    ['Uygun saat kontrol edildi', 3],
+                    ['Yanıt ve randevu hazırlandı', 4],
+                  ].map(([label, step]) => (
+                    <div key={label} className="sv-demo-reveal flex min-w-0 items-center gap-2 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5 dark:border-slate-800 dark:bg-slate-950" style={{ '--demo-step': step } as CSSProperties}>
+                      <span className="sv-demo-check flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                        <Check className="h-2.5 w-2.5" />
+                      </span>
+                      <span className="truncate text-[8px] font-medium text-slate-700 sm:text-[9px] dark:text-slate-200">{label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="sv-demo-reveal mt-2 flex items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 py-1.5 text-[8px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" style={{ '--demo-step': 7 } as CSSProperties}>
+                  <Check className="h-3 w-3" /> Tam otonom tamamlandı
+                </div>
               </div>
-
-              <div className="sv-demo-thinking sv-demo-reveal flex w-fit items-center gap-1 rounded-md bg-slate-100 px-3 py-2 dark:bg-slate-800" style={{ '--demo-step': 2 } as CSSProperties} aria-label="AI yanıt hazırlıyor">
-                <span />
-                <span />
-                <span />
-              </div>
-
-              <div className="sv-demo-reveal max-w-[86%] rounded-md rounded-bl-sm bg-blue-600 px-3 py-2 text-[10px] leading-relaxed text-white shadow-md shadow-blue-600/10 sm:text-xs" style={{ '--demo-step': 4 } as CSSProperties}>
-                Elbette. Yarın 14.00 için randevunuzu oluşturdum. Görüşmek üzere.
-                <span className="mt-1 flex items-center justify-end gap-1 text-[8px] text-blue-100">
-                  <Bot className="h-2.5 w-2.5" /> SvontAI · 12:42
-                </span>
-              </div>
-            </div>
-
-            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-              <Bot className="h-3.5 w-3.5 text-blue-600" />
-              <span className="text-[9px] text-slate-500 sm:text-[10px]">SvontAI konuşmayı ve aksiyonları yönetiyor</span>
-              <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </div>
           </section>
 

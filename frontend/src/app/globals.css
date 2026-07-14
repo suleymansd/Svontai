@@ -300,6 +300,22 @@
   30% { transform: translateY(-3px); opacity: 1; }
 }
 
+@keyframes sv-demo-phone-float {
+  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+  50% { transform: translateY(-5px) rotate(0.6deg); }
+}
+
+@keyframes sv-demo-core-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgb(37 99 235 / 0.22); }
+  50% { box-shadow: 0 8px 34px rgb(37 99 235 / 0.48); }
+}
+
+@keyframes sv-demo-flow {
+  0% { left: 0; opacity: 0; }
+  20%, 80% { opacity: 1; }
+  100% { left: calc(100% - 6px); opacity: 0; }
+}
+
 .sv-demo-reveal {
   --demo-step: 0;
   opacity: 0;
@@ -318,6 +334,32 @@
 .sv-demo-thinking span:nth-child(2) { animation-delay: 0.15s; }
 .sv-demo-thinking span:nth-child(3) { animation-delay: 0.3s; }
 
+.sv-demo-phone {
+  animation: sv-demo-phone-float 4s ease-in-out infinite;
+}
+
+.sv-demo-phone-chat {
+  background-color: #efeae2;
+  background-image: radial-gradient(rgb(100 116 139 / 0.08) 0.7px, transparent 0.7px);
+  background-size: 10px 10px;
+}
+
+.sv-demo-ai-core {
+  animation: sv-demo-core-pulse 2s ease-in-out infinite;
+}
+
+.sv-demo-flow-dot {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  height: 7px;
+  width: 7px;
+  border-radius: 999px;
+  background: rgb(37 99 235);
+  box-shadow: 0 0 8px rgb(37 99 235 / 0.7);
+  animation: sv-demo-flow 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sv-demo-reveal {
     opacity: 1;
@@ -326,7 +368,10 @@
   }
 
   .sv-demo-thinking span,
-  .sv-demo .animate-ping {
+  .sv-demo .animate-ping,
+  .sv-demo-phone,
+  .sv-demo-ai-core,
+  .sv-demo-flow-dot {
     animation: none;
   }
 }
