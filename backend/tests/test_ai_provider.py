@@ -6,7 +6,7 @@ def test_gemini_provider_uses_google_compatible_endpoint(monkeypatch):
     from app.services.ai_service import AIService
 
     monkeypatch.setattr(settings, "AI_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "AI_MODEL", "gemini-2.5-flash-lite")
+    monkeypatch.setattr(settings, "AI_MODEL", "gemini-3.1-flash-lite")
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "gemini-test-key")
 
     with patch("app.services.ai_service.AsyncOpenAI") as client_class:
@@ -17,7 +17,7 @@ def test_gemini_provider_uses_google_compatible_endpoint(monkeypatch):
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
     assert service.provider == "gemini"
-    assert service.model == "gemini-2.5-flash-lite"
+    assert service.model == "gemini-3.1-flash-lite"
 
 
 def test_openai_provider_remains_backwards_compatible(monkeypatch):

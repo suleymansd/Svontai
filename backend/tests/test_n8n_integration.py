@@ -259,13 +259,13 @@ class TestProductionSecretValidation:
 
         configured = Settings(**_prod_real_service_settings(
             AI_PROVIDER="gemini",
-            AI_MODEL="gemini-2.5-flash-lite",
+            AI_MODEL="gemini-3.1-flash-lite",
             GEMINI_API_KEY="gemini-prod-test-key",
             OPENAI_API_KEY="",
         ))
 
         assert configured.ai_api_key == "gemini-prod-test-key"
-        assert configured.ai_model == "gemini-2.5-flash-lite"
+        assert configured.ai_model == "gemini-3.1-flash-lite"
     
     def test_insecure_secrets_allowed_in_dev(self):
         """Test that insecure secrets are allowed in development."""

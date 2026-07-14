@@ -11,7 +11,7 @@
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL` (default: `gemini-2.5-flash-lite`)
+- `GEMINI_MODEL` (default: `gemini-3.1-flash-lite`)
 - `GEMINI_BASE_URL` (default: Google OpenAI-compatible API endpoint)
 - `WHATSAPP_BASE_URL`
 - `META_APP_ID`

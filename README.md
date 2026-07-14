@@ -98,7 +98,7 @@ cp .env.example .env
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/smartwa
 JWT_SECRET_KEY=your-secret-key-change-this
 AI_PROVIDER=gemini
-AI_MODEL=gemini-2.5-flash-lite
+AI_MODEL=gemini-3.1-flash-lite
 GEMINI_API_KEY=your-google-ai-studio-key
 WEBHOOK_USERNAME=your-webhook-username
 WEBHOOK_PASSWORD=your-webhook-password
@@ -269,7 +269,7 @@ STRIPE_CANCEL_URL=https://<your-vercel-domain>/dashboard/billing?payment=cancel
 
 # AI provider
 AI_PROVIDER=gemini
-AI_MODEL=gemini-2.5-flash-lite
+AI_MODEL=gemini-3.1-flash-lite
 GEMINI_API_KEY=...
 
 # Optional: WhatsApp Embedded Signup

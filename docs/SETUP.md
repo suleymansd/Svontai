@@ -48,7 +48,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=14
 # AI - Gemini free tier
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your-google-ai-studio-key
-AI_MODEL=gemini-2.5-flash-lite
+AI_MODEL=gemini-3.1-flash-lite
 
 # WhatsApp Cloud API
 WHATSAPP_BASE_URL=https://graph.facebook.com/v17.0
