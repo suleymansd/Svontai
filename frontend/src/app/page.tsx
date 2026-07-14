@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Logo, LogoIcon } from '@/components/Logo'
+import { AutopilotDemo } from '@/components/marketing/autopilot-demo'
 import { 
   Users, 
   Brain, 
@@ -134,77 +135,7 @@ export default function HomePage() {
           <div className="mt-20 relative animate-fade-in-up stagger-5">
             <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent z-10 pointer-events-none" />
             <div className="relative mx-auto max-w-5xl">
-              <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 border border-white/10 glass">
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-1">
-                  {/* Browser Chrome */}
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-500" />
-                      <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
-                    </div>
-                    <div className="flex-1 flex justify-center">
-                      <div className="px-4 py-1 rounded-lg bg-white/5 text-xs text-white/60">
-                        app.svontai.com/dashboard
-                      </div>
-                    </div>
-                  </div>
-                  {/* Dashboard Preview */}
-                  <div className="aspect-[16/9] bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8">
-                    <div className="grid grid-cols-4 gap-4 h-full">
-                      {/* Sidebar */}
-                      <div className="col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg">
-                        <div className="flex items-center gap-2 mb-6">
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600" />
-                          <div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded" />
-                        </div>
-                        {[1, 2, 3, 4, 5].map((i) => (
-                          <div key={i} className={`flex items-center gap-2 p-2 rounded-lg mb-2 ${i === 1 ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}>
-                            <div className="w-5 h-5 bg-slate-200 dark:bg-slate-700 rounded" />
-                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-700 rounded" />
-                          </div>
-                        ))}
-                      </div>
-                      {/* Main Content */}
-                      <div className="col-span-3 space-y-4">
-                        {/* Launch state preview without fake metrics */}
-                        <div className="grid grid-cols-3 gap-4">
-                          {[
-                            { color: 'from-blue-500 to-cyan-500', title: 'Bilgi', line: 'Formasyon' },
-                            { color: 'from-violet-500 to-purple-500', title: 'İzin', line: 'Kontrol' },
-                            { color: 'from-green-500 to-emerald-500', title: 'Bot', line: 'Hazır' }
-                          ].map((stat, i) => (
-                            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg">
-                              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stat.color} mb-3`} />
-                              <div className="text-sm font-semibold text-slate-900 dark:text-white">{stat.title}</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400">{stat.line}</div>
-                            </div>
-                          ))}
-                        </div>
-                        {/* Pipeline Area */}
-                        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg flex-1">
-                          <div className="h-3 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-5" />
-                          <div className="space-y-4">
-                            {[
-                              'Concierge bilgi formasyonu',
-                              'Meta WhatsApp izin kontrolü',
-                              'Otonom sağlık ve incident takibi',
-                            ].map((label, i) => (
-                              <div key={label} className="flex items-center gap-3">
-                                <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${i === 0 ? 'from-blue-500 to-cyan-500' : i === 1 ? 'from-violet-500 to-purple-500' : 'from-green-500 to-emerald-500'}`} />
-                                <div className="flex-1">
-                                  <div className="h-2.5 w-4/5 rounded bg-slate-200 dark:bg-slate-700" />
-                                  <span className="sr-only">{label}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <AutopilotDemo />
             </div>
           </div>
         </div>
