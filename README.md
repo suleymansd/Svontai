@@ -47,7 +47,7 @@ SvontAi/
 - SQLAlchemy 2.x + PostgreSQL
 - Alembic (migrations)
 - JWT Authentication
-- OpenAI API
+- Gemini or OpenAI API
 
 ### Frontend
 - Next.js 14 (App Router)
@@ -68,7 +68,7 @@ SvontAi/
 - Python 3.12+
 - Node.js 18+
 - PostgreSQL 15+
-- OpenAI API key
+- Gemini API key (free tier) or OpenAI API key
 
 ### Backend Setup
 
@@ -97,7 +97,9 @@ cp .env.example .env
 ```env
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/smartwa
 JWT_SECRET_KEY=your-secret-key-change-this
-OPENAI_API_KEY=sk-your-openai-key
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.5-flash-lite
+GEMINI_API_KEY=your-google-ai-studio-key
 WEBHOOK_USERNAME=your-webhook-username
 WEBHOOK_PASSWORD=your-webhook-password
 BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com
@@ -265,8 +267,10 @@ STRIPE_PRICE_IDS='{"pro":{"monthly":"price_...","yearly":"price_..."},"premium":
 STRIPE_SUCCESS_URL=https://<your-vercel-domain>/dashboard/billing?payment=success
 STRIPE_CANCEL_URL=https://<your-vercel-domain>/dashboard/billing?payment=cancel
 
-# Optional: OpenAI
-OPENAI_API_KEY=sk-...
+# AI provider
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.5-flash-lite
+GEMINI_API_KEY=...
 
 # Optional: WhatsApp Embedded Signup
 META_APP_ID=...

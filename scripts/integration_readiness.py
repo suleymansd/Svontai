@@ -104,6 +104,25 @@ def main() -> int:
     strict = args.profile == "prod"
     failures = 0
 
+    ai_provider = _env_value("AI_PROVIDER", loaded).strip().lower() or "openai"
+    ai_key = "GEMINI_API_KEY" if ai_provider == "gemini" else "OPENAI_API_KEY"
+    ai_model_present = _present("AI_MODEL", loaded) or _present(
+        "GEMINI_MODEL" if ai_provider == "gemini" else "OPENAI_MODEL",
+        loaded,
+    )
+    ai_missing = []
+    if ai_provider not in {"openai", "gemini"}:
+        ai_missing.append("AI_PROVIDER=openai|gemini")
+    if not _present(ai_key, loaded):
+        ai_missing.append(ai_key)
+    if not ai_model_present:
+        ai_missing.append("AI_MODEL")
+    if ai_missing:
+        failures += 1
+        _print_check("ai", "FAIL", f"missing or invalid {', '.join(ai_missing)}")
+    else:
+        _print_check("ai", "OK", f"{ai_provider} variables are present")
+
     for name, keys in CHECKS.items():
         active = strict
         if name == "stripe":

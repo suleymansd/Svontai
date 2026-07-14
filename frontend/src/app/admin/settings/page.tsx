@@ -74,7 +74,7 @@ export default function SettingsPage() {
   const envVars = [
     { name: 'NEXT_PUBLIC_BACKEND_URL', value: API_URL, sensitive: false },
     { name: 'DATABASE_URL', value: '••••••••', sensitive: true },
-    { name: 'OPENAI_API_KEY', value: '••••••••', sensitive: true },
+    { name: 'AI_PROVIDER / API_KEY', value: '••••••••', sensitive: true },
     { name: 'JWT_SECRET', value: '••••••••', sensitive: true },
   ]
 

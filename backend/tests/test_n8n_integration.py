@@ -253,6 +253,19 @@ class TestProductionSecretValidation:
         
         assert settings.ENVIRONMENT == "prod"
         assert settings.USE_N8N is True
+
+    def test_gemini_key_satisfies_production_ai_requirement(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            AI_PROVIDER="gemini",
+            AI_MODEL="gemini-2.5-flash-lite",
+            GEMINI_API_KEY="gemini-prod-test-key",
+            OPENAI_API_KEY="",
+        ))
+
+        assert configured.ai_api_key == "gemini-prod-test-key"
+        assert configured.ai_model == "gemini-2.5-flash-lite"
     
     def test_insecure_secrets_allowed_in_dev(self):
         """Test that insecure secrets are allowed in development."""

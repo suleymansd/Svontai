@@ -7,7 +7,7 @@ This guide will walk you through setting up SvontAi for development.
 - **Python 3.12+**: [Download Python](https://www.python.org/downloads/)
 - **Node.js 18+**: [Download Node.js](https://nodejs.org/)
 - **PostgreSQL 15+**: [Download PostgreSQL](https://www.postgresql.org/download/)
-- **OpenAI API Key**: [Get API Key](https://platform.openai.com/api-keys)
+- **Gemini API Key**: [Get API Key](https://aistudio.google.com/apikey)
 
 ## Quick Start
 
@@ -45,9 +45,10 @@ JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=14
 
-# OpenAI - Get from https://platform.openai.com/api-keys
-OPENAI_API_KEY=sk-your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini
+# AI - Gemini free tier
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your-google-ai-studio-key
+AI_MODEL=gemini-2.5-flash-lite
 
 # WhatsApp Cloud API
 WHATSAPP_BASE_URL=https://graph.facebook.com/v17.0
@@ -171,13 +172,13 @@ sqlalchemy.exc.OperationalError: could not connect to server
 
 **Solution**: Check PostgreSQL is running and credentials are correct.
 
-### OpenAI API Error
+### AI API Error
 
 ```
-openai.error.AuthenticationError: Incorrect API key
+AuthenticationError: Incorrect API key
 ```
 
-**Solution**: Verify your API key in `.env` file.
+**Solution**: Verify `AI_PROVIDER` and the matching `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`.
 
 ### CORS Error in Browser
 

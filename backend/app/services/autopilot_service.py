@@ -252,9 +252,16 @@ class AutopilotService:
         }
 
     def _check_openai(self, tenant: Tenant) -> dict:
-        if settings.OPENAI_API_KEY.strip():
-            return self._item("openai", "connected", 100, "OpenAI yapılandırması hazır.")
-        return self._item("openai", "missing", 40, "OpenAI API anahtarı eksik.", repairable=False)
+        provider_name = "Gemini" if settings.AI_PROVIDER == "gemini" else "OpenAI"
+        if settings.ai_api_key:
+            return self._item("openai", "connected", 100, f"{provider_name} yapılandırması hazır.")
+        return self._item(
+            "openai",
+            "missing",
+            40,
+            f"{provider_name} API anahtarı eksik.",
+            repairable=False,
+        )
 
     def _check_n8n(self, tenant: Tenant) -> dict:
         if settings.USE_N8N and settings.N8N_BASE_URL.strip():

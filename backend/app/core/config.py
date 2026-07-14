@@ -52,9 +52,15 @@ class Settings(BaseSettings):
     # API key hashing (separate secret recommended; falls back to JWT_SECRET_KEY)
     API_KEY_HASH_SECRET: str = ""
     
-    # OpenAI
+    # AI provider. Gemini uses Google's OpenAI-compatible endpoint so the
+    # application keeps a single client contract.
+    AI_PROVIDER: Literal["openai", "gemini"] = "openai"
+    AI_MODEL: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     
     # WhatsApp Cloud API (Legacy - for direct integration)
     WHATSAPP_BASE_URL: str = "https://graph.facebook.com/v17.0"
@@ -243,6 +249,28 @@ class Settings(BaseSettings):
             self.ALLOW_UNPAID_PLAN_UPGRADES = False
         return self
 
+    @property
+    def ai_api_key(self) -> str:
+        """Return the credential for the selected AI provider."""
+        if self.AI_PROVIDER == "gemini":
+            return self.GEMINI_API_KEY.strip()
+        return self.OPENAI_API_KEY.strip()
+
+    @property
+    def ai_model(self) -> str:
+        """Return an explicit shared model override or the provider default."""
+        if self.AI_MODEL.strip():
+            return self.AI_MODEL.strip()
+        if self.AI_PROVIDER == "gemini":
+            return self.GEMINI_MODEL.strip()
+        return self.OPENAI_MODEL.strip()
+
+    @property
+    def ai_base_url(self) -> str | None:
+        if self.AI_PROVIDER == "gemini":
+            return self.GEMINI_BASE_URL.strip()
+        return None
+
     @model_validator(mode="after")
     def normalize_stripe_price_ids(self) -> "Settings":
         normalized: dict[str, dict[str, str]] = {
@@ -277,8 +305,9 @@ class Settings(BaseSettings):
             return self
 
         missing_real_time_config: list[str] = []
-        if not self.OPENAI_API_KEY.strip():
-            missing_real_time_config.append("OPENAI_API_KEY")
+        if not self.ai_api_key:
+            required_key = "GEMINI_API_KEY" if self.AI_PROVIDER == "gemini" else "OPENAI_API_KEY"
+            missing_real_time_config.append(required_key)
         if not self.WEBHOOK_USERNAME.strip() or not self.WEBHOOK_PASSWORD.strip():
             missing_real_time_config.append("WEBHOOK_USERNAME/WEBHOOK_PASSWORD")
         if not self.EMAIL_ENABLED:

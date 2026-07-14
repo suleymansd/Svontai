@@ -6,8 +6,13 @@
 - `JWT_ALGORITHM`
 - `ACCESS_TOKEN_EXPIRE_MINUTES`
 - `REFRESH_TOKEN_EXPIRE_DAYS`
+- `AI_PROVIDER` (`openai` | `gemini`, default: `openai`)
+- `AI_MODEL` (optional shared model override)
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL` (default: `gemini-2.5-flash-lite`)
+- `GEMINI_BASE_URL` (default: Google OpenAI-compatible API endpoint)
 - `WHATSAPP_BASE_URL`
 - `META_APP_ID`
 - `META_APP_SECRET`

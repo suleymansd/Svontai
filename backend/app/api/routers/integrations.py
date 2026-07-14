@@ -133,7 +133,7 @@ async def get_integrations_status(
         WhatsAppAccount.access_token_encrypted.isnot(None),
     ).first() is not None
 
-    openai_connected = bool((settings.OPENAI_API_KEY or "").strip())
+    ai_connected = bool(settings.ai_api_key)
     n8n_connected = bool(settings.USE_N8N and (settings.N8N_BASE_URL or "").strip())
     document_converter_connected = n8n_connected
 
@@ -162,7 +162,7 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
         ),
-        openai=IntegrationStatusItem(status="connected" if openai_connected else "missing"),
+        openai=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
         document_converter=IntegrationStatusItem(status="connected" if document_converter_connected else "missing"),
         whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_connected else "missing"),
         n8n=IntegrationStatusItem(status="connected" if n8n_connected else "missing"),

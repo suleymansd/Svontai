@@ -1,7 +1,6 @@
-"""
-AI Service for generating bot responses using OpenAI with guardrails and safety features.
-"""
+"""Provider-neutral AI responses with guardrails and safety features."""
 
+import logging
 import re
 from typing import Optional
 from datetime import datetime, timedelta
@@ -17,6 +16,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.bot_settings import BotSettings, ResponseTone, EmojiUsage
 
+logger = logging.getLogger(__name__)
 
 # In-memory rate limiting (use Redis in production)
 _rate_limits = defaultdict(list)
@@ -26,11 +26,15 @@ class AIService:
     """Service for AI-powered response generation with guardrails."""
     
     def __init__(self):
-        """Initialize the OpenAI client."""
+        """Initialize the selected OpenAI-compatible provider client."""
         self.client: Optional[AsyncOpenAI] = None
-        if settings.OPENAI_API_KEY.strip():
-            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = settings.OPENAI_MODEL
+        self.provider = settings.AI_PROVIDER
+        if settings.ai_api_key:
+            client_options = {"api_key": settings.ai_api_key}
+            if settings.ai_base_url:
+                client_options["base_url"] = settings.ai_base_url
+            self.client = AsyncOpenAI(**client_options)
+        self.model = settings.ai_model
         
         # Default safety settings
         self.default_guardrails = {
@@ -49,7 +53,8 @@ class AIService:
     def _get_client(self) -> AsyncOpenAI:
         """Return the configured client without breaking non-AI application flows."""
         if self.client is None:
-            raise RuntimeError("OPENAI_API_KEY is not configured")
+            required_key = "GEMINI_API_KEY" if self.provider == "gemini" else "OPENAI_API_KEY"
+            raise RuntimeError(f"{required_key} is not configured")
         return self.client
     
     def _get_tone_instructions(self, tone: str) -> str:
@@ -278,8 +283,6 @@ C: {item.answer}
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=0.7,
-                presence_penalty=0.1,
-                frequency_penalty=0.1
             )
             
             reply = response.choices[0].message.content or fallback_msg
@@ -301,9 +304,8 @@ C: {item.answer}
             
             return reply
         
-        except Exception as e:
-            # Log the error
-            print(f"OpenAI API error: {e}")
+        except Exception:
+            logger.exception("%s AI response generation failed", self.provider)
             return "Üzgünüm, şu anda yanıt veremiyorum. Lütfen daha sonra tekrar deneyin veya bizimle iletişime geçin."
     
     async def generate_summary(
@@ -340,8 +342,8 @@ C: {item.answer}
             
             return response.choices[0].message.content or ""
         
-        except Exception as e:
-            print(f"Summary generation error: {e}")
+        except Exception:
+            logger.exception("%s conversation summary generation failed", self.provider)
             return ""
 
 

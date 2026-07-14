@@ -28,7 +28,7 @@ type IntegrationStatusMap = Record<string, IntegrationStatusItem>
 const TITLES: Record<string, string> = {
   google_drive: 'Google Drive',
   gmail: 'Gmail',
-  openai: 'OpenAI',
+  openai: 'Yapay Zeka',
   google_sheets: 'Google Sheets',
   document_converter: 'Document Converter',
   whatsapp_cloud: 'WhatsApp Cloud',
