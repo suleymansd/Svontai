@@ -76,7 +76,7 @@ class EmailService:
         from_name = settings.SMTP_FROM_NAME.strip()
         from_email = settings.SMTP_FROM_EMAIL.strip()
         from_value = f"{from_name} <{from_email}>" if from_name else from_email
-        endpoint = f"{settings.RESEND_API_BASE_URL.rstrip('/')}/emails"
+        endpoint = f"{settings.RESEND_API_BASE_URL.strip().rstrip('/')}/emails"
         payload = {
             "from": from_value,
             "to": recipients,
