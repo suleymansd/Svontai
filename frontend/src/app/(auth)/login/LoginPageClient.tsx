@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { Loader2, Mail, Lock, ArrowRight } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Loader2, Mail, Lock, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
 
 export default function LoginPageClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -23,6 +24,13 @@ export default function LoginPageClient() {
     email: '',
     password: '',
   })
+  const verificationCompleted = searchParams.get('verified') === '1'
+
+  useEffect(() => {
+    const email = searchParams.get('email')
+    if (!email) return
+    setFormData((current) => ({ ...current, email }))
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,7 +71,10 @@ export default function LoginPageClient() {
       const detailCode = detail?.code
       const detailMessage = detail?.message || detail
 
-      if (detailCode === 'TWO_FACTOR_REQUIRED') {
+      if (detailCode === 'EMAIL_VERIFICATION_REQUIRED') {
+        const verificationEmail = detail?.email || formData.email
+        router.push(`/verify-email?email=${encodeURIComponent(verificationEmail)}&next=${encodeURIComponent('/login')}`)
+      } else if (detailCode === 'TWO_FACTOR_REQUIRED') {
         setTwoFactorRequired(true)
         setError(detailMessage || 'İki faktörlü doğrulama kodu gerekli.')
       } else if (detailCode === 'TWO_FACTOR_INVALID') {
@@ -97,6 +108,12 @@ export default function LoginPageClient() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
+            {verificationCompleted && (
+              <div className="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                E-posta adresiniz doğrulandı. Şimdi giriş yapabilirsiniz.
+              </div>
+            )}
             {error && (
               <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />
@@ -128,8 +145,8 @@ export default function LoginPageClient() {
                 </Link>
               </div>
               <div className="flex items-center justify-end">
-                <Link href="/register" className="text-xs text-muted-foreground hover:underline">
-                  E-postanı doğrulamadın mı? Kayıt ekranından kod gir
+                <Link href="/verify-email" className="text-xs text-muted-foreground hover:underline">
+                  E-postanı doğrulamadın mı? Kodu yeniden gönder
                 </Link>
               </div>
               <div className="relative input-glow rounded-xl transition-all duration-300">

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { ArrowRight, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowRight, CheckCircle2, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
 
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { useAuthStore } from '@/lib/store'
 
 export default function AdminLoginPageClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
 
   const [isLoading, setIsLoading] = useState(false)
@@ -23,6 +24,13 @@ export default function AdminLoginPageClient() {
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [adminSessionNote, setAdminSessionNote] = useState('')
   const [formData, setFormData] = useState({ email: '', password: '' })
+  const verificationCompleted = searchParams.get('verified') === '1'
+
+  useEffect(() => {
+    const email = searchParams.get('email')
+    if (!email) return
+    setFormData((current) => ({ ...current, email }))
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +69,10 @@ export default function AdminLoginPageClient() {
       const detailCode = detail?.code
       const detailMessage = detail?.message || detail
 
-      if (detailCode === 'TWO_FACTOR_REQUIRED') {
+      if (detailCode === 'EMAIL_VERIFICATION_REQUIRED') {
+        const verificationEmail = detail?.email || formData.email
+        router.push(`/verify-email?email=${encodeURIComponent(verificationEmail)}&next=${encodeURIComponent('/admin/login')}`)
+      } else if (detailCode === 'TWO_FACTOR_REQUIRED') {
         setTwoFactorRequired(true)
         setError(detailMessage || 'İki faktörlü doğrulama kodu gerekli.')
       } else if (detailCode === 'TWO_FACTOR_INVALID') {
@@ -99,6 +110,12 @@ export default function AdminLoginPageClient() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {verificationCompleted && (
+              <div className="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                E-posta adresiniz doğrulandı. Yönetim girişine devam edebilirsiniz.
+              </div>
+            )}
             {error && (
               <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex items-center gap-2 animate-shake">
                 <div className="w-2 h-2 rounded-full bg-red-500" />

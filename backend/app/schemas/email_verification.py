@@ -17,3 +17,4 @@ class EmailVerificationConfirmRequest(BaseModel):
 class EmailVerificationResponse(BaseModel):
     success: bool = True
     message: str
+    verified: bool = False

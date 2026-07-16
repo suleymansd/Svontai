@@ -345,7 +345,11 @@ async def login(
     if not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="E-posta adresinizi doğrulayın. Lütfen e-postanıza gelen kodu onaylayın."
+            detail={
+                "code": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "E-posta adresinizi doğrulayın. Doğrulama kodu ekranına yönlendiriliyorsunuz.",
+                "email": normalized_email,
+            },
         )
 
     admin_session_note = _validate_super_admin_login(user, credentials)
@@ -747,7 +751,11 @@ async def request_email_verification_code(
     if not user or not user.is_active:
         return EmailVerificationResponse(success=True, message=message)
     if user.email_verified:
-        return EmailVerificationResponse(success=True, message="E-posta adresiniz zaten doğrulandı.")
+        return EmailVerificationResponse(
+            success=True,
+            message="E-posta adresiniz zaten doğrulandı.",
+            verified=True,
+        )
 
     code, now = _issue_email_verification_code(db, user)
     sent = EmailService.send_email_verification_code(
@@ -798,7 +806,8 @@ async def confirm_email_verification(
     if user.email_verified:
         return EmailVerificationResponse(
             success=True,
-            message="E-posta adresiniz zaten doğrulandı."
+            message="E-posta adresiniz zaten doğrulandı.",
+            verified=True,
         )
 
     verification_record = db.query(EmailVerificationCode).filter(
@@ -838,7 +847,8 @@ async def confirm_email_verification(
     EmailService.send_welcome_email(user.email, user.full_name)
     return EmailVerificationResponse(
         success=True,
-        message="E-posta adresiniz başarıyla doğrulandı"
+        message="E-posta adresiniz başarıyla doğrulandı",
+        verified=True,
     )
 
 

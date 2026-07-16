@@ -28,6 +28,8 @@ def test_smoke_register_verify_login_and_core_resources(client):
 
     login_before_verify = client.post("/auth/login", json={"email": email, "password": password})
     assert login_before_verify.status_code == 403, login_before_verify.text
+    assert login_before_verify.json()["detail"]["code"] == "EMAIL_VERIFICATION_REQUIRED"
+    assert login_before_verify.json()["detail"]["email"] == email
 
     request_code = client.post("/auth/email-verification/request", json={"email": email})
     assert request_code.status_code == 200, request_code.text
@@ -35,6 +37,11 @@ def test_smoke_register_verify_login_and_core_resources(client):
 
     confirm_code = client.post("/auth/email-verification/confirm", json={"email": email, "code": code})
     assert confirm_code.status_code == 200, confirm_code.text
+    assert confirm_code.json()["verified"] is True
+
+    verified_request = client.post("/auth/email-verification/request", json={"email": email})
+    assert verified_request.status_code == 200, verified_request.text
+    assert verified_request.json()["verified"] is True
 
     login_resp = client.post("/auth/login", json={"email": email, "password": password})
     assert login_resp.status_code == 200, login_resp.text
