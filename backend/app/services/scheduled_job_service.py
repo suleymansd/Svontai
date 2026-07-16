@@ -76,6 +76,12 @@ class ScheduledJobService:
         self.db.commit()
 
     def mark_failure(self, job: ScheduledJob, exc: Exception) -> None:
+        job_id = job.id
+        self.db.rollback()
+        job = self.db.get(ScheduledJob, job_id)
+        if job is None:
+            return
+
         now = utc_now()
         job.retry_count += 1
         backoff_seconds = min(job.interval_seconds, 30 * (2 ** min(job.retry_count, 6)))
@@ -101,7 +107,10 @@ def scheduled_job_lock(
         yield job
     except Exception as exc:
         if job is not None:
-            service.mark_failure(job, exc)
+            try:
+                service.mark_failure(job, exc)
+            except Exception:
+                db.rollback()
         raise
     else:
         if job is not None:

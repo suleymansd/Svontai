@@ -154,3 +154,39 @@ def test_scheduled_job_lock_prevents_duplicate_runs(client):
         assert third is None
     finally:
         db.close()
+
+
+def test_scheduled_job_failure_rolls_back_before_recording_retry(client, monkeypatch):
+    from unittest.mock import Mock
+
+    from app.db.session import SessionLocal
+    from app.services.scheduled_job_service import ScheduledJobService
+
+    db = SessionLocal()
+    try:
+        service = ScheduledJobService(db, owner="worker-a")
+        job = service.acquire("failure-recovery", 300, lock_seconds=120)
+        assert job is not None
+
+        original_rollback = db.rollback
+        rollback_spy = Mock(side_effect=original_rollback)
+        monkeypatch.setattr(db, "rollback", rollback_spy)
+
+        service.mark_failure(job, RuntimeError("provider unavailable"))
+
+        rollback_spy.assert_called_once()
+        db.refresh(job)
+        assert job.status == "retrying"
+        assert job.retry_count == 1
+        assert job.last_error == "provider unavailable"
+    finally:
+        db.close()
+
+
+def test_worker_schema_wait_accepts_matching_heads(monkeypatch):
+    from app import worker
+
+    monkeypatch.setattr(worker, "_expected_migration_heads", lambda: {"037"})
+    monkeypatch.setattr(worker, "_database_migration_heads", lambda: {"037"})
+
+    worker._wait_for_database_schema(timeout_seconds=1, poll_seconds=0)

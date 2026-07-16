@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import suppress
 from datetime import timedelta
+from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.time import utc_now_naive
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.models.tenant import Tenant
 from app.models.whatsapp_account import WhatsAppAccount
@@ -24,6 +30,47 @@ from app.services.onboarding_service import OnboardingService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("smartwa.worker")
+
+
+def _expected_migration_heads() -> set[str]:
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    return set(ScriptDirectory.from_config(config).get_heads())
+
+
+def _database_migration_heads() -> set[str]:
+    with engine.connect() as connection:
+        return set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
+
+
+def _wait_for_database_schema(timeout_seconds: int = 180, poll_seconds: int = 5) -> None:
+    expected = _expected_migration_heads()
+    deadline = time.monotonic() + timeout_seconds
+    last_seen: set[str] | None = None
+    last_error: Exception | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            last_seen = _database_migration_heads()
+            last_error = None
+            if last_seen == expected:
+                logger.info("Database migration head ready: %s", ",".join(sorted(expected)))
+                return
+        except Exception as exc:
+            last_error = exc
+
+        logger.info(
+            "Waiting for database migrations expected=%s current=%s",
+            ",".join(sorted(expected)),
+            ",".join(sorted(last_seen or set())) or "unavailable",
+        )
+        time.sleep(poll_seconds)
+
+    detail = str(last_error) if last_error else f"current={sorted(last_seen or set())}"
+    raise RuntimeError(
+        f"Database migrations did not reach head {sorted(expected)} within {timeout_seconds}s: {detail}"
+    )
 
 
 async def _run_every(name: str, interval_seconds: int, fn) -> None:
@@ -165,6 +212,7 @@ def _run_outbound_voice_jobs() -> None:
 
 async def main() -> None:
     logger.info("SmartWA worker starting")
+    await asyncio.to_thread(_wait_for_database_schema)
     tasks = [
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),
