@@ -118,7 +118,24 @@
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, stuck automation run cleanup and outbound voice jobs.
-- Current Alembic migration head: `037`.
+- Current Alembic migration head: `039`.
+
+## n8n execution capacity
+- SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.
+- Recommended initial production settings for approximately 100 normal-traffic tenants:
+  - `EXECUTIONS_TIMEOUT=120`
+  - `EXECUTIONS_TIMEOUT_MAX=300`
+  - `EXECUTIONS_DATA_SAVE_ON_ERROR=all`
+  - `EXECUTIONS_DATA_SAVE_ON_SUCCESS=all`
+  - `EXECUTIONS_DATA_SAVE_ON_PROGRESS=false`
+  - `EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false`
+  - `EXECUTIONS_DATA_PRUNE=true`
+  - `EXECUTIONS_DATA_MAX_AGE=168`
+  - `EXECUTIONS_DATA_PRUNE_MAX_COUNT=5000`
+  - `N8N_CONCURRENCY_PRODUCTION_LIMIT=20`
+  - `N8N_SECURE_COOKIE=true`
+- Keep `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` while workflow signature verification reads `SVONTAI_TO_N8N_SECRET` from the n8n environment.
+- Move n8n to queue mode with Redis and separate workers only when observed concurrent execution demand exceeds the regular-mode limit.
 
 
 ## Rate limiting / Abuse protection

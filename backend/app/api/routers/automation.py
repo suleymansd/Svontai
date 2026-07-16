@@ -304,21 +304,30 @@ async def send_test_event(
             message="n8n is not enabled for this tenant. Enable it in automation settings."
         )
     
-    # Send test event
+    # Send a non-mutating health event. A settings test must not create leads,
+    # conversations, messages or trigger an external WhatsApp send.
     try:
-        run = await n8n_client.trigger_incoming_message(
+        workflow_id = n8n_client.get_workflow_id(tenant_id, channel="whatsapp")
+        if not workflow_id:
+            return TestEventResponse(
+                success=False,
+                message="No workflow configured for this tenant/channel"
+            )
+
+        run = await n8n_client.trigger_event(
             tenant_id=tenant_id,
-            from_number="+90555TEST001",
-            to_number="+90555TEST000",
+            workflow_id=workflow_id,
+            event_type="health_check",
+            external_event_id=f"health-check-{uuid.uuid4()}",
+            from_id="svontai-health-check",
+            to_id=None,
             text=request.test_message,
-            message_id=f"test-{uuid.uuid4()}",
-            timestamp="",
             channel="whatsapp",
             correlation_id=str(uuid.uuid4()),
-            contact_name="Test User",
-            extra_data={"is_test": True}
+            contact_name="SvontAI Health Check",
+            metadata={"is_test": True, "non_mutating": True},
         )
-        
+
         if run:
             AuditLogService(db).log(
                 action="automation.test_event",
@@ -333,12 +342,7 @@ async def send_test_event(
             return TestEventResponse(
                 success=True,
                 run_id=str(run.id),
-                message=f"Test event sent successfully. Run ID: {run.id}, Status: {run.status}"
-            )
-        else:
-            return TestEventResponse(
-                success=False,
-                message="No workflow configured for this tenant/channel"
+                message=f"Workflow health check completed. Run ID: {run.id}, Status: {run.status}"
             )
     
     except Exception as e:

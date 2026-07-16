@@ -358,7 +358,7 @@ cd backend
 alembic current
 alembic heads
 ```
-Beklenen: `alembic current` çıktısı `heads` ile aynı revision (`029`).
+Beklenen: `alembic current` çıktısı `heads` ile aynı revision (`039`).
 
 #### 4) Route registration + app boot doğrulama
 ```bash

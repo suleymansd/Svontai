@@ -443,6 +443,19 @@ async def upsert_lead(
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
             bot_uuid = bot.id
 
+    if bot_uuid is None:
+        bot = (
+            db.query(Bot)
+            .filter(
+                Bot.tenant_id == tenant_uuid,
+                Bot.is_active.is_(True),
+            )
+            .order_by(Bot.created_at.asc())
+            .first()
+        )
+        if bot is not None:
+            bot_uuid = bot.id
+
     if not phone_norm and not email_norm:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="phone or email is required")
 
