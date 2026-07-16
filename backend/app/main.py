@@ -58,6 +58,7 @@ from app.api.routers import (
     tool_runner_router,
     assistant_router,
     integrations_router,
+    notifications_router,
     billing_router,
     setup_autopilot_router,
     agency_router,
@@ -489,6 +490,7 @@ app.include_router(telephony_router)
 app.include_router(tool_runner_router)
 app.include_router(assistant_router)
 app.include_router(integrations_router)
+app.include_router(notifications_router)
 app.include_router(billing_router)
 app.include_router(setup_autopilot_router)
 app.include_router(agency_router)

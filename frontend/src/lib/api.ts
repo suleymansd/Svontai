@@ -418,6 +418,8 @@ export const analyticsApi = {
   getBotStats: (botId: string) => api.get(`/analytics/bot/${botId}`),
   getSourceBreakdown: () => api.get('/analytics/sources'),
   getUsageSummary: () => api.get('/analytics/usage-summary'),
+  getOperationalReport: (period: 'today' | 'week' = 'today') =>
+    api.get('/analytics/operational-report', { params: { period } }),
 }
 
 // Operator API
@@ -696,6 +698,21 @@ export const integrationsApi = {
   getStatus: () => api.get('/integrations/status'),
   getDiagnostics: () => api.get('/integrations/diagnostics'),
   repair: (provider: string) => api.post(`/integrations/${provider}/repair`),
+  startGoogleOAuth: () => api.get('/integrations/google/start'),
+}
+
+export const notificationsApi = {
+  getSettings: () => api.get('/notifications/settings'),
+  subscribe: (subscription: PushSubscriptionJSON) =>
+    api.post('/notifications/subscribe', subscription),
+  updateSettings: (data: {
+    notify_ai_reply: boolean
+    notify_new_lead: boolean
+    notify_appointment: boolean
+    notify_weekly_report: boolean
+  }) => api.patch('/notifications/settings', data),
+  unsubscribe: (endpoint?: string) =>
+    api.delete('/notifications/subscribe', { data: { endpoint } }),
 }
 
 export const autopilotApi = {

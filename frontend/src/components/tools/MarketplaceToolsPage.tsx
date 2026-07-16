@@ -444,7 +444,11 @@ export default function MarketplaceToolsPage() {
                                 <Label className="text-xs">Enabled</Label>
                                 <Switch
                                   checked={tool.enabled}
-                                  disabled={toggleMutation.isPending || runtime.planLocked}
+                                  disabled={
+                                    toggleMutation.isPending
+                                    || runtime.planLocked
+                                    || runtime.missingIntegrations.length > 0
+                                  }
                                   onCheckedChange={(checked) =>
                                     toggleMutation.mutate({
                                       slug: tool.slug,

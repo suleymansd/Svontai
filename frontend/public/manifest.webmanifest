@@ -1,0 +1,24 @@
+{
+  "name": "SvontAI",
+  "short_name": "SvontAI",
+  "description": "Otonom WhatsApp operasyon paneli",
+  "id": "/dashboard",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f9fb3",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "282x327",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

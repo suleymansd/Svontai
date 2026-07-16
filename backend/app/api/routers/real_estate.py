@@ -867,8 +867,8 @@ async def google_calendar_oauth_callback(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     service = GoogleCalendarService(db)
-    frontend_redirect_success = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/tools/tool-real-estate-pack?google_calendar=success"
-    frontend_redirect_error_base = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/tools/tool-real-estate-pack?google_calendar=error"
+    frontend_redirect_success = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/integrations?google=success"
+    frontend_redirect_error_base = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/integrations?google=error"
     try:
         service.process_oauth_callback(code=code, state=state)
         success_payload = json.dumps({"type": "GOOGLE_CALENDAR_CONNECTED", "success": True})

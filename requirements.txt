@@ -24,6 +24,7 @@ stripe>=8.5.0
 
 # Security & Encryption
 cryptography>=42.0.0
+pywebpush>=2.0.3
 
 # Utils
 python-dotenv>=1.0.0

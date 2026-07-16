@@ -135,6 +135,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/real-estate/calendar/google/callback"
 
+    # Browser/PWA push notifications (free Web Push protocol)
+    WEB_PUSH_VAPID_PUBLIC_KEY: str = ""
+    WEB_PUSH_VAPID_PRIVATE_KEY_B64: str = ""
+    WEB_PUSH_SUBJECT: str = "mailto:support@svontai.com"
+
     # Payments
     PAYMENTS_ENABLED: bool = False
     PAYMENTS_PROVIDER: Literal["stripe"] = "stripe"

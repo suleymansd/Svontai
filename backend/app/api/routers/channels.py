@@ -13,7 +13,7 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ from app.services.n8n_client import get_n8n_client
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 from app.services.subscription_service import SubscriptionService
 from app.services.usage_counter_service import UsageCounterService
+from app.services.push_notification_service import send_tenant_push_notification
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
 from app.models.bot import Bot
@@ -110,6 +111,7 @@ class AutomationStatusUpdateRequest(BaseModel):
 async def send_whatsapp_message(
     request: Request,
     body: WhatsAppSendRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -213,6 +215,17 @@ async def send_whatsapp_message(
                     db, run_id, 
                     {"wa_message_id": wa_message_id, "n8n_execution_id": n8n_execution_id}
                 )
+
+            background_tasks.add_task(
+                send_tenant_push_notification,
+                tenant_id=uuid.UUID(tenant_id),
+                event_type="ai_reply",
+                title="SvontAI çalışıyor",
+                body="Yeni müşteri mesajı otomatik olarak yanıtlandı.",
+                url="/dashboard/conversations",
+                tag="svontai-ai-activity",
+                extra={"message_id": wa_message_id, "run_id": run_id},
+            )
             
             return WhatsAppSendResponse(
                 success=True,

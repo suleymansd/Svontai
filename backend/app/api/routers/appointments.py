@@ -23,6 +23,7 @@ from app.schemas.appointment import (
 )
 from app.services.audit_log_service import AuditLogService
 from app.services.email_service import EmailService
+from app.services.push_notification_service import send_tenant_push_notification
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
@@ -90,6 +91,16 @@ async def create_appointment(
             "starts_at": appointment.starts_at.isoformat(),
             "customer_email": appointment.customer_email
         }
+    )
+    background_tasks.add_task(
+        send_tenant_push_notification,
+        tenant_id=current_tenant.id,
+        event_type="appointment",
+        title="Yeni randevu oluşturuldu",
+        body=f"{appointment.customer_name} için {appointment.subject} randevusu kaydedildi.",
+        url="/dashboard/appointments",
+        tag="svontai-appointment",
+        extra={"appointment_id": str(appointment.id)},
     )
 
     return AppointmentResponse.model_validate(appointment)

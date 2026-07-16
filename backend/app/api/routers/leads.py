@@ -5,7 +5,7 @@ Lead management router.
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +21,7 @@ from app.schemas.lead import LeadResponse, LeadWithBotName
 from app.services.audit_log_service import AuditLogService
 from app.services.subscription_service import SubscriptionService
 from app.models.user import User
+from app.services.push_notification_service import send_tenant_push_notification
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
@@ -107,6 +108,7 @@ async def list_leads(
 @router.post("", response_model=LeadResponse)
 async def create_lead(
     lead_data: LeadCreate,
+    background_tasks: BackgroundTasks,
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     request: Request = None,
@@ -172,6 +174,16 @@ async def create_lead(
         payload={"name": lead.name, "source": lead.source},
         ip_address=request.client.host if request else None,
         user_agent=request.headers.get("User-Agent") if request else None
+    )
+    background_tasks.add_task(
+        send_tenant_push_notification,
+        tenant_id=current_tenant.id,
+        event_type="new_lead",
+        title="Yeni müşteri oluştu",
+        body=f"SvontAI {lead.name} için yeni müşteri kaydı oluşturdu.",
+        url="/dashboard/leads",
+        tag="svontai-new-lead",
+        extra={"lead_id": str(lead.id)},
     )
     
     return lead

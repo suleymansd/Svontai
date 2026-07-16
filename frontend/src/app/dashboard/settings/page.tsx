@@ -40,6 +40,7 @@ import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import Link from 'next/link'
+import { NotificationPreferencesPanel } from '@/components/settings/notification-preferences-panel'
 
 const tabs = [
   { id: 'profile', label: 'Profil', icon: User },
@@ -770,29 +771,7 @@ export default function SettingsPage() {
             )}
 
             {activeTab === 'notifications' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bildirim Tercihleri</CardTitle>
-                  <CardDescription>Hangi bildirimleri almak istediğinizi seçin</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {[
-                    { title: 'Yeni Mesaj', desc: 'Müşterilerden yeni mesaj geldiğinde', default: true },
-                    { title: 'Yeni Lead', desc: 'Yeni bir potansiyel müşteri kaydedildiğinde', default: true },
-                    { title: 'Bot Hataları', desc: 'Bot yanıt veremediğinde', default: true },
-                    { title: 'Haftalık Rapor', desc: 'Haftalık performans raporu', default: false },
-                    { title: 'Pazarlama E-postaları', desc: 'Yeni özellikler ve kampanyalar', default: false },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                      <div>
-                        <p className="font-medium">{item.title}</p>
-                        <p className="text-sm text-muted-foreground">{item.desc}</p>
-                      </div>
-                      <Switch defaultChecked={item.default} />
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+              <NotificationPreferencesPanel />
             )}
 
             {activeTab === 'security' && (

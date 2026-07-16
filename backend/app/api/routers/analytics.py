@@ -168,3 +168,16 @@ async def get_usage_summary(
         "subscription": usage_stats,
         "stats": dashboard_stats
     }
+
+
+@router.get("/operational-report")
+async def get_operational_report(
+    period: str = Query(default="today", pattern="^(today|week)$"),
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+):
+    """Generate a real-data daily/weekly report for mobile sharing."""
+    _ = current_user
+    return AnalyticsService(db).get_operational_report(tenant, period)

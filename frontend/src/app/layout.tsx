@@ -12,6 +12,7 @@ const metadataBase = new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://svonta
 
 export const metadata: Metadata = {
   metadataBase,
+  manifest: '/manifest.webmanifest',
   title: {
     default: 'SvontAI — Automation OS for WhatsApp-first teams',
     template: '%s — SvontAI',
@@ -19,6 +20,12 @@ export const metadata: Metadata = {
   description: 'SvontAI, WhatsApp müşteri desteğini otomasyonlarla ölçekleyen kurumsal operasyon platformudur.',
   icons: {
     icon: '/logo.png',
+    apple: '/logo.png',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SvontAI',
   },
   openGraph: {
     title: 'SvontAI — Automation OS for WhatsApp-first teams',

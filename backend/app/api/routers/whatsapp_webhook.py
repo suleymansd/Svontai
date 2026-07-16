@@ -42,6 +42,7 @@ from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
 from app.services.openwa_client import OpenWAClient
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
+from app.services.push_notification_service import send_tenant_push_notification
 
 
 logger = logging.getLogger(__name__)
@@ -318,6 +319,18 @@ async def process_whatsapp_reply_in_background(
                 "fallback_from_n8n": bool(use_n8n),
             },
             correlation_id=correlation_id,
+        )
+        await send_tenant_push_notification(
+            tenant_id=tenant_id,
+            event_type="ai_reply",
+            title="SvontAI çalışıyor",
+            body="Yeni müşteri mesajı otomatik olarak yanıtlandı.",
+            url="/dashboard/conversations",
+            tag="svontai-ai-activity",
+            extra={
+                "message_id": send_result.get("message_id"),
+                "conversation_id": str(conversation_id),
+            },
         )
     except Exception as exc:
         db.rollback()

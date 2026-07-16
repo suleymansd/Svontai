@@ -13,7 +13,7 @@ import re
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
+from app.services.push_notification_service import send_tenant_push_notification
 
 router = APIRouter(prefix="/api/v1/n8n", tags=["n8n Tools"])
 
@@ -410,6 +411,7 @@ async def patch_lead(
 async def upsert_lead(
     request: Request,
     body: LeadUpsertRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> LeadUpsertResponse:
     await _verify_tenant(request, body.tenant_id)
@@ -540,6 +542,18 @@ async def upsert_lead(
         tool_calls=1,
         extra={"last_tool": "leads_upsert"},
     )
+
+    if created:
+        background_tasks.add_task(
+            send_tenant_push_notification,
+            tenant_id=tenant_uuid,
+            event_type="new_lead",
+            title="Yeni müşteri oluştu",
+            body=f"SvontAI {lead.name or lead.phone or 'yeni bir müşteri'} için kayıt oluşturdu.",
+            url="/dashboard/leads",
+            tag="svontai-new-lead",
+            extra={"lead_id": str(lead.id)},
+        )
 
     return LeadUpsertResponse(leadId=str(lead.id), created=created, updated=updated)
 

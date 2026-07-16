@@ -26,6 +26,9 @@ from app.services.scheduled_job_service import scheduled_job_lock
 from app.services.system_event_service import SystemEventService
 from app.services.voice_automation_service import VoiceAutomationService
 from app.services.onboarding_service import OnboardingService
+from app.services.analytics_service import AnalyticsService
+from app.services.push_notification_service import PushNotificationService
+from zoneinfo import ZoneInfo
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -210,6 +213,47 @@ def _run_outbound_voice_jobs() -> None:
         db.close()
 
 
+def _send_weekly_operational_reports() -> None:
+    db = SessionLocal()
+    try:
+        with scheduled_job_lock(db, "weekly_operational_push", 3600, lock_seconds=300) as job:
+            if job is None:
+                return
+            for tenant in db.query(Tenant).all():
+                timezone_name = str((tenant.settings or {}).get("timezone") or "Europe/Istanbul")
+                try:
+                    local_now = utc_now_naive().replace(tzinfo=ZoneInfo("UTC")).astimezone(
+                        ZoneInfo(timezone_name)
+                    )
+                except Exception:
+                    local_now = utc_now_naive().replace(tzinfo=ZoneInfo("UTC")).astimezone(
+                        ZoneInfo("Europe/Istanbul")
+                    )
+                if local_now.weekday() != 0 or local_now.hour < 9:
+                    continue
+                week_key = f"{local_now.isocalendar().year}-W{local_now.isocalendar().week:02d}"
+                if (tenant.settings or {}).get("weekly_operational_push_week") == week_key:
+                    continue
+                report = AnalyticsService(db).get_operational_report(tenant, "week")
+                result = asyncio.run(PushNotificationService(db).send_to_tenant(
+                    tenant_id=tenant.id,
+                    event_type="weekly_report",
+                    title="SvontAI haftalık raporunuz hazır",
+                    body=report["summary"],
+                    url="/dashboard",
+                    tag="svontai-weekly-report",
+                    extra={"period": "week"},
+                ))
+                if result.get("sent", 0) > 0:
+                    tenant.settings = {
+                        **(tenant.settings or {}),
+                        "weekly_operational_push_week": week_key,
+                    }
+                    db.commit()
+    finally:
+        db.close()
+
+
 async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
@@ -220,6 +264,7 @@ async def main() -> None:
         asyncio.create_task(_run_every("openwa_session_health", 120, _sync_openwa_sessions)),
         asyncio.create_task(_run_every("stuck_run_cleanup", 60, _cleanup_stuck_runs)),
         asyncio.create_task(_run_every("outbound_voice_jobs", 30, _run_outbound_voice_jobs)),
+        asyncio.create_task(_run_every("weekly_operational_push", 3600, _send_weekly_operational_reports)),
     ]
     try:
         await asyncio.gather(*tasks)

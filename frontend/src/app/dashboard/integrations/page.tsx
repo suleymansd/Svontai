@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Link2, RefreshCcw } from 'lucide-react'
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { getApiErrorMessage } from '@/lib/api-error'
-import { integrationsApi, realEstateApi } from '@/lib/api'
+import { integrationsApi } from '@/lib/api'
 
 type IntegrationState = 'connected' | 'missing' | 'expired'
 
@@ -21,6 +21,10 @@ type IntegrationStatusItem = {
   required_scopes?: string[]
   granted_scopes?: string[]
   expires_at?: string | null
+  required?: boolean
+  connectable?: boolean
+  manageable?: boolean
+  message?: string | null
 }
 
 type IntegrationStatusMap = Record<string, IntegrationStatusItem>
@@ -57,8 +61,25 @@ export default function IntegrationsPage() {
       requiredScopes: statusMap[key]?.required_scopes || [],
       grantedScopes: statusMap[key]?.granted_scopes || [],
       expiresAt: statusMap[key]?.expires_at || null,
+      required: statusMap[key]?.required !== false,
+      connectable: Boolean(statusMap[key]?.connectable),
+      manageable: Boolean(statusMap[key]?.manageable),
+      message: statusMap[key]?.message || null,
     }))
   }, [data])
+
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'GOOGLE_CALENDAR_CONNECTED' || !event.data?.success) return
+      refetch()
+      toast({
+        title: 'Google bağlantısı tamamlandı',
+        description: 'Drive, Gmail, Sheets ve Calendar izinleri güncellendi.',
+      })
+    }
+    window.addEventListener('message', handleOAuthMessage)
+    return () => window.removeEventListener('message', handleOAuthMessage)
+  }, [refetch, toast])
 
   const handleConnect = async (key: string) => {
     try {
@@ -67,19 +88,16 @@ export default function IntegrationsPage() {
         return
       }
       if (key === 'google_drive' || key === 'gmail' || key === 'google_sheets' || key === 'google_calendar') {
-        const response = await realEstateApi.startGoogleCalendarOAuth()
+        const response = await integrationsApi.startGoogleOAuth()
         const url = response.data?.auth_url
         if (!url) {
           throw new Error('Google OAuth URL alınamadı.')
         }
-        window.open(url, '_blank', 'noopener,noreferrer')
+        const popup = window.open(url, 'svontai-google-oauth', 'width=620,height=760')
+        if (!popup) throw new Error('Bağlantı penceresi tarayıcı tarafından engellendi.')
         return
       }
-      if (key === 'openai' || key === 'n8n' || key === 'document_converter') {
-        router.push('/dashboard/settings')
-        return
-      }
-      toast({ title: 'Bağlantı akışı tanımlı değil', variant: 'destructive' })
+      toast({ title: 'Bu servis SvontAI tarafından otomatik yönetiliyor.' })
     } catch (error: any) {
       toast({
         title: 'Bağlantı başlatılamadı',
@@ -107,7 +125,7 @@ export default function IntegrationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Bağlantı Durumu</CardTitle>
-            <CardDescription>Tenant bazlı integration sağlık özeti</CardDescription>
+            <CardDescription>Google tek bağlantıyla, WhatsApp seçtiğiniz sağlayıcıyla çalışır.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading && <p className="text-sm text-muted-foreground">Yükleniyor...</p>}
@@ -121,20 +139,29 @@ export default function IntegrationsPage() {
               >
                 <div className="flex items-center gap-3">
                   <p className="text-sm font-medium">{row.title}</p>
-                  <Badge variant={row.status === 'connected' ? 'success' : row.status === 'expired' ? 'warning' : 'destructive'}>
-                    {row.status}
+                  <Badge
+                    variant={
+                      row.status === 'connected'
+                        ? 'success'
+                        : row.status === 'expired'
+                          ? 'warning'
+                          : row.required
+                            ? 'destructive'
+                            : 'secondary'
+                    }
+                  >
+                    {row.status === 'connected'
+                      ? 'Bağlı'
+                      : row.status === 'expired'
+                        ? 'Süresi Doldu'
+                        : row.required
+                          ? 'Bağlantı Gerekli'
+                          : 'İsteğe Bağlı'}
                   </Badge>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  {row.requiredScopes.length > 0 && (
-                    <p className="max-w-[420px] text-right text-xs text-muted-foreground">
-                      Gereken scope: {row.requiredScopes.join(', ')}
-                    </p>
-                  )}
-                  {row.grantedScopes.length > 0 && (
-                    <p className="max-w-[420px] text-right text-xs text-muted-foreground">
-                      Verilen scope: {row.grantedScopes.join(', ')}
-                    </p>
+                <div className="min-w-0 flex-1 sm:text-right">
+                  {row.message && (
+                    <p className="text-xs text-muted-foreground">{row.message}</p>
                   )}
                   {row.expiresAt && (
                     <p className="text-xs text-muted-foreground">
@@ -142,15 +169,15 @@ export default function IntegrationsPage() {
                     </p>
                   )}
                 </div>
-                {row.status === 'missing' || row.status === 'expired' ? (
+                {(row.status === 'missing' || row.status === 'expired') && row.connectable ? (
                   <Button size="sm" onClick={() => handleConnect(row.key)}>
-                    {row.status === 'expired' ? 'Reconnect' : 'Connect'}
+                    {row.status === 'expired' ? 'Tekrar Bağla' : 'Bağla'}
                   </Button>
-                ) : (
+                ) : row.status === 'connected' && row.manageable ? (
                   <Button size="sm" variant="outline" onClick={() => handleConnect(row.key)}>
-                    Manage
+                    Yönet
                   </Button>
-                )}
+                ) : null}
               </div>
             ))}
           </CardContent>

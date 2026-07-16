@@ -3,17 +3,22 @@ Analytics service for tracking and aggregating usage metrics.
 """
 
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import UTC, datetime, date, timedelta
 from app.core.time import utc_now_naive
 from typing import Optional, List
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
+from app.models.appointment import Appointment
+from app.models.automation import AutomationRun, AutomationRunStatus
+from app.models.bot import Bot
 from app.models.usage_log import UsageLog, UsageType, DailyStats
 from app.models.conversation import Conversation
-from app.models.message import Message
+from app.models.message import Message, MessageSender
 from app.models.lead import Lead
+from app.models.tenant import Tenant
 
 
 class AnalyticsService:
@@ -259,8 +264,122 @@ class AnalyticsService:
             "widget_percent": round(stats.widget_messages / total * 100, 1) if total > 0 else 0
         }
 
+    def get_operational_report(self, tenant: Tenant, period: str = "today") -> dict:
+        """Build a real-data operational summary suitable for mobile Notes apps."""
+        timezone_name = str((tenant.settings or {}).get("timezone") or "Europe/Istanbul")
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except Exception:
+            timezone_name = "Europe/Istanbul"
+            timezone = ZoneInfo(timezone_name)
+
+        now_local = datetime.now(timezone)
+        if period == "week":
+            start_local = (now_local - timedelta(days=6)).replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            period_label = "Son 7 Gün"
+        else:
+            start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            period_label = "Bugün"
+        start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
+
+        tenant_message_query = self.db.query(Message).join(
+            Conversation, Message.conversation_id == Conversation.id
+        ).join(Bot, Conversation.bot_id == Bot.id).filter(
+            Bot.tenant_id == tenant.id,
+            Message.created_at >= start_utc,
+        )
+        incoming_messages = tenant_message_query.filter(
+            Message.sender == MessageSender.USER.value
+        ).count()
+        ai_replies = tenant_message_query.filter(
+            Message.sender == MessageSender.BOT.value
+        ).count()
+        conversations = self.db.query(func.count(Conversation.id)).join(
+            Bot, Conversation.bot_id == Bot.id
+        ).filter(
+            Bot.tenant_id == tenant.id,
+            Conversation.created_at >= start_utc,
+        ).scalar() or 0
+        leads = self.db.query(func.count(Lead.id)).filter(
+            Lead.tenant_id == tenant.id,
+            Lead.is_deleted.is_(False),
+            Lead.created_at >= start_utc,
+        ).scalar() or 0
+        appointments = self.db.query(func.count(Appointment.id)).filter(
+            Appointment.tenant_id == tenant.id,
+            Appointment.created_at >= start_utc,
+        ).scalar() or 0
+        successful_runs = self.db.query(func.count(AutomationRun.id)).filter(
+            AutomationRun.tenant_id == str(tenant.id),
+            AutomationRun.created_at >= start_utc,
+            AutomationRun.status == AutomationRunStatus.SUCCESS.value,
+        ).scalar() or 0
+        failed_runs = self.db.query(func.count(AutomationRun.id)).filter(
+            AutomationRun.tenant_id == str(tenant.id),
+            AutomationRun.created_at >= start_utc,
+            AutomationRun.status.in_([
+                AutomationRunStatus.FAILED.value,
+                AutomationRunStatus.TIMEOUT.value,
+            ]),
+        ).scalar() or 0
+
+        response_rate = round((ai_replies / incoming_messages) * 100, 1) if incoming_messages else 0.0
+        status_text = (
+            "SvontAI aktif ve müşteri mesajlarını yanıtlıyor."
+            if incoming_messages == 0 or ai_replies > 0
+            else "Müşteri mesajı alındı fakat otomatik yanıt görünmüyor; sistem durumunu kontrol edin."
+        )
+        generated_at = now_local.strftime("%d.%m.%Y %H:%M")
+        title = f"{tenant.name} - SvontAI {period_label} Raporu"
+        summary = (
+            f"{incoming_messages} müşteri mesajı alındı, {ai_replies} otomatik yanıt gönderildi, "
+            f"{leads} yeni müşteri ve {appointments} randevu kaydı oluştu."
+        )
+        report_text = "\n".join([
+            title,
+            f"Oluşturulma: {generated_at} ({timezone_name})",
+            "",
+            "SİSTEM DURUMU",
+            status_text,
+            "",
+            "PERFORMANS ÖZETİ",
+            f"- Gelen mesaj: {incoming_messages}",
+            f"- Otomatik AI yanıtı: {ai_replies}",
+            f"- Yanıt oranı: %{response_rate}",
+            f"- Yeni konuşma: {conversations}",
+            f"- Yeni müşteri/lead: {leads}",
+            f"- Randevu: {appointments}",
+            f"- Başarılı otomasyon: {successful_runs}",
+            f"- Hatalı otomasyon: {failed_runs}",
+            "",
+            "KISA ÖZET",
+            summary,
+        ])
+        return {
+            "period": period,
+            "title": title,
+            "summary": summary,
+            "text": report_text,
+            "generated_at": now_local.isoformat(),
+            "timezone": timezone_name,
+            "metrics": {
+                "incoming_messages": incoming_messages,
+                "ai_replies": ai_replies,
+                "response_rate": response_rate,
+                "conversations": conversations,
+                "leads": leads,
+                "appointments": appointments,
+                "successful_automations": successful_runs,
+                "failed_automations": failed_runs,
+            },
+        }
+
 
 def get_analytics_service(db: Session) -> AnalyticsService:
     """Get analytics service instance."""
     return AnalyticsService(db)
-

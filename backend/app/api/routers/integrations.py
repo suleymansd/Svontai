@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.models.user import User
 from app.models.whatsapp_account import WhatsAppAccount
 from app.services.google_oauth_token_service import GoogleOAuthTokenService
 from app.services.autopilot_service import AutopilotService
+from app.services.google_calendar_service import GoogleCalendarError, GoogleCalendarService
 
 
 IntegrationState = Literal["connected", "missing", "expired"]
@@ -50,6 +51,10 @@ class IntegrationStatusItem(BaseModel):
     required_scopes: list[str] = Field(default_factory=list)
     granted_scopes: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
+    required: bool = True
+    connectable: bool = False
+    manageable: bool = False
+    message: str | None = None
 
 
 class IntegrationStatusResponse(BaseModel):
@@ -79,6 +84,7 @@ def _google_item(
     token_state: IntegrationState,
     granted_scopes: list[str],
     expires_at: datetime | None,
+    configured: bool,
 ) -> IntegrationStatusItem:
     required_scopes = GOOGLE_SCOPE_MAP[key]
     if not granted_scopes or not _has_any_scope(granted_scopes, required_scopes):
@@ -87,6 +93,13 @@ def _google_item(
             required_scopes=required_scopes,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            connectable=configured,
+            manageable=bool(granted_scopes),
+            message=(
+                "Google bağlantısını bir kez tamamladığınızda Drive, Gmail, Sheets ve Calendar birlikte açılır."
+                if configured
+                else "Google OAuth sunucu ayarları henüz tamamlanmadı. Sistem yöneticisinin Google Client bilgilerini eklemesi gerekiyor."
+            ),
         )
 
     if token_state == "expired":
@@ -95,6 +108,9 @@ def _google_item(
             required_scopes=required_scopes,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            connectable=configured,
+            manageable=True,
+            message="Google erişim süresi doldu. Tekrar bağlayın.",
         )
 
     return IntegrationStatusItem(
@@ -102,6 +118,9 @@ def _google_item(
         required_scopes=required_scopes,
         granted_scopes=granted_scopes,
         expires_at=expires_at,
+        connectable=configured,
+        manageable=True,
+        message="Google servisleri tek güvenli bağlantı üzerinden çalışıyor.",
     )
 
 
@@ -115,6 +134,7 @@ async def get_integrations_status(
     _ = current_user
 
     google_token_service = GoogleOAuthTokenService(db)
+    google_configured = GoogleCalendarService.is_configured()
     google_token = db.query(GoogleOAuthToken).filter(
         GoogleOAuthToken.tenant_id == current_tenant.id,
         GoogleOAuthToken.provider == "google",
@@ -154,33 +174,85 @@ async def get_integrations_status(
             token_state=google_state,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            configured=google_configured,
         ),
         gmail=_google_item(
             key="gmail",
             token_state=google_state,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            configured=google_configured,
         ),
         google_sheets=_google_item(
             key="google_sheets",
             token_state=google_state,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            configured=google_configured,
         ),
         google_calendar=_google_item(
             key="google_calendar",
             token_state=google_state,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
+            configured=google_configured,
         ),
         # Keep ``openai`` for older clients while tools use the provider-neutral key.
-        openai=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
-        ai_provider=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
-        document_converter=IntegrationStatusItem(status="connected" if document_converter_connected else "missing"),
-        whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_cloud_connected else "missing"),
-        whatsapp_qr=IntegrationStatusItem(status="connected" if whatsapp_qr_connected else "missing"),
-        n8n=IntegrationStatusItem(status="connected" if n8n_connected else "missing"),
+        openai=IntegrationStatusItem(
+            status="connected" if ai_connected else "missing",
+            message="Yapay zeka sağlayıcısı sistem tarafından yönetilir.",
+        ),
+        ai_provider=IntegrationStatusItem(
+            status="connected" if ai_connected else "missing",
+            message="Yapay zeka sağlayıcısı sistem tarafından yönetilir.",
+        ),
+        document_converter=IntegrationStatusItem(
+            status="connected" if document_converter_connected else "missing",
+            message="Belge dönüştürme servisi otomasyon altyapısıyla birlikte yönetilir.",
+        ),
+        whatsapp_cloud=IntegrationStatusItem(
+            status="connected" if whatsapp_cloud_connected else "missing",
+            required=not whatsapp_qr_connected,
+            connectable=True,
+            manageable=whatsapp_cloud_connected,
+            message=(
+                "WhatsApp QR bağlı olduğu için Cloud bağlantısı zorunlu değil."
+                if whatsapp_qr_connected and not whatsapp_cloud_connected
+                else "Meta WhatsApp Cloud alternatif bağlantı yöntemidir."
+            ),
+        ),
+        whatsapp_qr=IntegrationStatusItem(
+            status="connected" if whatsapp_qr_connected else "missing",
+            connectable=True,
+            manageable=whatsapp_qr_connected,
+            message="Telefonunuzdaki WhatsApp hesabı QR ile SvontAI'ye bağlıdır.",
+        ),
+        n8n=IntegrationStatusItem(
+            status="connected" if n8n_connected else "missing",
+            message="Otomasyon altyapısı sistem tarafından yönetilir.",
+        ),
     )
+
+
+@router.get("/google/start")
+async def start_google_oauth(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> dict:
+    """Start one Google OAuth flow covering Drive, Gmail, Sheets and Calendar."""
+    try:
+        return GoogleCalendarService(db).get_oauth_start(current_tenant.id, current_user.id)
+    except GoogleCalendarError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "GOOGLE_OAUTH_NOT_CONFIGURED",
+                "message": str(exc),
+                "action": "Google Client ID, Client Secret ve callback URL sunucu ayarlarına eklenmelidir.",
+            },
+        ) from exc
 
 
 @router.get("/diagnostics")

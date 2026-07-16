@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { PageHeader } from '@/components/shared/page-header'
+import { OperationalReportCard } from '@/components/dashboard/operational-report-card'
 
 export default function DashboardPage() {
   const queryClient = useQueryClient()
@@ -138,6 +139,8 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        <OperationalReportCard />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border border-border/70 shadow-soft">
