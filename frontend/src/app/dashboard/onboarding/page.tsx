@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
+import { OpenWAConnectDialog } from '@/components/whatsapp/openwa-connect-dialog'
 
 const industries = [
   { value: 'real_estate', label: 'Emlak' },
@@ -386,7 +387,7 @@ export default function OnboardingPage() {
                   <Smartphone className="mt-0.5 h-5 w-5 text-primary" />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">WhatsApp Business numaranızı bağlayın</h3>
+                      <h3 className="font-semibold">WhatsApp numaranızı bağlayın</h3>
                       <Badge variant={whatsappConnected ? 'success' : 'warning'}>{whatsappConnected ? 'Bağlı' : 'Bekliyor'}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -396,9 +397,23 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => startWhatsAppMutation.mutate()} disabled={startWhatsAppMutation.isPending || whatsappConnected}>
+                {whatsappQuery.data?.openwa_enabled ? (
+                  <OpenWAConnectDialog
+                    enabled
+                    connected={whatsappConnected}
+                    onConnected={() => {
+                      queryClient.invalidateQueries({ queryKey: ['whatsapp-onboarding-status'] })
+                      queryClient.invalidateQueries({ queryKey: ['onboarding-status'] })
+                    }}
+                  />
+                ) : null}
+                <Button
+                  variant={whatsappQuery.data?.openwa_enabled ? 'outline' : 'default'}
+                  onClick={() => startWhatsAppMutation.mutate()}
+                  disabled={startWhatsAppMutation.isPending || whatsappConnected}
+                >
                   {startWhatsAppMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
-                  WhatsApp Bağla
+                  Meta Cloud ile Bağla
                 </Button>
                 <Button variant="outline" onClick={() => setStep(5)}>
                   {whatsappConnected ? 'Devam Et' : 'Sonra Bağlayacağım'}

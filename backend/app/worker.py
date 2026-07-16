@@ -12,12 +12,14 @@ from app.core.time import utc_now_naive
 from app.db.session import SessionLocal
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.models.tenant import Tenant
+from app.models.whatsapp_account import WhatsAppAccount
 from app.services.appointment_reminder_service import AppointmentReminderService
 from app.services.autopilot_service import AutopilotService
 from app.services.real_estate_service import RealEstateService
 from app.services.scheduled_job_service import scheduled_job_lock
 from app.services.system_event_service import SystemEventService
 from app.services.voice_automation_service import VoiceAutomationService
+from app.services.onboarding_service import OnboardingService
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -74,6 +76,51 @@ def _run_integration_diagnostics() -> None:
         db.close()
 
 
+def _sync_openwa_sessions() -> None:
+    if not settings.OPENWA_ENABLED:
+        return
+    db = SessionLocal()
+    try:
+        with scheduled_job_lock(db, "openwa_session_health", 120, lock_seconds=100) as job:
+            if job is None:
+                return
+            accounts = db.query(WhatsAppAccount).filter(
+                WhatsAppAccount.provider == "openwa",
+                WhatsAppAccount.provider_session_id.isnot(None),
+            ).all()
+            service = OnboardingService(db)
+            for account in accounts:
+                was_active = account.is_active
+                try:
+                    result = asyncio.run(service.refresh_openwa_status(account.tenant_id))
+                    if was_active and not result.get("connected"):
+                        SystemEventService(db).log(
+                            tenant_id=str(account.tenant_id),
+                            source="openwa",
+                            level="warn",
+                            code="OPENWA_SESSION_DISCONNECTED",
+                            message="WhatsApp QR oturumu bağlantısını kaybetti.",
+                            meta_json={
+                                "session_id": account.provider_session_id,
+                                "status": result.get("status"),
+                            },
+                        )
+                except Exception as exc:
+                    account.provider_metadata_json = {
+                        **(account.provider_metadata_json or {}),
+                        "health_status": "unavailable",
+                    }
+                    account.last_error = str(exc)[:1000]
+                    db.commit()
+                    logger.warning(
+                        "openwa_session_health tenant_id=%s failed=%s",
+                        account.tenant_id,
+                        exc,
+                    )
+    finally:
+        db.close()
+
+
 def _cleanup_stuck_runs() -> None:
     db = SessionLocal()
     try:
@@ -122,6 +169,7 @@ async def main() -> None:
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),
         asyncio.create_task(_run_every("integration_diagnostics", 300, _run_integration_diagnostics)),
+        asyncio.create_task(_run_every("openwa_session_health", 120, _sync_openwa_sessions)),
         asyncio.create_task(_run_every("stuck_run_cleanup", 60, _cleanup_stuck_runs)),
         asyncio.create_task(_run_every("outbound_voice_jobs", 30, _run_outbound_voice_jobs)),
     ]

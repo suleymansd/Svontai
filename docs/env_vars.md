@@ -19,6 +19,12 @@
 - `META_REDIRECT_URI`
 - `META_CONFIG_ID`
 - `GRAPH_API_VERSION`
+- `OPENWA_ENABLED`
+- `OPENWA_BASE_URL`
+- `OPENWA_API_KEY`
+- `OPENWA_WEBHOOK_SECRET`
+- `OPENWA_WEBHOOK_PUBLIC_URL`
+- `OPENWA_TIMEOUT_SECONDS`
 - `WEBHOOK_PUBLIC_URL`
 - `ENCRYPTION_KEY`
 - `BACKEND_URL`
@@ -77,6 +83,12 @@
   - Set `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_REDIRECT_URI`, `WEBHOOK_PUBLIC_URL`, `BACKEND_URL`.
   - `META_REDIRECT_URI` must equal `<WEBHOOK_PUBLIC_URL>/api/onboarding/whatsapp/callback`.
   - Run `/api/onboarding/whatsapp/diagnostics?live=true` from an authenticated tenant session before sales demos.
+- OpenWA QR:
+  - Deploy OpenWA as a separate single-replica service with persistent `/app/data` storage.
+  - Set `ENGINE_TYPE=baileys`, `API_MASTER_KEY`, `API_KEY_PEPPER`, `DATABASE_TYPE=sqlite`, `BAILEYS_AUTH_DIR=/app/data/baileys` and `AUTO_START_SESSIONS=true`.
+  - Backend env: `OPENWA_ENABLED=true`, `OPENWA_BASE_URL`, `OPENWA_API_KEY`, `OPENWA_WEBHOOK_SECRET`, `OPENWA_WEBHOOK_PUBLIC_URL`.
+  - `OPENWA_API_KEY` must equal OpenWA's `API_MASTER_KEY`.
+  - `OPENWA_WEBHOOK_PUBLIC_URL` must be the public SmartWA backend URL.
 - Stripe:
   - Set `PAYMENTS_ENABLED=true`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`.
   - Set `STRIPE_PRICE_IDS`, for example `{"pro":{"monthly":"price_...","yearly":"price_..."},"premium":{"monthly":"price_...","yearly":"price_..."}}`.
@@ -106,7 +118,7 @@
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, stuck automation run cleanup and outbound voice jobs.
-- Current Alembic migration head: `035`.
+- Current Alembic migration head: `037`.
 
 
 ## Rate limiting / Abuse protection

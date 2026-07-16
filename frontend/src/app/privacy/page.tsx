@@ -33,7 +33,7 @@ export default function PrivacyPage() {
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">4. Üçüncü Taraflar ve Aktarımlar</h2>
         <p className="text-muted-foreground">
-          Hizmet kapsamında Meta WhatsApp Cloud API, ödeme sağlayıcısı, e-posta sağlayıcısı, ses/telefon sağlayıcısı, n8n otomasyon altyapısı, dosya saklama altyapısı ve AI model sağlayıcılarıyla gerekli asgari veri paylaşılabilir. Her entegrasyon kendi hizmet koşulları ve veri işleme kurallarına tabidir.
+          Hizmet kapsamında Meta WhatsApp Cloud API veya kullanıcı tarafından seçilen QR tabanlı WhatsApp bağlantı altyapısı, ödeme sağlayıcısı, e-posta sağlayıcısı, ses/telefon sağlayıcısı, n8n otomasyon altyapısı, dosya saklama altyapısı ve AI model sağlayıcılarıyla gerekli asgari veri paylaşılabilir. Her entegrasyon kendi hizmet koşulları ve veri işleme kurallarına tabidir.
         </p>
       </section>
 

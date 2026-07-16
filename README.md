@@ -6,7 +6,7 @@ SvontAi is a production-ready SaaS application that provides AI-powered WhatsApp
 
 - **AI-Powered Responses**: Uses OpenAI GPT models to generate human-like responses in Turkish
 - **Multi-Tenant Architecture**: Each business gets isolated data and customizable bots
-- **WhatsApp Integration**: Connect via WhatsApp Cloud API for automated messaging
+- **WhatsApp Integration**: Connect regular WhatsApp through QR or use Meta Cloud API
 - **Web Chat Widget**: Embeddable widget for websites with Shadow DOM isolation
 - **Knowledge Base**: Train your bot with Q&A pairs specific to your business
 - **Lead Collection**: Automatically capture customer information
@@ -161,13 +161,12 @@ Add this script to any website:
 
 ## 📱 WhatsApp Integration
 
-SvontAi uses the official **Embedded Signup** flow:
+SvontAI supports two provider modes:
 
-1. Configure Meta App credentials (`META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`)
-2. Go to `/dashboard/setup/whatsapp`
-3. Click **"WhatsApp'ı Bağla"** and complete the popup flow
+1. **QR connection (OpenWA)**: works with regular WhatsApp and WhatsApp Business without Meta business verification.
+2. **Meta Cloud API**: official provider for verified corporate deployments.
 
-See `docs/WHATSAPP_EMBEDDED_SIGNUP.md` for details.
+Both providers feed the same tenant-isolated conversation, AI, lead, appointment and n8n pipeline. See `docs/WHATSAPP_QR_OPENWA.md` and `docs/WHATSAPP_EMBEDDED_SIGNUP.md`.
 
 ## 🏠 Real Estate Pack (MVP)
 
@@ -214,6 +213,7 @@ Technical design and endpoint list: `docs/real_estate_pack.md`
 ### WhatsApp Webhook
 - `GET /whatsapp/webhook` - Webhook verification
 - `POST /whatsapp/webhook` - Receive messages
+- `POST /whatsapp/openwa/webhook` - Receive HMAC-signed OpenWA events
 - `POST /webhooks/whatsapp` - Compatibility alias (HTTP Basic Auth required)
 
 For `POST /webhooks/whatsapp` you must set:

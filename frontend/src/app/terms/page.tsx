@@ -3,7 +3,7 @@ export default function TermsPage() {
     <main className="min-h-screen p-8 max-w-4xl mx-auto space-y-8">
       <header className="space-y-2">
         <h1 className="text-3xl font-bold">Kullanım Koşulları</h1>
-        <p className="text-sm text-muted-foreground">Son güncelleme: 25 Haziran 2026</p>
+        <p className="text-sm text-muted-foreground">Son güncelleme: 16 Temmuz 2026</p>
         <p className="text-muted-foreground">
           Bu koşullar SmartWA’nın self-serve ve concierge kurulum, WhatsApp AI, arama otomasyonu, randevu, lead, destek ve ajans/kurumsal yönetim özelliklerini kapsar.
         </p>
@@ -34,6 +34,9 @@ export default function TermsPage() {
         <h2 className="text-xl font-semibold">4. Kabul Edilebilir Kullanım</h2>
         <p className="text-muted-foreground">
           Platform spam, izinsiz pazarlama, aldatıcı iletişim, yasa dışı içerik, hassas verilerin yetkisiz işlenmesi, üçüncü taraf haklarının ihlali veya sağlayıcı politikalarına aykırı kullanım için kullanılamaz. Meta WhatsApp, ödeme, e-posta ve telefon sağlayıcılarının kurallarına uyum müşteriye aittir.
+        </p>
+        <p className="text-muted-foreground">
+          QR tabanlı WhatsApp bağlantısı resmi Meta Cloud API değildir. Bu yöntem seçildiğinde bağlantı kesintisi veya WhatsApp hesabı kısıtlaması riski bulunduğu kullanıcıya gösterilir ve açık onay alınır.
         </p>
       </section>
 

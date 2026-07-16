@@ -22,6 +22,13 @@ CHECKS = {
         "WEBHOOK_PUBLIC_URL",
         "BACKEND_URL",
     ],
+    "openwa_qr": [
+        "OPENWA_ENABLED",
+        "OPENWA_BASE_URL",
+        "OPENWA_API_KEY",
+        "OPENWA_WEBHOOK_SECRET",
+        "OPENWA_WEBHOOK_PUBLIC_URL",
+    ],
     "stripe": [
         "PAYMENTS_ENABLED",
         "STRIPE_SECRET_KEY",
@@ -103,6 +110,7 @@ def main() -> int:
     loaded = _load_env_file(Path(args.env_file)) if args.env_file else {}
     strict = args.profile == "prod"
     failures = 0
+    openwa_enabled = _enabled("OPENWA_ENABLED", loaded)
 
     ai_provider = _env_value("AI_PROVIDER", loaded).strip().lower() or "openai"
     ai_key = "GEMINI_API_KEY" if ai_provider == "gemini" else "OPENAI_API_KEY"
@@ -125,13 +133,17 @@ def main() -> int:
 
     for name, keys in CHECKS.items():
         active = strict
-        if name == "stripe":
+        if name == "meta_whatsapp":
+            active = (strict and not openwa_enabled) or any(_present(key, loaded) for key in keys)
+        elif name == "stripe":
             active = strict or _enabled("PAYMENTS_ENABLED", loaded)
         elif name == "voice_twilio":
             active = strict or _env_value("VOICE_OUTBOUND_MODE", loaded).strip().lower() == "live"
         elif name == "n8n":
             active = strict or _enabled("USE_N8N", loaded)
-        elif name in {"meta_whatsapp", "frontend"}:
+        elif name == "openwa_qr":
+            active = openwa_enabled
+        elif name == "frontend":
             active = strict or any(_present(key, loaded) for key in keys)
 
         missing = _missing(keys, loaded)

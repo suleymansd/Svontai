@@ -25,7 +25,12 @@ from app.services.subscription_service import SubscriptionService
 from app.services.usage_counter_service import UsageCounterService
 from app.core.encryption import decrypt_token
 from app.core.config import settings
-from app.core.rate_limit import rate_limit_key, require_rate_limit, webhook_rate_limiter
+from app.core.rate_limit import (
+    openwa_webhook_rate_limiter,
+    rate_limit_key,
+    require_rate_limit,
+    webhook_rate_limiter,
+)
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message, MessageSender
@@ -35,6 +40,7 @@ from app.services.ai_service import ai_service
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
+from app.services.openwa_client import OpenWAClient
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,124 @@ router = APIRouter(prefix="/whatsapp", tags=["WhatsApp Webhook"])
 
 # Rate limiting state (in production, use Redis)
 _webhook_requests = {}
+
+
+@router.post("/openwa/webhook")
+async def openwa_webhook_events(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Receive HMAC-signed OpenWA session and message events."""
+    require_rate_limit(
+        openwa_webhook_rate_limiter,
+        rate_limit_key(request, "openwa-webhook"),
+        "OpenWA webhook rate limit exceeded.",
+    )
+    body = await request.body()
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON")
+
+    session_id = str(payload.get("sessionId") or "")
+    event = str(payload.get("event") or "")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    if not session_id or not event:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OpenWA event")
+    signature = request.headers.get("X-OpenWA-Signature")
+    if not OpenWAClient.verify_signature(body, signature, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid OpenWA signature")
+
+    account = db.query(WhatsAppAccount).filter(
+        WhatsAppAccount.provider == "openwa",
+        WhatsAppAccount.provider_session_id == session_id,
+    ).first()
+    if not account:
+        logger.warning("openwa.account_not_found session_id=%s", session_id)
+        return {"status": "ignored"}
+
+    service = OnboardingService(db)
+    if event in {"session.authenticated", "session.disconnected", "session.status"}:
+        service.sync_openwa_webhook_event(account, event, data)
+    elif event == "message.received":
+        background_tasks.add_task(
+            process_openwa_message_event,
+            str(account.tenant_id),
+            session_id,
+            account.display_phone_number or "",
+            data,
+            payload,
+            db,
+            background_tasks,
+        )
+
+    return {"status": "ok"}
+
+
+async def process_openwa_message_event(
+    tenant_id_str: str,
+    session_id: str,
+    display_phone_number: str,
+    data: dict,
+    raw_payload: dict,
+    db: Session,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
+    """Normalize an OpenWA message into SmartWA's canonical inbound flow."""
+    if data.get("fromMe") or data.get("isStatusBroadcast"):
+        return
+    if data.get("isGroup"):
+        logger.info("openwa.group_message_ignored session_id=%s message_id=%s", session_id, data.get("id"))
+        return
+
+    sender = data.get("senderPhone") or data.get("from") or data.get("chatId")
+    if data.get("isLidSender") and not data.get("senderPhone"):
+        logger.warning("openwa.lid_sender_unresolved session_id=%s message_id=%s", session_id, data.get("id"))
+        return
+    from_number = OpenWAClient.phone_from_jid(str(sender or ""))
+    if not from_number:
+        return
+
+    message_type = str(data.get("type") or "unknown").lower()
+    content = str(data.get("body") or "").strip()
+    if not content:
+        if message_type in {"image", "video"}:
+            content = f"[{message_type.capitalize()} received]"
+        elif message_type in {"audio", "voice", "ptt"}:
+            content = "[Audio received]"
+        elif message_type == "document":
+            filename = ((data.get("media") or {}).get("filename") if isinstance(data.get("media"), dict) else None)
+            content = f"[Document received: {filename}]" if filename else "[Document received]"
+        elif message_type == "location":
+            location = data.get("location") if isinstance(data.get("location"), dict) else {}
+            content = (
+                f"[Location received] lat={location.get('latitude')}, lng={location.get('longitude')}"
+            )
+        else:
+            content = f"[{message_type} received]"
+
+    contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
+    contact_name = contact.get("pushName") or contact.get("name")
+    message_id = str(data.get("id") or raw_payload.get("idempotencyKey") or uuid.uuid4())
+
+    await handle_incoming_message(
+        tenant_id_str=tenant_id_str,
+        account_phone_number_id=session_id,
+        account_display_phone_number=display_phone_number,
+        access_token_encrypted="",
+        from_number=from_number,
+        contact_name=contact_name,
+        message_content=content,
+        message_type=message_type,
+        message_id=message_id,
+        correlation_id=str(uuid.uuid4()),
+        db=db,
+        timestamp=str(data.get("timestamp") or ""),
+        raw_payload=raw_payload,
+        background_tasks=background_tasks,
+        provider="openwa",
+    )
 
 
 def rate_limit_check(phone_number_id: str, max_per_minute: int = 100) -> bool:
@@ -455,6 +579,7 @@ async def handle_incoming_message(
     timestamp: Optional[str] = None,
     raw_payload: Optional[dict] = None,
     background_tasks: Optional[BackgroundTasks] = None,
+    provider: str = "meta_cloud",
 ) -> None:
     try:
         correlation_id = correlation_id or str(uuid.uuid4())
@@ -472,6 +597,25 @@ async def handle_incoming_message(
 
         bot_id = bot_row[0]
         bot_id_str = str(bot_id)
+
+        duplicate = (
+            db.query(Message.id)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .join(Bot, Conversation.bot_id == Bot.id)
+            .filter(
+                Bot.tenant_id == tenant_uuid,
+                Message.external_id == message_id,
+            )
+            .first()
+        )
+        if duplicate:
+            logger.info(
+                "whatsapp.duplicate_message_ignored tenant_id=%s message_id=%s provider=%s",
+                tenant_id_str,
+                message_id,
+                provider,
+            )
+            return
 
         conversation_row = (
             db.query(
@@ -532,6 +676,7 @@ async def handle_incoming_message(
                 "from": from_number,
                 "timestamp": timestamp,
                 "meta": {
+                    "provider": provider,
                     "phone_number_id": account_phone_number_id,
                     "display_phone_number": account_display_phone_number,
                     "access_token_present": bool(access_token_encrypted),

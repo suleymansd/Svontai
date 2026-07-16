@@ -40,7 +40,7 @@ const securityItems = [
   },
   {
     title: 'Webhook doğrulama',
-    description: 'Prod ortamda Meta webhook POST çağrıları imza kontrolünden geçer; alias webhook basic auth ile korunur.',
+    description: 'Meta webhookları sağlayıcı imzasıyla, OpenWA webhookları HMAC-SHA256 ile doğrulanır; tekrar eden mesajlar işlenmez.',
     icon: Webhook,
   },
   {

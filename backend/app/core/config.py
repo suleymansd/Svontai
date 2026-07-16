@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     META_REDIRECT_URI: str = "http://localhost:8000/api/onboarding/whatsapp/callback"
     META_CONFIG_ID: str = ""  # WhatsApp Embedded Signup Config ID
     GRAPH_API_VERSION: str = "v18.0"
+
+    # OpenWA QR provider. OpenWA runs as a separate persistent service and
+    # connects regular WhatsApp or WhatsApp Business accounts through QR pairing.
+    OPENWA_ENABLED: bool = False
+    OPENWA_BASE_URL: str = ""
+    OPENWA_API_KEY: str = ""
+    OPENWA_WEBHOOK_SECRET: str = ""
+    OPENWA_WEBHOOK_PUBLIC_URL: str = ""
+    OPENWA_TIMEOUT_SECONDS: int = 20
     
     # Webhook Configuration
     WEBHOOK_PUBLIC_URL: str = "http://localhost:8000"  # Your public URL for webhooks
@@ -311,6 +320,20 @@ class Settings(BaseSettings):
             missing_real_time_config.append(required_key)
         if not self.WEBHOOK_USERNAME.strip() or not self.WEBHOOK_PASSWORD.strip():
             missing_real_time_config.append("WEBHOOK_USERNAME/WEBHOOK_PASSWORD")
+        if self.OPENWA_ENABLED and (
+            not self.OPENWA_BASE_URL.strip()
+            or not self.OPENWA_API_KEY.strip()
+            or not self.OPENWA_WEBHOOK_SECRET.strip()
+        ):
+            missing_real_time_config.append("OPENWA_BASE_URL/OPENWA_API_KEY/OPENWA_WEBHOOK_SECRET")
+        if self.OPENWA_ENABLED and (
+            self.OPENWA_WEBHOOK_PUBLIC_URL.startswith("http://localhost")
+            or (
+                not self.OPENWA_WEBHOOK_PUBLIC_URL.strip()
+                and self.WEBHOOK_PUBLIC_URL.startswith("http://localhost")
+            )
+        ):
+            missing_real_time_config.append("public OPENWA_WEBHOOK_PUBLIC_URL")
         if not self.EMAIL_ENABLED:
             missing_real_time_config.append("EMAIL_ENABLED=true")
         if self.EMAIL_PROVIDER == "resend" and not self.RESEND_API_KEY.strip():

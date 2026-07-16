@@ -1,4 +1,9 @@
 from fastapi import Request
+import asyncio
+from unittest.mock import AsyncMock
+from uuid import UUID
+
+import pytest
 
 from app.core.rate_limit import client_ip
 
@@ -60,3 +65,41 @@ def test_global_rate_limit_returns_429_without_500(client):
     assert first.status_code in {401, 403}
     assert second.status_code == 429
     assert second.json()["detail"].startswith("Çok fazla istek")
+
+
+def test_whatsapp_outbound_tenant_rate_limit(client, monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.openwa_client import openwa_client
+    from app.services.whatsapp_gateway_service import whatsapp_gateway_service
+
+    _ = client
+    old_max = rate_limit_module.whatsapp_send_minute_rate_limiter.max_attempts
+    rate_limit_module.whatsapp_send_minute_rate_limiter.clear()
+    rate_limit_module.whatsapp_send_minute_rate_limiter.max_attempts = 1
+    monkeypatch.setattr(
+        openwa_client,
+        "send_text",
+        AsyncMock(return_value={"messageId": "outbound-1"}),
+    )
+    account = WhatsAppAccount(
+        tenant_id=UUID("11111111-1111-1111-1111-111111111111"),
+        provider="openwa",
+        provider_session_id="82d1023f-998b-4ada-bf1c-a1e192e933c6",
+        token_status="active",
+        webhook_status="verified",
+        is_active=True,
+        is_verified=True,
+    )
+    try:
+        first = asyncio.run(
+            whatsapp_gateway_service.send_text(account, to="+905551112233", text="Bir")
+        )
+        assert first["message_id"] == "outbound-1"
+        with pytest.raises(RuntimeError, match="Dakikalık"):
+            asyncio.run(
+                whatsapp_gateway_service.send_text(account, to="+905551112233", text="İki")
+            )
+    finally:
+        rate_limit_module.whatsapp_send_minute_rate_limiter.max_attempts = old_max
+        rate_limit_module.whatsapp_send_minute_rate_limiter.clear()

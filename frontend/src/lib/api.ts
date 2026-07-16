@@ -355,6 +355,12 @@ export const adminApi = {
 export const onboardingApi = {
   // WhatsApp Onboarding
   startWhatsApp: () => api.post('/api/onboarding/whatsapp/start'),
+  startOpenWA: (acceptedUnofficialRisk: boolean) =>
+    api.post('/api/onboarding/whatsapp/openwa/start', {
+      accepted_unofficial_risk: acceptedUnofficialRisk,
+    }),
+  getOpenWAQr: () => api.get('/api/onboarding/whatsapp/openwa/qr'),
+  disconnectOpenWA: () => api.post('/api/onboarding/whatsapp/openwa/disconnect'),
   getWhatsAppStatus: () => api.get('/api/onboarding/whatsapp/status'),
   getWhatsAppAccount: () => api.get('/api/onboarding/whatsapp/account'),
   resetWhatsApp: () => api.post('/api/onboarding/whatsapp/reset'),

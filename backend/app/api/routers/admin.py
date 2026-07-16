@@ -922,7 +922,6 @@ async def get_launch_board(
         whatsapp_connected = db.query(WhatsAppAccount.id).filter(
             WhatsAppAccount.tenant_id == tenant.id,
             WhatsAppAccount.is_active == True,
-            WhatsAppAccount.phone_number_id.isnot(None),
         ).first()
         latest_run = db.query(SetupRun).filter(SetupRun.tenant_id == tenant.id).order_by(SetupRun.created_at.desc()).first()
         bot_count = int(db.query(func.count(Bot.id)).filter(Bot.tenant_id == tenant.id).scalar() or 0)

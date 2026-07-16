@@ -21,6 +21,7 @@ from app.models.onboarding import (
 )
 from app.core.encryption import encrypt_token, decrypt_token
 from app.services.meta_api import meta_api_service, MetaAPIError
+from app.services.openwa_client import OpenWAError, openwa_client
 from app.core.config import settings
 
 
@@ -141,7 +142,11 @@ class OnboardingService:
         self.db.commit()
         return step
     
-    def get_or_create_whatsapp_account(self, tenant_id: UUID) -> WhatsAppAccount:
+    def get_or_create_whatsapp_account(
+        self,
+        tenant_id: UUID,
+        provider: str = "meta_cloud",
+    ) -> WhatsAppAccount:
         """Get existing or create new WhatsApp account for tenant."""
         account = self.db.query(WhatsAppAccount).filter(
             WhatsAppAccount.tenant_id == tenant_id
@@ -151,6 +156,7 @@ class OnboardingService:
             verify_token = meta_api_service.generate_verify_token()
             account = WhatsAppAccount(
                 tenant_id=tenant_id,
+                provider=provider,
                 webhook_verify_token=verify_token
             )
             self.db.add(account)
@@ -158,6 +164,217 @@ class OnboardingService:
             self.db.refresh(account)
         
         return account
+
+    async def start_openwa_onboarding(
+        self,
+        tenant_id: UUID,
+        *,
+        accepted_unofficial_risk: bool,
+    ) -> Dict[str, Any]:
+        """Create a tenant-scoped OpenWA session and prepare QR pairing."""
+        if not accepted_unofficial_risk:
+            raise OpenWAError("QR bağlantısının resmi olmayan yöntem uyarısını onaylamalısınız.")
+        if not openwa_client.configured:
+            raise OpenWAError("OpenWA servisi henüz yapılandırılmadı.")
+
+        account = self.get_whatsapp_account(tenant_id)
+        if account and account.is_active and account.provider != "openwa":
+            raise OpenWAError("Önce mevcut Meta WhatsApp bağlantısını kaldırın.")
+
+        self.initialize_onboarding_steps(tenant_id)
+        self.update_step_status(tenant_id, "start_setup", StepStatus.DONE)
+        self.update_step_status(
+            tenant_id,
+            "meta_auth",
+            StepStatus.IN_PROGRESS,
+            message="Telefonunuzdan QR kodu tarayın.",
+        )
+
+        account = self.get_or_create_whatsapp_account(tenant_id, provider="openwa")
+        session_name = f"svontai-{tenant_id.hex[:24]}"
+        session = await openwa_client.create_or_get_session(session_name)
+        session_id = str(session.get("id") or "")
+        if not session_id:
+            raise OpenWAError("OpenWA oturum kimliği alınamadı.")
+
+        webhook_base_url = (
+            settings.OPENWA_WEBHOOK_PUBLIC_URL.strip()
+            or settings.WEBHOOK_PUBLIC_URL.strip()
+        ).rstrip("/")
+        webhook_url = f"{webhook_base_url}/whatsapp/openwa/webhook"
+        webhook = await openwa_client.ensure_webhook(session_id, webhook_url)
+        started = await openwa_client.start_session(session_id)
+
+        account.provider = "openwa"
+        account.provider_session_id = session_id
+        account.provider_webhook_id = str(webhook.get("id") or "") or None
+        account.provider_metadata_json = {
+            "session_name": session_name,
+            "engine_status": started.get("status") or session.get("status") or "initializing",
+            "risk_accepted": True,
+            "risk_accepted_at": utc_now_naive().isoformat(),
+        }
+        account.waba_id = None
+        account.business_id = None
+        account.app_id = None
+        account.phone_number_id = None
+        account.access_token_encrypted = None
+        account.token_status = TokenStatus.ACTIVE.value
+        account.webhook_url = webhook_url
+        account.webhook_status = WebhookStatus.VERIFIED.value
+        account.is_verified = True
+        account.is_active = started.get("status") == "ready"
+        account.last_error = started.get("lastError")
+        if started.get("phone"):
+            account.display_phone_number = f"+{started['phone']}"
+        self.db.commit()
+
+        self.update_step_status(
+            tenant_id,
+            "configure_webhook",
+            StepStatus.DONE,
+            message="OpenWA webhook bağlantısı hazır.",
+        )
+        if account.is_active:
+            self._mark_openwa_connected(account, started)
+
+        self.create_audit_log(
+            tenant_id=tenant_id,
+            action="openwa_onboarding_started",
+            resource_type="whatsapp_account",
+            resource_id=str(account.id),
+            payload={"provider": "openwa", "session_id": session_id},
+        )
+        return self.openwa_status(account, started)
+
+    async def refresh_openwa_status(self, tenant_id: UUID) -> Dict[str, Any]:
+        account = self.get_whatsapp_account(tenant_id)
+        if not account or account.provider != "openwa" or not account.provider_session_id:
+            raise OpenWAError("OpenWA oturumu bulunamadı.")
+
+        session = await openwa_client.get_session(account.provider_session_id)
+        status_value = str(session.get("status") or "unknown")
+        account.provider_metadata_json = {
+            **(account.provider_metadata_json or {}),
+            "engine_status": status_value,
+            "health_status": "connected",
+        }
+        account.last_error = session.get("lastError")
+        if status_value == "ready":
+            self._mark_openwa_connected(account, session)
+        elif status_value in {"failed", "disconnected"}:
+            account.is_active = False
+            account.token_status = TokenStatus.ERROR.value
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "engine_status": status_value,
+                "health_status": "disconnected",
+            }
+            self.db.commit()
+
+        return self.openwa_status(account, session)
+
+    async def get_openwa_qr(self, tenant_id: UUID) -> Dict[str, Any]:
+        status_payload = await self.refresh_openwa_status(tenant_id)
+        if status_payload["status"] == "ready":
+            return {**status_payload, "qr_code": None}
+
+        account = self.get_whatsapp_account(tenant_id)
+        try:
+            qr = await openwa_client.get_qr(account.provider_session_id)
+        except OpenWAError as exc:
+            if exc.status_code != 400:
+                raise
+            qr = {}
+        return {
+            **status_payload,
+            "status": qr.get("status") or status_payload["status"],
+            "qr_code": qr.get("qrCode"),
+        }
+
+    async def disconnect_openwa(self, tenant_id: UUID) -> None:
+        account = self.get_whatsapp_account(tenant_id)
+        if not account or account.provider != "openwa":
+            return
+        if account.provider_session_id:
+            await openwa_client.delete_session(account.provider_session_id)
+        self.db.delete(account)
+        self.db.commit()
+        self.initialize_onboarding_steps(tenant_id)
+
+    def sync_openwa_webhook_event(
+        self,
+        account: WhatsAppAccount,
+        event: str,
+        data: dict,
+    ) -> None:
+        status_value = str(data.get("status") or "")
+        if event == "session.authenticated":
+            self._mark_openwa_connected(account, data)
+        elif event in {"session.disconnected"} or status_value in {"failed", "disconnected"}:
+            account.is_active = False
+            account.token_status = TokenStatus.ERROR.value
+            account.last_error = str(data.get("reason") or data.get("error") or "") or None
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "engine_status": status_value or "disconnected",
+                "health_status": "disconnected",
+            }
+            self.db.commit()
+        elif event == "session.status" and status_value:
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "engine_status": status_value,
+                "health_status": "connected",
+            }
+            self.db.commit()
+
+    def _mark_openwa_connected(self, account: WhatsAppAccount, data: dict) -> None:
+        phone = str(data.get("phone") or "").strip()
+        account.is_active = True
+        account.is_verified = True
+        account.token_status = TokenStatus.ACTIVE.value
+        account.webhook_status = WebhookStatus.VERIFIED.value
+        account.last_error = None
+        if phone:
+            account.display_phone_number = phone if phone.startswith("+") else f"+{phone}"
+        account.provider_metadata_json = {
+            **(account.provider_metadata_json or {}),
+            "engine_status": "ready",
+            "health_status": "connected",
+            "push_name": data.get("pushName"),
+        }
+        self.db.commit()
+        self.update_step_status(
+            account.tenant_id,
+            "meta_auth",
+            StepStatus.DONE,
+            message="QR bağlantısı onaylandı.",
+        )
+        for step_key in ("select_waba", "save_credentials", "configure_webhook", "verify_webhook", "complete"):
+            self.update_step_status(
+                account.tenant_id,
+                step_key,
+                StepStatus.DONE,
+                message="WhatsApp QR bağlantısı hazır.",
+            )
+
+    def openwa_status(
+        self,
+        account: WhatsAppAccount,
+        session: dict | None = None,
+    ) -> Dict[str, Any]:
+        session = session or {}
+        metadata = account.provider_metadata_json or {}
+        return {
+            "provider": "openwa",
+            "session_id": account.provider_session_id,
+            "status": session.get("status") or metadata.get("engine_status") or "created",
+            "connected": bool(account.is_active),
+            "phone_number": account.display_phone_number,
+            "push_name": session.get("pushName") or metadata.get("push_name"),
+            "last_error": session.get("lastError") or account.last_error,
+        }
     
     def start_onboarding(self, tenant_id: UUID) -> Dict[str, Any]:
         """
@@ -173,7 +390,16 @@ class OnboardingService:
         self.initialize_onboarding_steps(tenant_id)
         
         # Get or create WhatsApp account
-        account = self.get_or_create_whatsapp_account(tenant_id)
+        existing_account = self.get_whatsapp_account(tenant_id)
+        if existing_account and existing_account.provider == "openwa":
+            raise MetaAPIError("Disconnect the OpenWA session before starting Meta onboarding")
+        account = self.get_or_create_whatsapp_account(tenant_id, provider="meta_cloud")
+        account.provider = "meta_cloud"
+        account.provider_session_id = None
+        account.provider_webhook_id = None
+        account.provider_metadata_json = {}
+        account.last_error = None
+        self.db.commit()
         
         # Update first step to in_progress
         self.update_step_status(tenant_id, "start_setup", StepStatus.DONE)
@@ -369,4 +595,3 @@ class OnboardingService:
         if not account.access_token_encrypted:
             return None
         return decrypt_token(account.access_token_encrypted)
-

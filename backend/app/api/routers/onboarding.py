@@ -19,7 +19,10 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.services.onboarding_service import OnboardingService
 from app.services.meta_api import MetaAPIError, meta_api_service
+from app.services.openwa_client import OpenWAError, openwa_client
 from app.services.system_event_service import SystemEventService
+from app.core.rate_limit import rate_limit_key, require_rate_limit, whatsapp_connect_rate_limiter
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
@@ -57,6 +60,9 @@ class OnboardingStatusResponse(BaseModel):
     is_complete: bool
     whatsapp_connected: bool
     phone_number: Optional[str]
+    provider: Optional[str] = None
+    provider_status: Optional[str] = None
+    openwa_enabled: bool = False
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -70,6 +76,8 @@ class WhatsAppAccountResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    provider: str
+    provider_session_id: Optional[str]
     waba_id: Optional[str]
     phone_number_id: Optional[str]
     display_phone_number: Optional[str]
@@ -79,6 +87,21 @@ class WhatsAppAccountResponse(BaseModel):
     is_verified: bool
     created_at: datetime
     updated_at: datetime
+
+
+class OpenWAStartRequest(BaseModel):
+    accepted_unofficial_risk: bool = False
+
+
+class OpenWAStatusResponse(BaseModel):
+    provider: str
+    session_id: Optional[str]
+    status: str
+    connected: bool
+    phone_number: Optional[str]
+    push_name: Optional[str]
+    last_error: Optional[str]
+    qr_code: Optional[str] = None
 
 
 class WhatsAppDiagnosticsResponse(BaseModel):
@@ -99,6 +122,7 @@ class WhatsAppDiagnosticsResponse(BaseModel):
 
 @router.post("/whatsapp/start", response_model=OnboardingStartResponse)
 async def start_whatsapp_onboarding(
+    request: Request,
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
@@ -109,6 +133,11 @@ async def start_whatsapp_onboarding(
     
     Returns OAuth URL and Embedded Signup configuration.
     """
+    require_rate_limit(
+        whatsapp_connect_rate_limiter,
+        rate_limit_key(request, "whatsapp-connect", current_tenant.id),
+        "Çok fazla WhatsApp bağlantı denemesi. Lütfen birkaç dakika sonra tekrar deneyin.",
+    )
     service = OnboardingService(db)
     
     try:
@@ -137,6 +166,75 @@ async def start_whatsapp_onboarding(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Onboarding başlatılamadı: {str(e)}"
         )
+
+
+@router.post("/whatsapp/openwa/start", response_model=OpenWAStatusResponse)
+async def start_openwa_onboarding(
+    body: OpenWAStartRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> OpenWAStatusResponse:
+    require_rate_limit(
+        whatsapp_connect_rate_limiter,
+        rate_limit_key(request, "openwa-connect", current_tenant.id),
+        "Çok fazla WhatsApp bağlantı denemesi. Lütfen birkaç dakika sonra tekrar deneyin.",
+    )
+    try:
+        result = await OnboardingService(db).start_openwa_onboarding(
+            current_tenant.id,
+            accepted_unofficial_risk=body.accepted_unofficial_risk,
+        )
+        SystemEventService(db).log(
+            tenant_id=str(current_tenant.id),
+            source="openwa",
+            level="info",
+            code="OPENWA_SESSION_STARTED",
+            message="WhatsApp QR bağlantı oturumu başlatıldı.",
+            meta_json={"session_id": result.get("session_id"), "user_id": str(current_user.id)},
+            correlation_id=None,
+        )
+        return OpenWAStatusResponse(**result)
+    except OpenWAError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST if exc.status_code in {None, 400, 404, 409} else status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        )
+
+
+@router.get("/whatsapp/openwa/qr", response_model=OpenWAStatusResponse)
+async def get_openwa_qr(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+) -> OpenWAStatusResponse:
+    _ = current_user
+    try:
+        return OpenWAStatusResponse(
+            **(await OnboardingService(db).get_openwa_qr(current_tenant.id))
+        )
+    except OpenWAError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND if exc.status_code in {None, 404} else status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        )
+
+
+@router.post("/whatsapp/openwa/disconnect")
+async def disconnect_openwa(
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> dict:
+    try:
+        await OnboardingService(db).disconnect_openwa(current_tenant.id)
+    except OpenWAError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return {"success": True, "message": "WhatsApp QR bağlantısı kaldırıldı."}
 
 
 @router.get("/whatsapp/diagnostics", response_model=WhatsAppDiagnosticsResponse)
@@ -249,7 +347,14 @@ async def get_whatsapp_onboarding_status(
         current_step=current_step,
         is_complete=is_complete,
         whatsapp_connected=account.is_active if account else False,
-        phone_number=account.display_phone_number if account else None
+        phone_number=account.display_phone_number if account else None,
+        provider=account.provider if account else None,
+        provider_status=(
+            (account.provider_metadata_json or {}).get("engine_status")
+            if account and account.provider == "openwa"
+            else (account.token_status if account else None)
+        ),
+        openwa_enabled=bool(settings.OPENWA_ENABLED and openwa_client.configured),
     )
 
 
@@ -288,10 +393,16 @@ async def reset_whatsapp_onboarding(
     """
     service = OnboardingService(db)
     
-    # Delete existing account
+    # Delete existing account and remote QR session when applicable.
     account = service.get_whatsapp_account(current_tenant.id)
     if account:
-        db.delete(account)
+        if account.provider == "openwa":
+            try:
+                await service.disconnect_openwa(current_tenant.id)
+            except OpenWAError as exc:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        else:
+            db.delete(account)
     
     # Re-initialize steps
     service.initialize_onboarding_steps(current_tenant.id)

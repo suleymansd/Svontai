@@ -411,7 +411,7 @@ export default function HomePage() {
               },
               {
                 q: 'WhatsApp Business hesabım olması gerekiyor mu?',
-                a: 'Evet, WhatsApp entegrasyonu için Meta Business Suite üzerinden WhatsApp Business API erişiminiz olması gerekmektedir. Kurulum sürecinde size yardımcı oluyoruz.'
+                a: 'Hayır. Mevcut normal WhatsApp veya WhatsApp Business hesabınızı QR kodla bağlayabilirsiniz. Doğrulanmış kurumsal kullanım için Meta Cloud API seçeneği de desteklenir.'
               },
               {
                 q: 'Deneme süresi var mı?',

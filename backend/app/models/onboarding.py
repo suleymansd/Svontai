@@ -174,16 +174,16 @@ WHATSAPP_ONBOARDING_STEPS = [
     {
         "step_key": "meta_auth",
         "step_order": 2,
-        "step_name": "Meta ile Bağlan",
-        "step_name_en": "Connect with Meta",
-        "step_description": "Facebook/Meta hesabınızla giriş yapın"
+        "step_name": "WhatsApp'ı Yetkilendir",
+        "step_name_en": "Authorize WhatsApp",
+        "step_description": "Meta ile giriş yapın veya telefonunuzdan QR kodu tarayın"
     },
     {
         "step_key": "select_waba",
         "step_order": 3,
-        "step_name": "WhatsApp Business Seç",
-        "step_name_en": "Select WhatsApp Business",
-        "step_description": "WhatsApp Business hesabınızı ve numaranızı seçin"
+        "step_name": "WhatsApp Hesabını Seç",
+        "step_name_en": "Select WhatsApp Account",
+        "step_description": "Bağlanacak WhatsApp hesabını ve numarayı seçin"
     },
     {
         "step_key": "save_credentials",
@@ -204,7 +204,7 @@ WHATSAPP_ONBOARDING_STEPS = [
         "step_order": 6,
         "step_name": "Webhook Doğrula",
         "step_name_en": "Verify Webhook",
-        "step_description": "Meta webhook doğrulaması bekleniyor"
+        "step_description": "Mesaj webhook doğrulaması bekleniyor"
     },
     {
         "step_key": "complete",
@@ -214,4 +214,3 @@ WHATSAPP_ONBOARDING_STEPS = [
         "step_description": "WhatsApp bağlantısı başarılı!"
     }
 ]
-

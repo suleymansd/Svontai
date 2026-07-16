@@ -21,9 +21,8 @@ from app.models.conversation import Conversation, ConversationStatus, Conversati
 from app.models.message import Message
 from app.models.bot import Bot
 from app.models.whatsapp_account import WhatsAppAccount
-from app.core.encryption import decrypt_token
-from app.services.meta_api import meta_api_service
 from app.services.subscription_service import SubscriptionService
+from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 
 
 router = APIRouter(prefix="/operator", tags=["operator"])
@@ -277,18 +276,15 @@ async def send_operator_message(
             WhatsAppAccount.is_active == True
         ).first()
         
-        access_token = decrypt_token(account.access_token_encrypted) if account else None
-        
-        if not account or not access_token or not account.phone_number_id:
+        if not account:
             delivered = False
-            delivery_note = "WhatsApp hesabı bağlı değil veya erişim anahtarı bulunamadı."
+            delivery_note = "WhatsApp hesabı bağlı değil."
         else:
             try:
-                await meta_api_service.send_text_message(
-                    access_token=access_token,
-                    phone_number_id=account.phone_number_id,
+                await whatsapp_gateway_service.send_text(
+                    account,
                     to=conversation.external_user_id,
-                    text=request.content
+                    text=request.content,
                 )
             except Exception as e:
                 delivered = False

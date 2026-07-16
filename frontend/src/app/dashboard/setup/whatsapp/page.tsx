@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { OpenWAConnectDialog } from '@/components/whatsapp/openwa-connect-dialog'
 
 // Types
 interface OnboardingStep {
@@ -48,6 +49,9 @@ interface OnboardingStatus {
   is_complete: boolean
   whatsapp_connected: boolean
   phone_number: string | null
+  provider: 'meta_cloud' | 'openwa' | null
+  provider_status: string | null
+  openwa_enabled: boolean
 }
 
 interface StartResponse {
@@ -294,7 +298,7 @@ export default function WhatsAppSetupPage() {
               WhatsApp Kurulumu
             </h1>
             <p className="text-muted-foreground mt-1">
-              WhatsApp Business hesabınızı 1-3 dakikada bağlayın
+              Normal WhatsApp veya WhatsApp Business hesabınızı bağlayın
             </p>
           </div>
         </div>
@@ -436,6 +440,9 @@ export default function WhatsAppSetupPage() {
                   <p className="text-green-600 dark:text-green-400">
                     {status.phone_number || 'Telefon numarası'}
                   </p>
+                  <Badge variant="success" className="mt-2">
+                    {status.provider === 'openwa' ? 'QR bağlantısı' : 'Meta Cloud'}
+                  </Badge>
                 </div>
               </div>
               <Button variant="outline" onClick={() => resetMutation.mutate()}>
@@ -483,27 +490,30 @@ export default function WhatsAppSetupPage() {
               </div>
               <h3 className="text-xl font-semibold mb-2">WhatsApp'ı Bağlayın</h3>
               <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                WhatsApp Business hesabınızı bağlayarak müşterilerinize WhatsApp üzerinden
-                7/24 otomatik yanıt vermeye başlayın.
+                Telefonunuzdaki mevcut WhatsApp hesabını QR ile bağlayın veya kurumsal kullanım için Meta Cloud yöntemini seçin.
               </p>
-              <Button
-                size="lg"
-                className="bg-green-600 hover:bg-green-700"
-                onClick={() => startMutation.mutate()}
-                disabled={startMutation.isPending || isConnecting}
-              >
-                {startMutation.isPending || isConnecting ? (
-                  <>
+              <div className="flex flex-wrap justify-center gap-2">
+                {status?.openwa_enabled ? (
+                  <OpenWAConnectDialog
+                    enabled
+                    connected={status.whatsapp_connected}
+                    onConnected={() => refetch()}
+                  />
+                ) : null}
+                <Button
+                  size="lg"
+                  variant={status?.openwa_enabled ? 'outline' : 'default'}
+                  onClick={() => startMutation.mutate()}
+                  disabled={startMutation.isPending || isConnecting}
+                >
+                  {startMutation.isPending || isConnecting ? (
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Bağlanıyor...
-                  </>
-                ) : (
-                  <>
-                    <Smartphone className="w-5 h-5 mr-2" />
-                    WhatsApp'ı Bağla
-                  </>
-                )}
-              </Button>
+                  ) : (
+                    <Shield className="w-5 h-5 mr-2" />
+                  )}
+                  Meta Cloud ile Bağla
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -587,29 +597,28 @@ export default function WhatsAppSetupPage() {
               {/* Action Button */}
               {!status.is_complete && !isConnecting && (
                 <div className="pt-4 border-t">
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    size="lg"
-                    onClick={() => startMutation.mutate()}
-                    disabled={startMutation.isPending}
-                  >
-                    {startMutation.isPending ? (
-                      <>
+                  <div className="flex flex-wrap gap-2">
+                    {status.openwa_enabled ? (
+                      <OpenWAConnectDialog
+                        enabled
+                        connected={status.whatsapp_connected}
+                        onConnected={() => refetch()}
+                      />
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => startMutation.mutate()}
+                      disabled={startMutation.isPending}
+                    >
+                      {startMutation.isPending ? (
                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Başlatılıyor...
-                      </>
-                    ) : currentStepIndex > 0 ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 mr-2" />
-                        Devam Et
-                      </>
-                    ) : (
-                      <>
-                        <Smartphone className="w-5 h-5 mr-2" />
-                        WhatsApp'ı Bağla
-                      </>
-                    )}
-                  </Button>
+                      ) : (
+                        <Shield className="w-5 h-5 mr-2" />
+                      )}
+                      Meta Cloud ile Bağla
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -624,9 +633,9 @@ export default function WhatsAppSetupPage() {
             <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
               <Clock className="w-5 h-5 text-blue-600" />
             </div>
-            <h3 className="font-semibold mb-2">1-3 Dakika</h3>
+            <h3 className="font-semibold mb-2">Hızlı Bağlantı</h3>
             <p className="text-sm text-muted-foreground">
-              Kurulum sadece birkaç dakika sürer. Meta hesabınızla giriş yapın, biz gerisini hallederiz.
+              QR yönteminde telefonunuzdan kodu taramanız yeterlidir.
             </p>
           </CardContent>
         </Card>
@@ -636,9 +645,9 @@ export default function WhatsAppSetupPage() {
             <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
               <Shield className="w-5 h-5 text-green-600" />
             </div>
-            <h3 className="font-semibold mb-2">Güvenli Bağlantı</h3>
+            <h3 className="font-semibold mb-2">İki Sağlayıcı</h3>
             <p className="text-sm text-muted-foreground">
-              Meta'nın resmi Embedded Signup yöntemini kullanıyoruz. Verileriniz şifreli ve güvende.
+              QR bağlantısı hızlı başlangıç, Meta Cloud ise doğrulanmış kurumsal kullanım içindir.
             </p>
           </CardContent>
         </Card>
@@ -664,10 +673,10 @@ export default function WhatsAppSetupPage() {
         <CardContent>
           <ul className="space-y-3">
             {[
-              'Meta (Facebook) Business hesabı',
-              'WhatsApp Business hesabı veya numara',
-              'İşletme doğrulaması (Meta Business Suite\'de)',
-              'Aktif telefon numarası (WhatsApp Web\'de kullanılmayan)'
+              'Telefonunuzda aktif WhatsApp veya WhatsApp Business',
+              'Bağlı Cihazlar menüsüne erişim',
+              'Telefonun internet bağlantısının açık kalması',
+              'Kurumsal kullanım için isteğe bağlı Meta Cloud bağlantısı'
             ].map((item, i) => (
               <li key={i} className="flex items-center gap-3">
                 <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">

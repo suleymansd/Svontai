@@ -15,13 +15,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.n8n_security import verify_n8n_request_dependency, verify_n8n_bearer_token
-from app.core.encryption import decrypt_token
-from app.services.meta_api import meta_api_service
 from app.services.n8n_client import get_n8n_client
+from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 from app.services.subscription_service import SubscriptionService
 from app.services.usage_counter_service import UsageCounterService
 from app.models.whatsapp_account import WhatsAppAccount
@@ -177,31 +177,15 @@ async def send_whatsapp_message(
                 run_id=run_id
             )
         
-        # Get access token
-        access_token = decrypt_token(account.access_token_encrypted)
-        if not access_token:
-            error_msg = "No access token available"
-            logger.error(error_msg)
-            
-            if run_id:
-                _update_run_failed(db, run_id, error_msg)
-            
-            return WhatsAppSendResponse(
-                success=False,
-                error=error_msg,
-                run_id=run_id
-            )
-        
-        # Send message via Meta API
+        # Send through the tenant-selected provider.
         try:
-            result = await meta_api_service.send_text_message(
-                access_token=access_token,
-                phone_number_id=account.phone_number_id,
+            result = await whatsapp_gateway_service.send_text(
+                account,
                 to=body.to,
                 text=body.text
             )
             
-            wa_message_id = result.get("messages", [{}])[0].get("id")
+            wa_message_id = result.get("message_id")
             
             logger.info(
                 f"WhatsApp message sent: to={body.to}, "
@@ -285,23 +269,15 @@ async def send_whatsapp_template(
             _update_run_failed(db, run_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
-    access_token = decrypt_token(account.access_token_encrypted)
-    if not access_token:
-        error_msg = "No access token available"
-        if run_id:
-            _update_run_failed(db, run_id, error_msg)
-        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
-
     try:
-        result = await meta_api_service.send_template_message(
-            access_token=access_token,
-            phone_number_id=account.phone_number_id,
+        result = await whatsapp_gateway_service.send_template(
+            account,
             to=body.to,
             template_name=body.template_name,
             language_code=body.language_code,
             components=body.components,
         )
-        wa_message_id = result.get("messages", [{}])[0].get("id")
+        wa_message_id = result.get("message_id")
         await _store_bot_message(db, tenant_id, body.to, f"[template:{body.template_name}]", wa_message_id)
 
         # Billing-aware metering (outbound)
@@ -354,24 +330,16 @@ async def send_whatsapp_document(
             _update_run_failed(db, run_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
-    access_token = decrypt_token(account.access_token_encrypted)
-    if not access_token:
-        error_msg = "No access token available"
-        if run_id:
-            _update_run_failed(db, run_id, error_msg)
-        return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
-
     try:
-        result = await meta_api_service.send_document_message(
-            access_token=access_token,
-            phone_number_id=account.phone_number_id,
+        result = await whatsapp_gateway_service.send_document(
+            account,
             to=body.to,
             media_id=body.media_id,
             link=body.link,
             filename=body.filename,
             caption=body.caption,
         )
-        wa_message_id = result.get("messages", [{}])[0].get("id")
+        wa_message_id = result.get("message_id")
         await _store_bot_message(db, tenant_id, body.to, f"[document:{body.filename or ''}]", wa_message_id)
 
         # Billing-aware metering (outbound)
@@ -466,7 +434,12 @@ async def _get_whatsapp_account(
     )
     
     if phone_number_id:
-        query = query.filter(WhatsAppAccount.phone_number_id == phone_number_id)
+        query = query.filter(
+            or_(
+                WhatsAppAccount.phone_number_id == phone_number_id,
+                WhatsAppAccount.provider_session_id == phone_number_id,
+            )
+        )
     
     return query.first()
 

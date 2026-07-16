@@ -41,15 +41,13 @@ interface OnboardingStatus {
 const faqs = [
   {
     question: 'WhatsApp Business hesabım yok, ne yapmalıyım?',
-    answer: `WhatsApp Business hesabı oluşturmak ücretsiz ve kolaydır:
-    
-1. business.facebook.com adresine gidin
-2. "İşletme Oluştur" seçeneğine tıklayın
-3. İşletme bilgilerinizi girin
-4. WhatsApp Business ürününü ekleyin
-5. Telefon numaranızı doğrulayın
+    answer: `Normal WhatsApp hesabınızı QR kodla doğrudan bağlayabilirsiniz.
 
-İşlem yaklaşık 10-15 dakika sürer.`
+1. SmartWA'da "QR ile WhatsApp Bağla" seçeneğine basın
+2. Telefonunuzda WhatsApp > Ayarlar > Bağlı Cihazlar bölümünü açın
+3. QR kodu tarayın
+
+Meta Business hesabı yalnızca resmi Meta Cloud yöntemini seçerseniz gerekir.`
   },
   {
     question: 'İşletme doğrulaması ne kadar sürer?',
@@ -64,7 +62,7 @@ Herhangi biri yeterlidir.`
   },
   {
     question: '24 saat kuralı nedir?',
-    answer: `WhatsApp Business API'de "24 saat kuralı" vardır:
+    answer: `Meta WhatsApp Cloud API'de "24 saat kuralı" vardır:
 
 • Müşteri size mesaj attığında 24 saatlik bir "pencere" açılır
 • Bu süre içinde serbest mesaj gönderebilirsiniz
@@ -74,14 +72,9 @@ SvontAi otomatik olarak bu kurala uyar ve müşterilerinize zamanında yanıt ve
   },
   {
     question: 'Mevcut WhatsApp numaramı kullanabilir miyim?',
-    answer: `Evet, ancak dikkat edilmesi gerekenler:
+    answer: `Evet. QR bağlantısında mevcut numaranız telefonunuzdaki WhatsApp uygulamasında çalışmaya devam eder.
 
-⚠️ Aynı numara aynı anda hem WhatsApp hem de WhatsApp Business uygulamasında kullanılamaz.
-
-Seçenekleriniz:
-1. Mevcut numaranızı API'ye taşıyın (WhatsApp uygulamasından çıkar)
-2. İşletmeniz için yeni bir numara alın
-3. Sabit hat numarası kullanın (SMS yerine sesli doğrulama)`
+Meta Cloud yöntemine geçerseniz numara taşıma ve Meta'nın numara kullanım koşulları uygulanır.`
   },
   {
     question: 'Kurulum sırasında hata alırsam ne yapmalıyım?',
@@ -97,7 +90,9 @@ Sorun devam ederse:
   },
   {
     question: 'WhatsApp mesajlarının maliyeti nedir?',
-    answer: `WhatsApp Business API kullandığınızda Meta'ya ücret ödersiniz:
+    answer: `QR bağlantısında Meta konuşma ücreti yoktur; yalnızca SmartWA planı ve gateway sunucu maliyeti bulunur.
+
+Meta WhatsApp Cloud API kullandığınızda Meta konuşma ücretleri uygulanabilir:
 
 Konuşma Başına Ücret (Yaklaşık):
 • Kullanıcı başlattı: İlk 1000/ay ücretsiz, sonra ~$0.005
@@ -111,19 +106,19 @@ developers.facebook.com/docs/whatsapp/pricing`
 // Checklist items
 const checklist = [
   {
-    id: 'meta_account',
-    label: 'Meta Business hesabı',
-    description: 'business.facebook.com\'da hesabınız olmalı'
+    id: 'whatsapp_app',
+    label: 'WhatsApp uygulaması',
+    description: 'Normal WhatsApp veya WhatsApp Business yeterlidir'
   },
   {
-    id: 'business_verified',
-    label: 'İşletme doğrulaması',
-    description: 'Meta tarafından doğrulanmış olmalı'
+    id: 'linked_devices',
+    label: 'Bağlı Cihazlar erişimi',
+    description: 'Telefonunuzdan QR kodu tarayabilmelisiniz'
   },
   {
     id: 'phone_number',
     label: 'Telefon numarası',
-    description: 'WhatsApp Business\'da aktif numara'
+    description: 'WhatsApp hesabınız telefonda aktif olmalı'
   },
   {
     id: 'svontai_bot',
@@ -238,15 +233,15 @@ export default function WhatsAppSetupHelpPage() {
             {[
               {
                 step: 1,
-                title: 'Meta ile Giriş',
-                description: 'Facebook/Meta hesabınızla giriş yapın ve WhatsApp Business erişimi verin',
+                title: 'QR Bağlantısını Seçin',
+                description: 'Normal WhatsApp veya WhatsApp Business hesabınızı seçin',
                 icon: Shield,
                 color: 'blue'
               },
               {
                 step: 2,
-                title: 'Numara Seçin',
-                description: 'WhatsApp Business hesabınızı ve telefon numaranızı seçin',
+                title: 'Kodu Tarayın',
+                description: 'Telefonunuzdaki Bağlı Cihazlar menüsünden QR kodu tarayın',
                 icon: Smartphone,
                 color: 'green'
               },
@@ -342,10 +337,10 @@ export default function WhatsAppSetupHelpPage() {
           <CardContent>
             <ul className="space-y-3">
               {[
-                'Meta hesabınızla giriş yapın',
-                'WhatsApp Business hesabınızı seçin',
-                'Telefon numaranızı seçin',
-                'İzinleri onaylayın'
+                'QR bağlantısını başlatın',
+                'Telefonunuzda Bağlı Cihazlar menüsünü açın',
+                'QR kodu tarayın',
+                'Bağlantının hazır olmasını bekleyin'
               ].map((item, i) => (
                 <li key={i} className="flex items-center gap-3">
                   <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
@@ -365,11 +360,11 @@ export default function WhatsAppSetupHelpPage() {
           <CardContent>
             <ul className="space-y-3">
               {[
-                'Token değişimi ve kaydetme',
-                'Webhook URL yapılandırması',
-                'Meta API abonelikleri',
-                'Güvenli şifreleme',
-                'Otomatik doğrulama'
+                'Tenant için özel oturum oluşturma',
+                'İmzalı webhook yapılandırması',
+                'Mesajları doğru tenant ve bota yönlendirme',
+                'Bağlantı sağlığını takip etme',
+                'Kopma durumunda hata ve aksiyon üretme'
               ].map((item, i) => (
                 <li key={i} className="flex items-center gap-3">
                   <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
@@ -522,4 +517,3 @@ export default function WhatsAppSetupHelpPage() {
     </div>
   )
 }
-

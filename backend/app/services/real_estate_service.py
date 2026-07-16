@@ -44,9 +44,9 @@ from app.models.user import User
 from app.models.whatsapp_account import WhatsAppAccount
 from app.services.email_service import EmailService
 from app.services.google_calendar_service import GoogleCalendarError, GoogleCalendarService
-from app.services.meta_api import meta_api_service
 from app.services.pdf_service import SimplePdfService
 from app.services.system_event_service import SystemEventService
+from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 
 
 DEFAULT_BUYER_FLOW = {
@@ -1523,8 +1523,6 @@ class RealEstateService:
             WhatsAppAccount.tenant_id == tenant_id,
             WhatsAppAccount.is_active.is_(True),
         ).first()
-        access_token = decrypt_token(account.access_token_encrypted) if account else None
-
         for job in jobs:
             if usage_sent_count >= settings.followup_limit_monthly:
                 job.status = "skipped"
@@ -1550,7 +1548,7 @@ class RealEstateService:
                 skipped += 1
                 continue
 
-            if not account or not access_token:
+            if not account:
                 job.status = "failed"
                 job.error_text = "whatsapp_account_missing"
                 failed += 1
@@ -1559,7 +1557,7 @@ class RealEstateService:
             outbound_text = job.message_text or "Uygun olursanız kısa bir güncelleme paylaşabilirim."
             try:
                 use_template = bool(state and state.window_open_until and now > state.window_open_until)
-                if use_template:
+                if use_template and account.provider == "meta_cloud":
                     template = self.db.query(RealEstateTemplateRegistry).filter(
                         RealEstateTemplateRegistry.tenant_id == tenant_id,
                         RealEstateTemplateRegistry.category == "followup",
@@ -1567,24 +1565,21 @@ class RealEstateService:
                         RealEstateTemplateRegistry.meta_template_id.isnot(None),
                     ).order_by(RealEstateTemplateRegistry.updated_at.desc()).first()
                     if template:
-                        await meta_api_service.send_template_message(
-                            access_token=access_token,
-                            phone_number_id=account.phone_number_id,
+                        await whatsapp_gateway_service.send_template(
+                            account,
                             to=conversation.external_user_id,
                             template_name=template.meta_template_id,
                             language_code=template.language or "tr",
                         )
                     else:
-                        await meta_api_service.send_text_message(
-                            access_token=access_token,
-                            phone_number_id=account.phone_number_id,
+                        await whatsapp_gateway_service.send_text(
+                            account,
                             to=conversation.external_user_id,
                             text=outbound_text,
                         )
                 else:
-                    await meta_api_service.send_text_message(
-                        access_token=access_token,
-                        phone_number_id=account.phone_number_id,
+                    await whatsapp_gateway_service.send_text(
+                        account,
                         to=conversation.external_user_id,
                         text=outbound_text,
                     )
@@ -1924,27 +1919,15 @@ class RealEstateService:
         if not account:
             raise ValueError("Aktif WhatsApp hesabı bulunamadı")
 
-        access_token = decrypt_token(account.access_token_encrypted) if account.access_token_encrypted else None
-        if not access_token:
-            raise ValueError("WhatsApp access token çözümlenemedi")
-
-        upload_result = await meta_api_service.upload_media(
-            access_token=access_token,
-            phone_number_id=account.phone_number_id,
-            filename=filename,
+        send_result = await whatsapp_gateway_service.send_document(
+            account,
+            to=lead.conversation.external_user_id,
             content_bytes=pdf_bytes,
             mime_type="application/pdf",
-        )
-        media_id = upload_result.get("id")
-
-        send_result = await meta_api_service.send_document_message(
-            access_token=access_token,
-            phone_number_id=account.phone_number_id,
-            to=lead.conversation.external_user_id,
-            media_id=media_id,
             filename=filename,
             caption="Size uygun ilan özeti raporunu iletiyorum.",
         )
+        media_id = send_result.get("message_id")
         SystemEventService(self.db).log(
             tenant_id=str(tenant_id),
             source="real_estate_pack",
@@ -2218,10 +2201,6 @@ class RealEstateService:
         if not account:
             raise ValueError("Aktif WhatsApp hesabı bulunamadı")
 
-        access_token = decrypt_token(account.access_token_encrypted) if account.access_token_encrypted else None
-        if not access_token:
-            raise ValueError("WhatsApp access token çözümlenemedi")
-
         state = self.db.query(RealEstateConversationState).filter(
             RealEstateConversationState.conversation_id == lead.conversation_id
         ).first()
@@ -2229,7 +2208,7 @@ class RealEstateService:
         use_template = bool(state and state.window_open_until and now > state.window_open_until)
         send_result: dict[str, Any]
 
-        if use_template:
+        if use_template and account.provider == "meta_cloud":
             template = self.db.query(RealEstateTemplateRegistry).filter(
                 RealEstateTemplateRegistry.tenant_id == tenant_id,
                 RealEstateTemplateRegistry.category == "seller",
@@ -2237,24 +2216,21 @@ class RealEstateService:
                 RealEstateTemplateRegistry.meta_template_id.isnot(None),
             ).order_by(RealEstateTemplateRegistry.updated_at.desc()).first()
             if template:
-                send_result = await meta_api_service.send_template_message(
-                    access_token=access_token,
-                    phone_number_id=account.phone_number_id,
+                send_result = await whatsapp_gateway_service.send_template(
+                    account,
                     to=lead.conversation.external_user_id,
                     template_name=template.meta_template_id,
                     language_code=template.language or "tr",
                 )
             else:
-                send_result = await meta_api_service.send_text_message(
-                    access_token=access_token,
-                    phone_number_id=account.phone_number_id,
+                send_result = await whatsapp_gateway_service.send_text(
+                    account,
                     to=lead.conversation.external_user_id,
                     text=report["text"],
                 )
         else:
-            send_result = await meta_api_service.send_text_message(
-                access_token=access_token,
-                phone_number_id=account.phone_number_id,
+            send_result = await whatsapp_gateway_service.send_text(
+                account,
                 to=lead.conversation.external_user_id,
                 text=report["text"],
             )

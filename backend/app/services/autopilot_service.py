@@ -283,19 +283,44 @@ class AutopilotService:
         return self._item("n8n", "missing", 45, "n8n kapalı veya URL eksik.", repairable=False)
 
     def _check_whatsapp(self, tenant: Tenant) -> dict:
-        connected = self.db.query(WhatsAppAccount.id).filter(
+        account = self.db.query(WhatsAppAccount).filter(
             WhatsAppAccount.tenant_id == tenant.id,
             WhatsAppAccount.is_active == True,
-            WhatsAppAccount.phone_number_id.isnot(None),
-            WhatsAppAccount.access_token_encrypted.isnot(None),
         ).first()
-        if connected:
-            return self._item("whatsapp", "connected", 100, "WhatsApp Cloud bağlantısı aktif.")
+        if account:
+            if account.provider == "openwa":
+                metadata = account.provider_metadata_json or {}
+                if metadata.get("health_status") == "unavailable":
+                    return self._item(
+                        "whatsapp",
+                        "degraded",
+                        45,
+                        "WhatsApp QR gateway geçici olarak erişilemiyor.",
+                        checks=[{"key": "provider", "ok": False, "value": "openwa"}],
+                    )
+                return self._item(
+                    "whatsapp",
+                    "connected",
+                    90,
+                    "WhatsApp QR bağlantısı aktif.",
+                    checks=[{"key": "provider", "ok": True, "value": "openwa"}],
+                )
+            return self._item(
+                "whatsapp",
+                "connected",
+                100,
+                "Meta WhatsApp Cloud bağlantısı aktif.",
+                checks=[{"key": "provider", "ok": True, "value": "meta_cloud"}],
+            )
+        if settings.OPENWA_ENABLED:
+            message = "WhatsApp'ı QR kodla veya Meta Cloud ile bağlayın."
+        else:
+            message = "WhatsApp bağlantısı için Meta Embedded Signup gerekiyor."
         return self._item(
             "whatsapp",
             "missing",
             35,
-            "WhatsApp bağlantısı için Meta Embedded Signup gerekiyor.",
+            message,
             requires_user_action=True,
             action_url="/dashboard/setup/whatsapp",
         )

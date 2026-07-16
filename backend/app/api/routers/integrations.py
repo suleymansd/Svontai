@@ -60,6 +60,7 @@ class IntegrationStatusResponse(BaseModel):
     google_sheets: IntegrationStatusItem
     document_converter: IntegrationStatusItem
     whatsapp_cloud: IntegrationStatusItem
+    whatsapp_qr: IntegrationStatusItem
     google_calendar: IntegrationStatusItem
     n8n: IntegrationStatusItem
 
@@ -127,12 +128,21 @@ async def get_integrations_status(
         granted_scopes = list(google_token.scopes_json or [])
         expires_at = google_token.expires_at
 
-    whatsapp_connected = db.query(WhatsAppAccount).filter(
+    whatsapp_account = db.query(WhatsAppAccount).filter(
         WhatsAppAccount.tenant_id == current_tenant.id,
         WhatsAppAccount.is_active == True,
-        WhatsAppAccount.phone_number_id.isnot(None),
-        WhatsAppAccount.access_token_encrypted.isnot(None),
-    ).first() is not None
+    ).first()
+    whatsapp_cloud_connected = bool(
+        whatsapp_account
+        and whatsapp_account.provider == "meta_cloud"
+        and whatsapp_account.phone_number_id
+        and whatsapp_account.access_token_encrypted
+    )
+    whatsapp_qr_connected = bool(
+        whatsapp_account
+        and whatsapp_account.provider == "openwa"
+        and whatsapp_account.provider_session_id
+    )
 
     ai_connected = bool(settings.ai_api_key)
     n8n_connected = bool(settings.USE_N8N and (settings.N8N_BASE_URL or "").strip())
@@ -167,7 +177,8 @@ async def get_integrations_status(
         openai=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
         ai_provider=IntegrationStatusItem(status="connected" if ai_connected else "missing"),
         document_converter=IntegrationStatusItem(status="connected" if document_converter_connected else "missing"),
-        whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_connected else "missing"),
+        whatsapp_cloud=IntegrationStatusItem(status="connected" if whatsapp_cloud_connected else "missing"),
+        whatsapp_qr=IntegrationStatusItem(status="connected" if whatsapp_qr_connected else "missing"),
         n8n=IntegrationStatusItem(status="connected" if n8n_connected else "missing"),
     )
 

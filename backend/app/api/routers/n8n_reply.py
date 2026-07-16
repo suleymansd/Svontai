@@ -10,11 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.routers.n8n_tools import _normalize_phone
-from app.core.encryption import decrypt_token
 from app.db.session import get_db
 from app.models.tenant import Tenant
 from app.models.whatsapp_account import WhatsAppAccount
-from app.services.meta_api import meta_api_service
+from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 
 logger = logging.getLogger(__name__)
 
@@ -82,23 +81,15 @@ async def n8n_reply(
         WhatsAppAccount.tenant_id == tenant.id,
         WhatsAppAccount.is_active.is_(True),
     ).first()
-    if not account or not account.phone_number_id:
+    if not account:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Active WhatsApp account not found for tenant",
         )
 
-    access_token = decrypt_token(account.access_token_encrypted) if account.access_token_encrypted else None
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="WhatsApp access token not available",
-        )
-
     try:
-        await meta_api_service.send_text_message(
-            access_token=access_token,
-            phone_number_id=account.phone_number_id,
+        await whatsapp_gateway_service.send_text(
+            account,
             to=to_number,
             text=body.replyText,
         )

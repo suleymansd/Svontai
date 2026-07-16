@@ -198,6 +198,7 @@ def run() -> int:
             protected_checks: list[tuple[str, str, Callable[[Any], str | None]]] = [
                 ("me context", "/api/me", _expect_dict_keys("user")),
                 ("onboarding setup status", "/onboarding/setup/status", _expect_dict_keys("current_step", "steps")),
+                ("whatsapp provider status", "/api/onboarding/whatsapp/status", _expect_dict_keys("whatsapp_connected", "openwa_enabled")),
                 ("autopilot status", "/setup/autopilot/status", _expect_dict_keys("status", "health_score")),
                 ("integration diagnostics", "/integrations/diagnostics", _expect_dict_keys("items", "health_score")),
                 ("agency clients", "/agency/clients", _expect_items_list),

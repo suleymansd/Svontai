@@ -32,6 +32,7 @@ const TITLES: Record<string, string> = {
   google_sheets: 'Google Sheets',
   document_converter: 'Document Converter',
   whatsapp_cloud: 'WhatsApp Cloud',
+  whatsapp_qr: 'WhatsApp QR',
   google_calendar: 'Google Calendar',
   n8n: 'n8n',
 }
@@ -61,7 +62,7 @@ export default function IntegrationsPage() {
 
   const handleConnect = async (key: string) => {
     try {
-      if (key === 'whatsapp_cloud') {
+      if (key === 'whatsapp_cloud' || key === 'whatsapp_qr') {
         router.push('/dashboard/setup/whatsapp')
         return
       }

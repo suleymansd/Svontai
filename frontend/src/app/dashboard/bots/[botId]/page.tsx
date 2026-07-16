@@ -449,14 +449,14 @@ export default function BotEditPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Nasıl Çalışır?</CardTitle>
-                <CardDescription>Embedded Signup ile otomatik bağlantı</CardDescription>
+                <CardDescription>QR veya Meta Cloud ile otomatik bağlantı</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-4">
                   {[
-                    { title: 'Meta ile giriş', desc: 'Facebook hesabınızla oturum açın' },
-                    { title: 'WhatsApp hesabı seçin', desc: 'Mevcut WABA veya yeni hesap' },
-                    { title: 'Telefon numarası doğrulayın', desc: 'Numara seçimi ve doğrulama' },
+                    { title: 'Bağlantı yöntemini seçin', desc: 'QR veya Meta Cloud' },
+                    { title: 'WhatsApp’ı yetkilendirin', desc: 'QR tarayın veya Meta ile giriş yapın' },
+                    { title: 'Telefon numarası bağlanır', desc: 'Normal veya Business WhatsApp' },
                     { title: 'Otomatik webhook', desc: 'Webhook kurulumu arka planda yapılır' },
                     { title: 'Bot hazır', desc: 'Mesajlar otomatik yönlendirilir' },
                   ].map((step, i) => (
