@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 
 def _extract_6_digit_code(message: str) -> str:
@@ -196,3 +197,42 @@ def test_smoke_password_reset_flow(client):
 
     login_new = client.post("/auth/login", json={"email": email, "password": new_password})
     assert login_new.status_code == 200, login_new.text
+
+
+def test_login_context_auto_provisions_missing_tenant(client):
+    from app.db.session import SessionLocal
+    from app.models.tenant import Tenant
+
+    email = "missing-tenant@example.com"
+    password = "Password123!"
+
+    register_resp = client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": "Missing Tenant"},
+    )
+    assert register_resp.status_code == 201, register_resp.text
+
+    request_code = client.post("/auth/email-verification/request", json={"email": email})
+    code = _extract_6_digit_code(request_code.json().get("message", ""))
+    confirm_code = client.post("/auth/email-verification/confirm", json={"email": email, "code": code})
+    assert confirm_code.status_code == 200, confirm_code.text
+
+    login_resp = client.post("/auth/login", json={"email": email, "password": password})
+    assert login_resp.status_code == 200, login_resp.text
+    headers = _auth_headers(login_resp.json()["access_token"])
+
+    first_context = client.get("/api/me", headers=headers)
+    assert first_context.status_code == 200, first_context.text
+    tenant_id = first_context.json()["tenant"]["id"]
+    assert first_context.json()["tenant"]["name"] == "Missing Tenant İşletmesi"
+    assert first_context.json()["role"]["name"] == "owner"
+
+    second_context = client.get("/api/me", headers=headers)
+    assert second_context.status_code == 200, second_context.text
+    assert second_context.json()["tenant"]["id"] == tenant_id
+
+    db = SessionLocal()
+    try:
+        assert db.query(Tenant).filter(Tenant.id == UUID(tenant_id)).count() == 1
+    finally:
+        db.close()

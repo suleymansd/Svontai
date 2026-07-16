@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
 from app.services.rbac_service import RbacService
+from app.services.tenant_provisioning_service import TenantProvisioningService
 
 # HTTP Bearer scheme for JWT authentication
 security = HTTPBearer()
@@ -157,6 +158,8 @@ async def get_current_tenant(
         ).first()
         if membership:
             tenant = membership.tenant
+        elif not current_user.is_admin:
+            tenant = TenantProvisioningService(db).ensure_for_user(current_user)
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
