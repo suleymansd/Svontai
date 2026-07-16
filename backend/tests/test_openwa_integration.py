@@ -121,15 +121,25 @@ def test_openwa_qr_onboarding_is_tenant_scoped(client, monkeypatch):
 
 
 def test_openwa_signed_message_is_processed_once(client, monkeypatch):
+    from app.api.routers import whatsapp_webhook
     from app.core.config import settings
     from app.db.session import SessionLocal
+    from app.models.automation import AutomationRunStatus, TenantAutomationSettings
     from app.models.bot import Bot
     from app.models.message import Message
     from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.ai_service import ai_service
+    from app.services.openwa_client import openwa_client
 
     _, tenant_id = _create_tenant(client)
     monkeypatch.setattr(settings, "OPENWA_WEBHOOK_SECRET", "test-openwa-secret")
-    monkeypatch.setattr(settings, "USE_N8N", False)
+    monkeypatch.setattr(settings, "USE_N8N", True)
+    generate_reply = AsyncMock(return_value="Merhaba, size nasıl yardımcı olabilirim?")
+    send_text = AsyncMock(return_value={"messageId": "openwa-reply-1"})
+    n8n_trigger = AsyncMock(return_value=AutomationRunStatus.FAILED.value)
+    monkeypatch.setattr(ai_service, "generate_reply", generate_reply)
+    monkeypatch.setattr(openwa_client, "send_text", send_text)
+    monkeypatch.setattr(whatsapp_webhook, "trigger_n8n_in_background", n8n_trigger)
 
     session_id = "82d1023f-998b-4ada-bf1c-a1e192e933c6"
     db = SessionLocal()
@@ -153,6 +163,11 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
             webhook_status="verified",
             is_active=True,
             is_verified=True,
+        ))
+        db.add(TenantAutomationSettings(
+            tenant_id=tenant_id,
+            use_n8n=True,
+            whatsapp_workflow_id="svontai-whatsapp-v2",
         ))
         db.commit()
     finally:
@@ -200,8 +215,19 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
         assert len(messages) == 1
         assert messages[0].content == "Randevu almak istiyorum"
         assert messages[0].raw_payload["meta"]["provider"] == "openwa"
+        bot_messages = db.query(Message).filter(Message.external_id == "openwa-reply-1").all()
+        assert len(bot_messages) == 1
+        assert bot_messages[0].content == "Merhaba, size nasıl yardımcı olabilirim?"
     finally:
         db.close()
+
+    generate_reply.assert_awaited_once()
+    n8n_trigger.assert_awaited_once()
+    send_text.assert_awaited_once_with(
+        session_id,
+        "905559998877",
+        "Merhaba, size nasıl yardımcı olabilirim?",
+    )
 
 
 def test_openwa_gateway_routes_outbound_to_tenant_session(client, monkeypatch):

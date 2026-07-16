@@ -145,6 +145,13 @@ class N8NClient:
 
         return self.base_url
 
+    def get_webhook_url(self, tenant_id: uuid.UUID, workflow_id: str) -> str:
+        """Build a normalized production webhook URL."""
+        n8n_url = self.get_n8n_url(tenant_id).rstrip("/")
+        webhook_path = settings.N8N_WEBHOOK_PATH.strip("/")
+        workflow_path = workflow_id.strip("/")
+        return "/".join(part for part in (n8n_url, webhook_path, workflow_path) if part)
+
     def check_duplicate_message(
         self,
         tenant_id: uuid.UUID,
@@ -456,13 +463,9 @@ class N8NClient:
         Returns:
             n8n response data
         """
-        n8n_url = self.get_n8n_url(tenant_id)
-
-        # Build webhook URL
-        # n8n webhook URLs can be either:
-        # - /webhook/{workflow_id} (production)
-        # - /webhook-test/{workflow_id} (test mode)
-        webhook_url = f"{n8n_url}{settings.N8N_WEBHOOK_PATH}/{workflow_id}"
+        # n8n webhook URLs can be either /webhook/{path} (production)
+        # or /webhook-test/{path} (test mode).
+        webhook_url = self.get_webhook_url(tenant_id, workflow_id)
 
         # Generate security headers
         headers = generate_svontai_to_n8n_headers(payload, str(tenant_id))
@@ -800,7 +803,7 @@ async def trigger_n8n_in_background(
     raw_payload: Optional[dict] = None,
     extra_data: Optional[dict] = None,
     n8n_workflow_id: Optional[str] = None
-) -> None:
+) -> Optional[str]:
     """
     Trigger n8n workflow in background with its own DB session.
 
@@ -834,7 +837,7 @@ async def trigger_n8n_in_background(
     try:
         client = N8NClient(db)
 
-        await client.trigger_incoming_message(
+        run = await client.trigger_incoming_message(
             tenant_id=tenant_id,
             from_number=from_number,
             to_number=to_number,
@@ -848,11 +851,13 @@ async def trigger_n8n_in_background(
             extra_data=extra_data,
             n8n_workflow_id=n8n_workflow_id
         )
+        return run.status if run is not None else None
     except Exception as e:
         logger.error(
             f"Background n8n trigger failed: tenant={tenant_id}, "
             f"message_id={message_id}, error={e}",
             exc_info=True
         )
+        return None
     finally:
         db.close()

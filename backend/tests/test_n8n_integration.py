@@ -195,6 +195,22 @@ class TestWebhookTimeout:
         assert elapsed < 0.1, f"Adding background task took {elapsed}s"
 
 
+def test_webhook_url_normalizes_trailing_slashes(monkeypatch):
+    from app.core.config import settings
+    from app.services.n8n_client import N8NClient
+
+    monkeypatch.setattr(settings, "N8N_BASE_URL", "https://n8n.example.com/")
+    monkeypatch.setattr(settings, "N8N_WEBHOOK_PATH", "/webhook/")
+    client = N8NClient(MagicMock())
+    client.base_url = settings.N8N_BASE_URL.rstrip("/")
+    client.get_tenant_automation_settings = MagicMock(return_value=None)
+
+    assert client.get_webhook_url(
+        uuid.uuid4(),
+        "/svontai-whatsapp-v2/",
+    ) == "https://n8n.example.com/webhook/svontai-whatsapp-v2"
+
+
 class TestWorkflowResultHandling:
     @pytest.mark.asyncio
     async def test_business_failure_is_not_marked_success(self):

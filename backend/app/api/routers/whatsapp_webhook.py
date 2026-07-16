@@ -41,6 +41,7 @@ from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
 from app.services.openwa_client import OpenWAClient
+from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 
 
 logger = logging.getLogger(__name__)
@@ -165,9 +166,186 @@ async def process_openwa_message_event(
         db=db,
         timestamp=str(data.get("timestamp") or ""),
         raw_payload=raw_payload,
-        background_tasks=background_tasks,
+        background_tasks=None,
         provider="openwa",
     )
+
+
+async def process_whatsapp_reply_in_background(
+    *,
+    tenant_id: uuid.UUID,
+    bot_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    account_phone_number_id: str,
+    provider: str,
+    from_number: str,
+    to_number: str,
+    message_content: str,
+    message_id: str,
+    timestamp: str,
+    correlation_id: str,
+    contact_name: Optional[str],
+    raw_payload: Optional[dict],
+    use_n8n: bool,
+    n8n_workflow_id: Optional[str],
+) -> None:
+    """Route through n8n, falling back to the tenant bot when n8n is unavailable."""
+    from app.db.session import SessionLocal
+
+    if use_n8n and n8n_workflow_id:
+        run_status = await trigger_n8n_in_background(
+            tenant_id=tenant_id,
+            from_number=from_number,
+            to_number=to_number,
+            text=message_content,
+            message_id=message_id,
+            timestamp=timestamp,
+            channel=AutomationChannel.WHATSAPP.value,
+            correlation_id=correlation_id,
+            contact_name=contact_name,
+            raw_payload=raw_payload,
+            extra_data={
+                "bot_id": str(bot_id),
+                "conversation_id": str(conversation_id),
+                "tenant_id": str(tenant_id),
+            },
+            n8n_workflow_id=n8n_workflow_id,
+        )
+        if run_status and run_status not in {
+            AutomationRunStatus.FAILED.value,
+            AutomationRunStatus.TIMEOUT.value,
+        }:
+            return
+        logger.warning(
+            "whatsapp.n8n_fallback tenant_id=%s message_id=%s workflow_id=%s",
+            tenant_id,
+            message_id,
+            n8n_workflow_id,
+        )
+
+    db = SessionLocal()
+    try:
+        bot = db.query(Bot).filter(
+            Bot.id == bot_id,
+            Bot.tenant_id == tenant_id,
+            Bot.is_active.is_(True),
+        ).first()
+        conversation = db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.bot_id == bot_id,
+        ).first()
+        if bot is None or conversation is None:
+            logger.warning(
+                "whatsapp.direct_reply_context_missing tenant_id=%s message_id=%s",
+                tenant_id,
+                message_id,
+            )
+            return
+        if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+            return
+
+        account_query = db.query(WhatsAppAccount).filter(
+            WhatsAppAccount.tenant_id == tenant_id,
+            WhatsAppAccount.provider == provider,
+            WhatsAppAccount.is_active.is_(True),
+        )
+        if provider == "openwa":
+            account_query = account_query.filter(
+                WhatsAppAccount.provider_session_id == account_phone_number_id
+            )
+        else:
+            account_query = account_query.filter(
+                WhatsAppAccount.phone_number_id == account_phone_number_id
+            )
+        account = account_query.first()
+        if account is None:
+            logger.error(
+                "whatsapp.direct_reply_account_missing tenant_id=%s provider=%s message_id=%s",
+                tenant_id,
+                provider,
+                message_id,
+            )
+            return
+
+        knowledge_items = db.query(BotKnowledgeItem).filter(
+            BotKnowledgeItem.bot_id == bot.id
+        ).all()
+        db.refresh(conversation, ["messages"])
+        reply = await ai_service.generate_reply(
+            bot=bot,
+            knowledge_items=knowledge_items,
+            conversation=conversation,
+            last_user_message=message_content,
+            bot_settings=bot.settings,
+        )
+        if not reply.strip():
+            logger.warning(
+                "whatsapp.direct_reply_empty tenant_id=%s message_id=%s",
+                tenant_id,
+                message_id,
+            )
+            return
+
+        send_result = await whatsapp_gateway_service.send_text(
+            account,
+            to=from_number,
+            text=reply,
+        )
+        db.add(Message(
+            conversation_id=conversation.id,
+            sender=MessageSender.BOT.value,
+            content=reply,
+            external_id=send_result.get("message_id"),
+            raw_payload={
+                "provider": provider,
+                "reply_to_message_id": message_id,
+                "correlation_id": correlation_id,
+                "delivery": send_result.get("raw"),
+            },
+        ))
+        db.commit()
+        SystemEventService(db).log(
+            tenant_id=str(tenant_id),
+            source="whatsapp",
+            level="info",
+            code="WHATSAPP_AI_REPLY_SENT",
+            message="AI reply generated and sent through the tenant WhatsApp account",
+            meta_json={
+                "provider": provider,
+                "conversation_id": str(conversation_id),
+                "incoming_message_id": message_id,
+                "outgoing_message_id": send_result.get("message_id"),
+                "fallback_from_n8n": bool(use_n8n),
+            },
+            correlation_id=correlation_id,
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.error(
+            "whatsapp.direct_reply_failed tenant_id=%s message_id=%s error=%s",
+            tenant_id,
+            message_id,
+            exc,
+            exc_info=True,
+        )
+        try:
+            SystemEventService(db).log(
+                tenant_id=str(tenant_id),
+                source="whatsapp",
+                level="error",
+                code="WHATSAPP_AI_REPLY_FAILED",
+                message=str(exc)[:500],
+                meta_json={
+                    "provider": provider,
+                    "conversation_id": str(conversation_id),
+                    "incoming_message_id": message_id,
+                },
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            logger.exception("Could not persist WhatsApp AI reply failure event")
+    finally:
+        db.close()
 
 
 def rate_limit_check(phone_number_id: str, max_per_minute: int = 100) -> bool:
@@ -596,8 +774,6 @@ async def handle_incoming_message(
             return
 
         bot_id = bot_row[0]
-        bot_id_str = str(bot_id)
-
         duplicate = (
             db.query(Message.id)
             .join(Conversation, Message.conversation_id == Conversation.id)
@@ -634,7 +810,6 @@ async def handle_incoming_message(
 
         if conversation_row:
             conversation_id = conversation_row[0]
-            conversation_id_str = str(conversation_id)
             conversation_is_ai_paused = bool(conversation_row[1])
             conversation_status = conversation_row[2] or ConversationStatus.AI_ACTIVE.value
             existing_extra_data = dict(conversation_row[3] or {})
@@ -647,7 +822,6 @@ async def handle_incoming_message(
                 db.commit()
         else:
             conversation_id = uuid.uuid4()
-            conversation_id_str = str(conversation_id)
             conversation_is_ai_paused = False
             conversation_status = ConversationStatus.AI_ACTIVE.value
 
@@ -727,53 +901,47 @@ async def handle_incoming_message(
         should_route_n8n = bool(n8n_client.should_use_n8n(tenant_id_str))
         logger.info("should_use_n8n(%s): %s", tenant_id_str, should_route_n8n)
 
+        workflow_id = None
         if should_route_n8n:
             workflow_id = n8n_client.get_workflow_id(
                 tenant_uuid,
                 AutomationChannel.WHATSAPP.value,
             )
             if not workflow_id:
-                logger.error("No WhatsApp n8n workflow configured for tenant %s", tenant_id_str)
-                return
-            logger.info("resolved workflow_id: %s", workflow_id)
-            logger.info(
-                "Routing message %s to n8n for tenant %s with workflow %s",
-                message_id,
-                tenant_id_str,
-                workflow_id,
-            )
+                logger.warning(
+                    "No WhatsApp n8n workflow configured for tenant %s; using direct AI",
+                    tenant_id_str,
+                )
+                should_route_n8n = False
 
-            trigger_kwargs = {
-                "tenant_id": tenant_uuid,
-                "from_number": from_number,
-                "to_number": account_display_phone_number or account_phone_number_id,
-                "text": message_content,
-                "message_id": message_id,
-                "timestamp": timestamp or utc_now_naive().isoformat(),
-                "channel": AutomationChannel.WHATSAPP.value,
-                "correlation_id": correlation_id,
-                "contact_name": contact_name,
-                "raw_payload": raw_payload,
-                "extra_data": {
-                    "bot_id": bot_id_str,
-                    "conversation_id": conversation_id_str,
-                    "message_type": message_type,
-                    "tenant_id": tenant_id_str,
-                },
-                "n8n_workflow_id": workflow_id,
-            }
-
-            if background_tasks:
-                background_tasks.add_task(trigger_n8n_in_background, **trigger_kwargs)
-                logger.info("n8n trigger scheduled in background for message %s", message_id)
-            else:
-                await trigger_n8n_in_background(**trigger_kwargs)
-                logger.info("n8n trigger scheduled in background for message %s", message_id)
-
-            return
-
-        logger.info("resolved workflow_id: %s", None)
-        logger.info("Legacy AI branch skipped for message %s", message_id)
+        reply_kwargs = {
+            "tenant_id": tenant_uuid,
+            "bot_id": bot_id,
+            "conversation_id": conversation_id,
+            "account_phone_number_id": account_phone_number_id,
+            "provider": provider,
+            "from_number": from_number,
+            "to_number": account_display_phone_number or account_phone_number_id,
+            "message_content": message_content,
+            "message_id": message_id,
+            "timestamp": timestamp or utc_now_naive().isoformat(),
+            "correlation_id": correlation_id,
+            "contact_name": contact_name,
+            "raw_payload": raw_payload,
+            "use_n8n": should_route_n8n,
+            "n8n_workflow_id": workflow_id,
+        }
+        if background_tasks:
+            background_tasks.add_task(process_whatsapp_reply_in_background, **reply_kwargs)
+        else:
+            await process_whatsapp_reply_in_background(**reply_kwargs)
+        logger.info(
+            "WhatsApp reply processing scheduled message_id=%s tenant_id=%s use_n8n=%s workflow_id=%s",
+            message_id,
+            tenant_id_str,
+            should_route_n8n,
+            workflow_id,
+        )
 
     except Exception as exc:
         logger.error(
