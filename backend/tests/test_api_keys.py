@@ -1,5 +1,7 @@
 import re
 
+from app.core.config import settings
+
 
 def _extract_6_digit_code(message: str) -> str:
     match = re.search(r"(\d{6})", message or "")
@@ -52,11 +54,19 @@ def test_api_keys_require_plan_feature(client):
     list_resp = client.get("/api-keys", headers=_auth_headers(access_token, tenant_id))
     assert list_resp.status_code == 403
 
-    upgrade = client.post(
-        "/subscription/upgrade",
-        json={"plan_name": "pro"},
-        headers=_auth_headers(access_token, tenant_id),
-    )
+    previous_billing_mode = settings.BILLING_MODE
+    previous_unpaid_upgrades = settings.ALLOW_UNPAID_PLAN_UPGRADES
+    settings.BILLING_MODE = "stripe"
+    settings.ALLOW_UNPAID_PLAN_UPGRADES = True
+    try:
+        upgrade = client.post(
+            "/subscription/upgrade",
+            json={"plan_name": "pro"},
+            headers=_auth_headers(access_token, tenant_id),
+        )
+    finally:
+        settings.BILLING_MODE = previous_billing_mode
+        settings.ALLOW_UNPAID_PLAN_UPGRADES = previous_unpaid_upgrades
     assert upgrade.status_code == 200, upgrade.text
 
     create_fail = client.post(
@@ -98,4 +108,3 @@ def test_api_keys_require_plan_feature(client):
         headers=_auth_headers(access_token, tenant_id),
     )
     assert revoke_ok.status_code == 204, revoke_ok.text
-
