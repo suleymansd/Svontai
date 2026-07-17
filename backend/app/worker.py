@@ -42,6 +42,7 @@ configure_observability("worker")
 
 _OPENWA_QR_STATUSES = {"qr_ready", "qr", "authentication_required", "logged_out"}
 _OPENWA_RECONNECTABLE_STATUSES = {"failed", "disconnected", "stopped", "error"}
+_OPENWA_TRANSITIONAL_STATUSES = {"created", "initializing", "connecting", "starting"}
 
 
 def _openwa_recovery_action(
@@ -58,11 +59,46 @@ def _openwa_recovery_action(
     normalized = status.strip().lower()
     if normalized in _OPENWA_QR_STATUSES:
         return "qr_required"
+    if normalized in _OPENWA_TRANSITIONAL_STATUSES:
+        return "wait"
     if normalized in _OPENWA_RECONNECTABLE_STATUSES and (
         was_active or previous_failures > 0 or previous_health == "disconnected"
     ):
         return "reconnect"
     return "none"
+
+
+def _mark_openwa_qr_required(db, account: WhatsAppAccount) -> None:
+    metadata = dict(account.provider_metadata_json or {})
+    first_alert = not metadata.get("qr_alerted_at")
+    now = utc_now_naive().isoformat()
+    account.provider_metadata_json = {
+        **metadata,
+        "health_status": "action_required",
+        "qr_required_at": metadata.get("qr_required_at") or now,
+        "qr_alerted_at": metadata.get("qr_alerted_at") or now,
+    }
+    account.last_error = "WhatsApp QR bağlantısı yeniden onaylanmalı."
+    db.commit()
+    if not first_alert:
+        return
+
+    SystemEventService(db).log(
+        tenant_id=str(account.tenant_id),
+        source="openwa",
+        level="warn",
+        code="OPENWA_QR_REQUIRED",
+        message="WhatsApp oturumu çıkış yaptı; QR kodunun yeniden taranması gerekiyor.",
+        meta_json={"session_id": account.provider_session_id},
+    )
+    asyncio.run(PushNotificationService(db).send_to_tenant(
+        tenant_id=account.tenant_id,
+        event_type="integration_alert",
+        title="WhatsApp bağlantısını yenileyin",
+        body="Telefonunuzdan SvontAI QR kodunu yeniden tarayın.",
+        url="/dashboard/setup/whatsapp",
+        tag="svontai-openwa-qr-required",
+    ))
 
 
 def _expected_migration_heads() -> set[str]:
@@ -183,40 +219,29 @@ def _sync_openwa_sessions() -> None:
                         previous_failures=previous_failures,
                         previous_health=str(previous_metadata.get("health_status") or ""),
                     )
-                    if recovery_action == "qr_required":
-                        metadata = dict(account.provider_metadata_json or {})
-                        first_alert = not metadata.get("qr_alerted_at")
-                        now = utc_now_naive().isoformat()
-                        account.provider_metadata_json = {
-                            **metadata,
-                            "health_status": "action_required",
-                            "qr_required_at": metadata.get("qr_required_at") or now,
-                            "qr_alerted_at": metadata.get("qr_alerted_at") or now,
-                        }
-                        account.last_error = "WhatsApp QR bağlantısı yeniden onaylanmalı."
-                        db.commit()
-                        if first_alert:
-                            SystemEventService(db).log(
-                                tenant_id=str(account.tenant_id),
-                                source="openwa",
-                                level="warn",
-                                code="OPENWA_QR_REQUIRED",
-                                message="WhatsApp oturumu çıkış yaptı; QR kodunun yeniden taranması gerekiyor.",
-                                meta_json={"session_id": account.provider_session_id},
-                            )
-                            asyncio.run(PushNotificationService(db).send_to_tenant(
-                                tenant_id=account.tenant_id,
-                                event_type="integration_alert",
-                                title="WhatsApp bağlantısını yenileyin",
-                                body="Telefonunuzdan SvontAI QR kodunu yeniden tarayın.",
-                                url="/dashboard/setup/whatsapp",
-                                tag="svontai-openwa-qr-required",
-                            ))
-                        continue
-
                     if recovery_action == "reconnect":
                         asyncio.run(openwa_client.start_session(account.provider_session_id))
                         result = asyncio.run(service.refresh_openwa_status(account.tenant_id))
+                        recovery_action = _openwa_recovery_action(
+                            status=str(result.get("status") or "unknown"),
+                            connected=bool(result.get("connected")),
+                            was_active=was_active,
+                            previous_failures=previous_failures,
+                            previous_health=str(previous_metadata.get("health_status") or ""),
+                        )
+
+                    if recovery_action == "qr_required":
+                        _mark_openwa_qr_required(db, account)
+                        continue
+
+                    if recovery_action == "wait":
+                        account.provider_metadata_json = {
+                            **(account.provider_metadata_json or {}),
+                            "health_status": "connecting",
+                        }
+                        account.last_error = None
+                        db.commit()
+                        continue
 
                     if result.get("connected"):
                         if previous_failures:

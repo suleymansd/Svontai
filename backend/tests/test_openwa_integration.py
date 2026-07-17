@@ -317,6 +317,13 @@ def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
         previous_failures=0,
         previous_health="connected",
     ) == "none"
+    assert _openwa_recovery_action(
+        status="initializing",
+        connected=False,
+        was_active=True,
+        previous_failures=1,
+        previous_health="disconnected",
+    ) == "wait"
 
 
 def test_openwa_logout_webhook_marks_account_for_new_qr(client):
