@@ -115,6 +115,9 @@ def test_openwa_qr_onboarding_is_tenant_scoped(client, monkeypatch):
         ).one()
         assert account.provider_session_id == "82d1023f-998b-4ada-bf1c-a1e192e933c6"
         assert account.access_token_encrypted is None
+        assert account.is_active is False
+        assert account.token_status == "pending"
+        assert account.provider_metadata_json["health_status"] == "action_required"
         assert account.provider_metadata_json["risk_accepted"] is True
     finally:
         db.close()
@@ -276,3 +279,29 @@ def test_openwa_webhook_secret_is_scoped_per_session(client, monkeypatch):
     assert first
     assert second
     assert first != second
+
+
+def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
+    from app.worker import _openwa_recovery_action
+
+    assert _openwa_recovery_action(
+        status="qr_ready",
+        connected=False,
+        was_active=True,
+        previous_failures=2,
+        previous_health="disconnected",
+    ) == "qr_required"
+    assert _openwa_recovery_action(
+        status="disconnected",
+        connected=False,
+        was_active=True,
+        previous_failures=0,
+        previous_health="connected",
+    ) == "reconnect"
+    assert _openwa_recovery_action(
+        status="ready",
+        connected=True,
+        was_active=True,
+        previous_failures=0,
+        previous_health="connected",
+    ) == "none"
