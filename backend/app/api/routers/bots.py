@@ -13,6 +13,7 @@ from app.dependencies.permissions import require_permissions
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
+from app.models.bot_settings import BotSettings
 from app.schemas.bot import BotCreate, BotResponse, BotUpdate
 from app.services.audit_log_service import AuditLogService
 
@@ -167,6 +168,13 @@ async def update_bot(
         if field == "widget_position" and value is not None:
             value = value.value
         setattr(bot, field, value)
+
+    bot_settings = db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
+    if bot_settings:
+        bot_settings.extra_settings = {
+            **(bot_settings.extra_settings or {}),
+            "managed_by_autopilot": False,
+        }
     
     db.commit()
     db.refresh(bot)

@@ -62,12 +62,26 @@ def test_autopilot_run_is_idempotent_and_exposes_diagnostics(client):
     second_run = client.post("/setup/autopilot/run", headers=headers)
     assert second_run.status_code == 200, second_run.text
 
+    prepared_bots = client.get("/bots", headers=headers)
+    assert prepared_bots.status_code == 200, prepared_bots.text
+    assert prepared_bots.json()[0]["name"] == "Autopilot Tenant Asistanı"
+    bot_id = prepared_bots.json()[0]["id"]
+    customized = client.put(
+        f"/bots/{bot_id}",
+        json={"name": "Özel Satış Asistanı"},
+        headers=headers,
+    )
+    assert customized.status_code == 200, customized.text
+    third_run = client.post("/setup/autopilot/run", headers=headers)
+    assert third_run.status_code == 200, third_run.text
+
     db = SessionLocal()
     try:
         bots = db.query(Bot).filter(Bot.tenant_id == UUID(tenant_id)).all()
         assert len(bots) == 1
+        assert bots[0].name == "Özel Satış Asistanı"
         knowledge_items = db.query(BotKnowledgeItem).filter(BotKnowledgeItem.bot_id == bots[0].id).all()
-        assert {item.title for item in knowledge_items} == {"Otonom çalışma prensibi", "İşletme bilgi formasyonu"}
+        assert {item.title for item in knowledge_items} == {"İşletme bilgi formasyonu"}
     finally:
         db.close()
 

@@ -15,7 +15,8 @@ import {
   Users,
   TrendingUp,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Loader2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,7 +33,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { botApi } from '@/lib/api'
+import { autopilotApi, botApi } from '@/lib/api'
 import { cn, formatDate, maskSecret } from '@/lib/utils'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -57,9 +58,9 @@ export default function BotsPage() {
 
   const guideSteps = [
     {
-      id: 'bot-create',
-      title: 'Bot oluşturun',
-      tooltip: 'Yeni bir bot ekleyerek ilk otomasyonunuzu başlatın.',
+      id: 'bot-ready',
+      title: 'Asistanınız hazır',
+      tooltip: 'SvontAI işletme bilgilerinize göre ana asistanınızı otomatik hazırlar.',
       pointer: { x: 78, y: 18 },
       highlight: { x: 68, y: 14, w: 22, h: 12 },
     },
@@ -109,6 +110,25 @@ export default function BotsPage() {
     },
   })
 
+  const autopilotMutation = useMutation({
+    mutationFn: () => autopilotApi.run(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bots'] })
+      queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
+      toast({
+        title: 'Asistan güncellendi',
+        description: 'İşletme bilgileriniz bot ve bilgi tabanına otomatik işlendi.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Hazırlama tamamlanamadı',
+        description: getApiErrorMessage(error, 'Asistan hazırlanamadı.'),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const copyPublicKey = async (key: string) => {
     await navigator.clipboard.writeText(key)
     setCopiedKey(key)
@@ -133,13 +153,21 @@ export default function BotsPage() {
       <div className="relative space-y-8">
         <PageHeader
           title="Botlarım"
-          description="AI asistanlarınızı yönetin ve performanslarını takip edin."
+          description="İşletme bilgilerinizle otomatik hazırlanan asistanınızı buradan özelleştirebilirsiniz."
           icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />}
           actions={(
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Yeni Bot Oluştur
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
+                {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                Yapay Zeka ile Güncelle
+              </Button>
+              {bots?.length ? (
+                <Button variant="outline" onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Ek Asistan
+                </Button>
+              ) : null}
+            </div>
           )}
         />
 
@@ -174,12 +202,12 @@ export default function BotsPage() {
         ) : bots?.length === 0 ? (
           <EmptyState
             icon={<Sparkles className="h-8 w-8 text-primary" />}
-            title="İlk Botunuzu Oluşturun"
-            description="Yapay zeka destekli ilk asistanınızı oluşturarak müşterilerinize 7/24 otomatik yanıt vermeye başlayın."
+            title="Asistanınız hazırlanıyor"
+            description="İşletme profiliniz kullanılarak botunuz, konuşma tonu ve bilgi tabanınız otomatik oluşturulacak."
             action={(
-              <Button size="lg" onClick={() => setIsCreateOpen(true)}>
-                <Plus className="w-5 h-5 mr-2" />
-                Bot Oluştur
+              <Button size="lg" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
+                {autopilotMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
+                Otomatik Hazırla
               </Button>
             )}
           />

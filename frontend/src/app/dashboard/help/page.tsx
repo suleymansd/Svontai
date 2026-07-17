@@ -24,10 +24,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const tenantSetupSteps = [
   'Kayıt ol ve e-posta doğrulamasını tamamla.',
-  'İlk girişte işletme (tenant) bilgilerini kontrol et.',
-  'Botlarım > Yeni Bot Oluştur ile ilk botunu aç.',
-  'Tool Kataloğu sayfasından gerekli toolları ekle.',
-  'WhatsApp Kurulum adımlarını tamamlayarak mesaj akışını başlat.'
+  'İşletme sorularını yanıtla; SvontAI botu ve bilgi tabanını otomatik hazırlasın.',
+  'WhatsApp QR bağlantısını tamamla.',
+  'Hazırlanan asistanı kontrol et ve yalnızca gerekiyorsa özelleştir.',
+  'Sistem Durumu ekranından otonom çalışmayı takip et.'
 ]
 
 const tenantDailyFlow = [
