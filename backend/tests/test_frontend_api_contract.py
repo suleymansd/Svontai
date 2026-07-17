@@ -33,6 +33,8 @@ def _extract_frontend_api_calls(source: str) -> set[tuple[str, str]]:
 
 
 def test_frontend_api_ts_matches_backend_routes(client):
+    from app.main import app as backend_app
+
     repo_root = Path(__file__).resolve().parents[2]
     api_ts_path = repo_root / "frontend" / "src" / "lib" / "api.ts"
     source = api_ts_path.read_text(encoding="utf-8")
@@ -41,7 +43,9 @@ def test_frontend_api_ts_matches_backend_routes(client):
     assert frontend_calls, "No frontend API calls extracted; parser may be broken."
 
     available: set[tuple[str, str]] = set()
-    for route in client.app.routes:
+    # TestClient internals vary between Starlette/httpx releases. The route
+    # contract belongs to the FastAPI application itself.
+    for route in backend_app.routes:
         path = getattr(route, "path", None)
         methods = getattr(route, "methods", None)
         if not path or not methods:
