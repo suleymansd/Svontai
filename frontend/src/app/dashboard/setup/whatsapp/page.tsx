@@ -280,9 +280,8 @@ export default function WhatsAppSetupPage() {
   const progressPercent = status?.steps
     ? (status.steps.filter(s => s.status === 'done').length / status.steps.length) * 100
     : 0
-  const openwaNeedsQr = status?.provider === 'openwa'
-    && !status.whatsapp_connected
-    && ['qr_ready', 'qr', 'authentication_required', 'logged_out'].includes(status.provider_status || '')
+  const openwaNeedsQr = status?.provider === 'openwa' && !status.whatsapp_connected
+  const openwaQrIsReady = ['qr_ready', 'qr', 'authentication_required', 'logged_out'].includes(status?.provider_status || '')
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -437,10 +436,12 @@ export default function WhatsAppSetupPage() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">
-                  WhatsApp bağlantısı yenilenmeli
+                  {openwaQrIsReady ? 'WhatsApp bağlantısı yenilenmeli' : 'WhatsApp bağlantısı bekleniyor'}
                 </h3>
                 <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                  Telefonda oturum kapatılmış. Yeni QR kodu hazırlandıktan sonra bir kez taramanız yeterli.
+                  {openwaQrIsReady
+                    ? 'Telefonda oturum kapatılmış. Yeni QR kodunu bir kez taramanız yeterli.'
+                    : 'QR ekranını açın. Kod hazır olduğunda telefonunuzdaki Bağlı Cihazlar bölümünden tarayın.'}
                 </p>
               </div>
             </div>
@@ -449,7 +450,7 @@ export default function WhatsAppSetupPage() {
               connected={false}
               providerStatus={status.provider_status}
               onConnected={() => refetch()}
-              triggerLabel="Yeni QR Oluştur"
+              triggerLabel={openwaQrIsReady ? 'QR ile Yeniden Bağla' : 'QR Kodunu Aç'}
             />
           </CardContent>
         </Card>

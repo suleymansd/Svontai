@@ -31,7 +31,7 @@ from app.services.analytics_service import AnalyticsService
 from app.services.push_notification_service import PushNotificationService
 from app.services.email_service import EmailService
 from app.services.google_calendar_service import GoogleCalendarService
-from app.services.openwa_client import openwa_client
+from app.services.openwa_client import OpenWAError, openwa_client
 from zoneinfo import ZoneInfo
 
 
@@ -99,6 +99,10 @@ def _mark_openwa_qr_required(db, account: WhatsAppAccount) -> None:
         url="/dashboard/setup/whatsapp",
         tag="svontai-openwa-qr-required",
     ))
+
+
+def _openwa_qr_is_ready(payload: dict | None) -> bool:
+    return bool(payload and str(payload.get("qrCode") or "").strip())
 
 
 def _expected_migration_heads() -> set[str]:
@@ -235,6 +239,25 @@ def _sync_openwa_sessions() -> None:
                         continue
 
                     if recovery_action == "wait":
+                        try:
+                            qr_payload = asyncio.run(
+                                openwa_client.get_qr(account.provider_session_id)
+                            )
+                        except OpenWAError as exc:
+                            if exc.status_code != 400:
+                                raise
+                            qr_payload = {}
+
+                        if _openwa_qr_is_ready(qr_payload):
+                            account.provider_metadata_json = {
+                                **(account.provider_metadata_json or {}),
+                                "engine_status": str(qr_payload.get("status") or "qr_ready"),
+                                "health_status": "action_required",
+                            }
+                            db.commit()
+                            _mark_openwa_qr_required(db, account)
+                            continue
+
                         account.provider_metadata_json = {
                             **(account.provider_metadata_json or {}),
                             "health_status": "connecting",
