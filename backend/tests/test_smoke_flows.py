@@ -84,6 +84,11 @@ def test_smoke_register_verify_login_and_core_resources(client):
     assert profile_resp.status_code == 200, profile_resp.text
     assert profile_resp.json()["current_step"] == "autopilot_setup"
 
+    automatically_prepared_bots = client.get("/bots", headers=_auth_headers(access_token, tenant_id))
+    assert automatically_prepared_bots.status_code == 200, automatically_prepared_bots.text
+    assert len(automatically_prepared_bots.json()) == 1
+    assert automatically_prepared_bots.json()[0]["name"] == "Acme Inc Asistanı"
+
     run_onboarding = client.post("/onboarding/setup/run-autopilot", headers=_auth_headers(access_token, tenant_id))
     assert run_onboarding.status_code == 200, run_onboarding.text
     assert run_onboarding.json()["is_completed"] is True
@@ -91,7 +96,7 @@ def test_smoke_register_verify_login_and_core_resources(client):
     bots_list = client.get("/bots", headers=_auth_headers(access_token, tenant_id))
     assert bots_list.status_code == 200, bots_list.text
     assert len(bots_list.json()) == 1
-    assert bots_list.json()[0]["name"] == "SmartWA Autopilot"
+    assert bots_list.json()[0]["name"] == "Acme Inc Asistanı"
 
     autopilot_status = client.get("/setup/autopilot/status", headers=_auth_headers(access_token, tenant_id))
     assert autopilot_status.status_code == 200, autopilot_status.text

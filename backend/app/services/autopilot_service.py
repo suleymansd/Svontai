@@ -12,6 +12,7 @@ from app.core.time import utc_now
 from app.models.autopilot import AgencyClient, IntegrationHealthCheck, SetupRun
 from app.models.automation import AutomationRun, TenantAutomationSettings
 from app.models.bot import Bot
+from app.models.bot_settings import BotSettings, ResponseTone
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.incident import Incident
 from app.models.knowledge import BotKnowledgeItem
@@ -75,12 +76,13 @@ class AutopilotService:
 
         business_profile = self._business_profile(tenant)
         bot = self.db.query(Bot).filter(Bot.tenant_id == tenant.id).order_by(Bot.created_at.asc()).first()
+        bot_is_managed = False
         if bot is None:
             bot = Bot(
                 tenant_id=tenant.id,
-                name=DEFAULT_BOT_NAME,
+                name=self._bot_name(tenant),
                 description=self._bot_description(tenant, business_profile),
-                welcome_message="Merhaba, size nasıl yardımcı olabilirim?",
+                welcome_message=self._welcome_message(tenant),
                 language="tr",
                 primary_color="#2563EB",
                 widget_position="right",
@@ -89,43 +91,69 @@ class AutopilotService:
             self.db.add(bot)
             self.db.commit()
             self.db.refresh(bot)
+            bot_is_managed = True
             actions.append({"key": "default_bot_created", "label": "Varsayılan autopilot bot oluşturuldu"})
+        else:
+            existing_settings = self.db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
+            bot_is_managed = bool(
+                bot.name == DEFAULT_BOT_NAME
+                or (existing_settings and (existing_settings.extra_settings or {}).get("managed_by_autopilot"))
+            )
+            if bot_is_managed:
+                bot.name = self._bot_name(tenant)
+                bot.description = self._bot_description(tenant, business_profile)
+                bot.welcome_message = self._welcome_message(tenant)
+                bot.is_active = True
+                self.db.commit()
+                actions.append({"key": "default_bot_updated", "label": "İşletme asistanı güncellendi"})
 
-        knowledge_exists = self.db.query(BotKnowledgeItem.id).filter(
+        bot_settings = self.db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
+        normalized_tone = self._normalized_tone(business_profile.get("tone"))
+        if bot_settings is None:
+            bot_settings = BotSettings(
+                bot_id=bot.id,
+                response_tone=normalized_tone,
+                enable_guardrails=True,
+                human_handoff_enabled=True,
+                extra_settings={"managed_by_autopilot": bot_is_managed},
+            )
+            self.db.add(bot_settings)
+            self.db.commit()
+        elif bot_is_managed:
+            bot_settings.response_tone = normalized_tone
+            bot_settings.extra_settings = {
+                **(bot_settings.extra_settings or {}),
+                "managed_by_autopilot": True,
+            }
+            self.db.commit()
+
+        internal_knowledge = self.db.query(BotKnowledgeItem).filter(
             BotKnowledgeItem.bot_id == bot.id,
             BotKnowledgeItem.title == DEFAULT_KNOWLEDGE_TITLE,
         ).first()
-        if not knowledge_exists:
-            self.db.add(
-                BotKnowledgeItem(
-                    bot_id=bot.id,
-                    title=DEFAULT_KNOWLEDGE_TITLE,
-                    question="SmartWA hangi durumlarda otomatik aksiyon alır?",
-                    answer=(
-                        "SmartWA güvenli otonomi prensibiyle çalışır. Kurulum, tanılama, limit takibi, "
-                        "retry ve incident üretimi otomatik yapılır; ödeme, dış servis izni ve müşteri adına "
-                        "riskli mesaj gönderimi için kullanıcı onayı istenir."
-                    ),
-                )
-            )
+        if internal_knowledge:
+            self.db.delete(internal_knowledge)
             self.db.commit()
-            actions.append({"key": "default_knowledge_created", "label": "Temel bilgi tabanı eklendi"})
+            actions.append({"key": "internal_knowledge_removed", "label": "İç sistem bilgisi müşteri botundan kaldırıldı"})
 
-        profile_knowledge = self.db.query(BotKnowledgeItem.id).filter(
+        profile_knowledge = self.db.query(BotKnowledgeItem).filter(
             BotKnowledgeItem.bot_id == bot.id,
             BotKnowledgeItem.title == DEFAULT_PROFILE_TITLE,
         ).first()
         if not profile_knowledge:
-            self.db.add(
-                BotKnowledgeItem(
-                    bot_id=bot.id,
-                    title=DEFAULT_PROFILE_TITLE,
-                    question="Bu işletme hakkında nasıl davranmalısın?",
-                    answer=self._profile_knowledge_answer(tenant, business_profile),
-                )
+            profile_knowledge = BotKnowledgeItem(
+                bot_id=bot.id,
+                title=DEFAULT_PROFILE_TITLE,
+                question="Bu işletme hakkında nasıl davranmalısın?",
+                answer=self._profile_knowledge_answer(tenant, business_profile),
             )
+            self.db.add(profile_knowledge)
             self.db.commit()
             actions.append({"key": "profile_knowledge_created", "label": "İşletme bilgi formasyonu seed edildi"})
+        else:
+            profile_knowledge.answer = self._profile_knowledge_answer(tenant, business_profile)
+            self.db.commit()
+            actions.append({"key": "profile_knowledge_updated", "label": "İşletme bilgi formasyonu güncellendi"})
 
         diagnostics = self.run_diagnostics(tenant)
         for item in diagnostics["items"]:
@@ -391,6 +419,17 @@ class AutopilotService:
     def _business_profile(self, tenant: Tenant) -> dict:
         return dict((tenant.settings or {}).get("business_profile") or {})
 
+    def _bot_name(self, tenant: Tenant) -> str:
+        return f"{tenant.name} Asistanı"
+
+    def _welcome_message(self, tenant: Tenant) -> str:
+        return f"Merhaba, {tenant.name} ile iletişime geçtiğiniz için teşekkür ederiz. Size nasıl yardımcı olabilirim?"
+
+    def _normalized_tone(self, value: object) -> str:
+        tone = str(value or ResponseTone.PROFESSIONAL.value).strip().lower()
+        allowed = {item.value for item in ResponseTone}
+        return tone if tone in allowed else ResponseTone.PROFESSIONAL.value
+
     def _bot_description(self, tenant: Tenant, profile: dict) -> str:
         industry = (profile.get("industry") or "").strip()
         if industry and industry != "unknown":
@@ -398,11 +437,10 @@ class AutopilotService:
         return f"{tenant.name} için müşteri iletişimini güvenli otonomiyle yöneten varsayılan asistan."
 
     def _profile_knowledge_answer(self, tenant: Tenant, profile: dict) -> str:
-        status = profile.get("status") or "needs_enrichment"
         services = profile.get("services") or []
         faq = profile.get("faq") or []
         summary = (profile.get("summary") or "").strip()
-        if status == "ready" and (summary or services or faq):
+        if summary or services or faq:
             return (
                 f"İşletme: {tenant.name}\n"
                 f"Sektör: {profile.get('industry') or 'Belirtilmedi'}\n"

@@ -432,7 +432,7 @@ export default function OnboardingPage() {
               <div className="grid gap-3 md:grid-cols-3">
                 {(form.setup_mode === 'concierge'
                   ? ['Concierge kaydı açılır', 'Bot güvenli modda hazırlanır', 'Sağlık kontrolleri başlar']
-                  : ['Bot hazırlanır', 'Bilgi formasyonu açılır', 'Sağlık kontrolleri başlar']
+                  : ['Bot otomatik hazırlandı', 'Bilgiler bota işlendi', 'Sağlık kontrolleri başladı']
                 ).map((item) => (
                   <div key={item} className="rounded-xl border p-4">
                     <CheckCircle2 className="mb-2 h-5 w-5 text-success" />
@@ -444,7 +444,7 @@ export default function OnboardingPage() {
                 {!statusQuery.data?.is_completed ? (
                   <Button onClick={() => runAutopilotMutation.mutate()} disabled={runAutopilotMutation.isPending}>
                     {runAutopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    SmartWA’yı Kur
+                    Kurulumu Tamamla
                   </Button>
                 ) : (
                   <Button asChild>

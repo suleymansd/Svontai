@@ -183,6 +183,9 @@ class TenantOnboardingService:
         self.complete_step(tenant.id, OnboardingStepKey.BUSINESS_PROFILE.value)
         self.complete_step(tenant.id, OnboardingStepKey.CUSTOMER_GOALS.value)
         self.complete_step(tenant.id, OnboardingStepKey.KNOWLEDGE_SOURCES.value)
+        # Start preparing the tenant immediately. The final onboarding action
+        # remains an idempotent readiness check, not a manual bot creation step.
+        AutopilotService(self.db).run(tenant)
         return self.get_onboarding_status(tenant.id)
 
     def run_autopilot_setup(self, tenant: Tenant, user: User) -> dict:
