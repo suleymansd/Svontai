@@ -124,7 +124,7 @@ export default function WhatsAppSetupPage() {
   const { data: status, isLoading, refetch } = useQuery<OnboardingStatus>({
     queryKey: ['whatsapp-onboarding-status'],
     queryFn: () => api.get('/api/onboarding/whatsapp/status').then(res => res.data),
-    refetchInterval: pollInterval,
+    refetchInterval: pollInterval || 10000,
   })
 
   // Start onboarding mutation
@@ -280,6 +280,9 @@ export default function WhatsAppSetupPage() {
   const progressPercent = status?.steps
     ? (status.steps.filter(s => s.status === 'done').length / status.steps.length) * 100
     : 0
+  const openwaNeedsQr = status?.provider === 'openwa'
+    && !status.whatsapp_connected
+    && ['qr_ready', 'qr', 'authentication_required', 'logged_out'].includes(status.provider_status || '')
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -425,6 +428,33 @@ export default function WhatsAppSetupPage() {
         </DialogContent>
       </Dialog>
 
+      {openwaNeedsQr && (
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
+          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-amber-500">
+                <AlertCircle className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">
+                  WhatsApp bağlantısı yenilenmeli
+                </h3>
+                <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                  Telefonda oturum kapatılmış. Yeni QR kodu hazırlandıktan sonra bir kez taramanız yeterli.
+                </p>
+              </div>
+            </div>
+            <OpenWAConnectDialog
+              enabled
+              connected={false}
+              providerStatus={status.provider_status}
+              onConnected={() => refetch()}
+              triggerLabel="Yeni QR Oluştur"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Status Card */}
       {status?.whatsapp_connected && (
         <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
@@ -446,10 +476,19 @@ export default function WhatsAppSetupPage() {
                   </Badge>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => resetMutation.mutate()}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Yeniden Kur
-              </Button>
+              {status.provider === 'openwa' ? (
+                <OpenWAConnectDialog
+                  enabled
+                  connected={status.whatsapp_connected}
+                  providerStatus={status.provider_status}
+                  onConnected={() => refetch()}
+                />
+              ) : (
+                <Button variant="outline" onClick={() => resetMutation.mutate()}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Yeniden Kur
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -498,6 +537,7 @@ export default function WhatsAppSetupPage() {
                   <OpenWAConnectDialog
                     enabled
                     connected={status.whatsapp_connected}
+                    providerStatus={status.provider_status}
                     onConnected={() => refetch()}
                   />
                 ) : null}
@@ -605,6 +645,7 @@ export default function WhatsAppSetupPage() {
                       <OpenWAConnectDialog
                         enabled
                         connected={status.whatsapp_connected}
+                        providerStatus={status.provider_status}
                         onConnected={() => refetch()}
                       />
                     ) : null}

@@ -79,6 +79,8 @@ def test_openwa_qr_onboarding_is_tenant_scoped(client, monkeypatch):
         "get_qr",
         AsyncMock(return_value={"status": "qr_ready", "qrCode": "data:image/png;base64,dGVzdA=="}),
     )
+    delete_session = AsyncMock(return_value=None)
+    monkeypatch.setattr(openwa_client, "delete_session", delete_session)
 
     without_consent = client.post(
         "/api/onboarding/whatsapp/openwa/start",
@@ -99,6 +101,16 @@ def test_openwa_qr_onboarding_is_tenant_scoped(client, monkeypatch):
     qr = client.get("/api/onboarding/whatsapp/openwa/qr", headers=headers)
     assert qr.status_code == 200, qr.text
     assert qr.json()["qr_code"].startswith("data:image/png;base64,")
+
+    reconnect = client.post("/api/onboarding/whatsapp/openwa/reconnect", headers=headers)
+    assert reconnect.status_code == 200, reconnect.text
+    assert reconnect.json()["status"] == "qr_ready"
+    assert reconnect.json()["qr_code"].startswith("data:image/png;base64,")
+
+    fresh_qr = client.post("/api/onboarding/whatsapp/openwa/qr/refresh", headers=headers)
+    assert fresh_qr.status_code == 200, fresh_qr.text
+    assert fresh_qr.json()["qr_code"].startswith("data:image/png;base64,")
+    delete_session.assert_awaited_once_with("82d1023f-998b-4ada-bf1c-a1e192e933c6")
 
     status = client.get("/api/onboarding/whatsapp/status", headers=headers)
     assert status.status_code == 200
@@ -305,3 +317,116 @@ def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
         previous_failures=0,
         previous_health="connected",
     ) == "none"
+
+
+def test_openwa_logout_webhook_marks_account_for_new_qr(client):
+    from app.db.session import SessionLocal
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.onboarding_service import OnboardingService
+
+    _, tenant_id = _create_tenant(client)
+    db = SessionLocal()
+    try:
+        account = WhatsAppAccount(
+            tenant_id=UUID(tenant_id),
+            provider="openwa",
+            provider_session_id="logout-session",
+            token_status="active",
+            webhook_status="verified",
+            is_active=True,
+            is_verified=True,
+            provider_metadata_json={"risk_accepted": True, "health_status": "connected"},
+        )
+        db.add(account)
+        db.commit()
+
+        OnboardingService(db).sync_openwa_webhook_event(
+            account,
+            "session.disconnected",
+            {"status": "logged_out", "reason": "Logged out from the phone"},
+        )
+        db.refresh(account)
+
+        assert account.is_active is False
+        assert account.token_status == "pending"
+        assert account.provider_metadata_json["engine_status"] == "logged_out"
+        assert account.provider_metadata_json["health_status"] == "action_required"
+        assert account.provider_metadata_json["qr_required_at"]
+    finally:
+        db.close()
+
+
+def test_openwa_missing_remote_session_is_recreated_for_qr(client, monkeypatch):
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.openwa_client import OpenWAError, openwa_client
+
+    token, tenant_id = _create_tenant(client)
+    headers = _headers(token, tenant_id)
+    monkeypatch.setattr(settings, "OPENWA_ENABLED", True)
+    monkeypatch.setattr(settings, "OPENWA_WEBHOOK_SECRET", "test-openwa-secret")
+    monkeypatch.setattr(openwa_client, "base_url", "https://openwa.test")
+    monkeypatch.setattr(openwa_client, "api_key", "test-api-key")
+    monkeypatch.setattr(
+        openwa_client,
+        "get_session",
+        AsyncMock(side_effect=[
+            OpenWAError("missing", status_code=404),
+            OpenWAError("missing", status_code=404),
+        ]),
+    )
+    monkeypatch.setattr(
+        openwa_client,
+        "create_or_get_session",
+        AsyncMock(return_value={"id": "replacement-session", "status": "created"}),
+    )
+    monkeypatch.setattr(
+        openwa_client,
+        "ensure_webhook",
+        AsyncMock(return_value={"id": "replacement-webhook"}),
+    )
+    monkeypatch.setattr(
+        openwa_client,
+        "start_session",
+        AsyncMock(return_value={"id": "replacement-session", "status": "qr_ready"}),
+    )
+    monkeypatch.setattr(
+        openwa_client,
+        "get_qr",
+        AsyncMock(return_value={"status": "qr_ready", "qrCode": "data:image/png;base64,bmV3"}),
+    )
+
+    db = SessionLocal()
+    try:
+        db.add(WhatsAppAccount(
+            tenant_id=UUID(tenant_id),
+            provider="openwa",
+            provider_session_id="missing-session",
+            token_status="active",
+            webhook_status="verified",
+            is_active=True,
+            is_verified=True,
+            provider_metadata_json={
+                "session_name": f"svontai-{UUID(tenant_id).hex[:24]}",
+                "risk_accepted": True,
+            },
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/onboarding/whatsapp/openwa/qr", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["session_id"] == "replacement-session"
+    assert response.json()["qr_code"] == "data:image/png;base64,bmV3"
+
+    db = SessionLocal()
+    try:
+        account = db.query(WhatsAppAccount).filter(
+            WhatsAppAccount.tenant_id == UUID(tenant_id)
+        ).one()
+        assert account.provider_session_id == "replacement-session"
+        assert account.token_status == "pending"
+    finally:
+        db.close()

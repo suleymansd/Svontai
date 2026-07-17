@@ -251,13 +251,125 @@ class OnboardingService:
         )
         return self.openwa_status(account, started)
 
+    async def reconnect_openwa(
+        self,
+        tenant_id: UUID,
+        *,
+        force_new_session: bool = False,
+    ) -> Dict[str, Any]:
+        """Recover an existing QR connection or rotate it when a fresh QR is required."""
+        if not openwa_client.configured:
+            raise OpenWAError("OpenWA servisi henüz yapılandırılmadı.")
+
+        account = self.get_whatsapp_account(tenant_id)
+        if not account or account.provider != "openwa":
+            raise OpenWAError("OpenWA oturumu bulunamadı.", status_code=404)
+        if not (account.provider_metadata_json or {}).get("risk_accepted"):
+            raise OpenWAError("QR bağlantısı kullanım onayı bulunamadı.", status_code=409)
+
+        session_name = str(
+            (account.provider_metadata_json or {}).get("session_name")
+            or f"svontai-{tenant_id.hex[:24]}"
+        )
+        old_session_id = account.provider_session_id
+        session: Dict[str, Any] = {}
+
+        if force_new_session and old_session_id:
+            await openwa_client.delete_session(old_session_id)
+        elif old_session_id:
+            try:
+                session = await openwa_client.get_session(old_session_id)
+            except OpenWAError as exc:
+                if exc.status_code != 404:
+                    raise
+
+        if force_new_session or not session:
+            session = await openwa_client.create_or_get_session(session_name)
+
+        session_id = str(session.get("id") or old_session_id or "")
+        if not session_id:
+            raise OpenWAError("OpenWA oturum kimliği alınamadı.")
+
+        webhook_base_url = (
+            settings.OPENWA_WEBHOOK_PUBLIC_URL.strip()
+            or settings.WEBHOOK_PUBLIC_URL.strip()
+        ).rstrip("/")
+        webhook_url = f"{webhook_base_url}/whatsapp/openwa/webhook"
+        webhook = await openwa_client.ensure_webhook(session_id, webhook_url)
+        started = await openwa_client.start_session(session_id)
+        status_value = str(started.get("status") or session.get("status") or "starting")
+
+        account.provider_session_id = session_id
+        account.provider_webhook_id = str(webhook.get("id") or "") or None
+        account.webhook_url = webhook_url
+        account.webhook_status = WebhookStatus.VERIFIED.value
+        account.is_verified = True
+        account.is_active = status_value == "ready"
+        account.token_status = (
+            TokenStatus.ACTIVE.value
+            if account.is_active
+            else TokenStatus.PENDING.value
+        )
+        account.last_error = started.get("lastError")
+        account.provider_metadata_json = {
+            **(account.provider_metadata_json or {}),
+            "session_name": session_name,
+            "engine_status": status_value,
+            "health_status": "connected" if account.is_active else "action_required",
+            "last_reconnect_at": utc_now_naive().isoformat(),
+            "session_rotated": force_new_session,
+        }
+        self.db.commit()
+
+        if account.is_active:
+            self._mark_openwa_connected(account, started)
+        else:
+            self.update_step_status(
+                tenant_id,
+                "meta_auth",
+                StepStatus.IN_PROGRESS,
+                message="Telefonunuzdan yeni QR kodunu tarayın.",
+            )
+
+        self.create_audit_log(
+            tenant_id=tenant_id,
+            action=("openwa_session_rotated" if force_new_session else "openwa_session_reconnected"),
+            resource_type="whatsapp_account",
+            resource_id=str(account.id),
+            payload={
+                "session_id": session_id,
+                "previous_session_id": old_session_id,
+                "status": status_value,
+            },
+        )
+        return self.openwa_status(account, started)
+
     async def refresh_openwa_status(self, tenant_id: UUID) -> Dict[str, Any]:
         account = self.get_whatsapp_account(tenant_id)
         if not account or account.provider != "openwa" or not account.provider_session_id:
             raise OpenWAError("OpenWA oturumu bulunamadı.")
 
-        session = await openwa_client.get_session(account.provider_session_id)
-        status_value = str(session.get("status") or "unknown")
+        try:
+            session = await openwa_client.get_session(account.provider_session_id)
+        except OpenWAError as exc:
+            if exc.status_code == 404:
+                account.is_active = False
+                account.token_status = TokenStatus.PENDING.value
+                account.provider_metadata_json = {
+                    **(account.provider_metadata_json or {}),
+                    "engine_status": "authentication_required",
+                    "health_status": "action_required",
+                }
+                self.db.commit()
+                self.update_step_status(
+                    tenant_id,
+                    "meta_auth",
+                    StepStatus.IN_PROGRESS,
+                    message="WhatsApp oturumu yenilenmeli. Yeni QR kodunu tarayın.",
+                )
+            raise
+
+        status_value = str(session.get("status") or "unknown").lower()
         account.provider_metadata_json = {
             **(account.provider_metadata_json or {}),
             "engine_status": status_value,
@@ -273,6 +385,12 @@ class OnboardingService:
                 "health_status": "action_required",
             }
             self.db.commit()
+            self.update_step_status(
+                tenant_id,
+                "meta_auth",
+                StepStatus.IN_PROGRESS,
+                message="WhatsApp oturumu kapandı. Yeni QR kodunu tarayın.",
+            )
         elif status_value in {"created", "initializing", "connecting", "starting"}:
             account.is_active = False
             account.token_status = TokenStatus.PENDING.value
@@ -294,7 +412,18 @@ class OnboardingService:
         return self.openwa_status(account, session)
 
     async def get_openwa_qr(self, tenant_id: UUID) -> Dict[str, Any]:
-        status_payload = await self.refresh_openwa_status(tenant_id)
+        try:
+            status_payload = await self.refresh_openwa_status(tenant_id)
+        except OpenWAError as exc:
+            account = self.get_whatsapp_account(tenant_id)
+            if (
+                exc.status_code != 404
+                or not account
+                or account.provider != "openwa"
+                or not (account.provider_metadata_json or {}).get("risk_accepted")
+            ):
+                raise
+            status_payload = await self.reconnect_openwa(tenant_id)
         if status_payload["status"] == "ready":
             return {**status_payload, "qr_code": None}
 
@@ -327,13 +456,37 @@ class OnboardingService:
         event: str,
         data: dict,
     ) -> None:
-        status_value = str(data.get("status") or "")
+        status_value = str(data.get("status") or "").lower()
+        reason = str(data.get("reason") or data.get("error") or "")
+        logged_out = (
+            status_value in {"qr_ready", "qr", "authentication_required", "logged_out"}
+            or "logged out" in reason.lower()
+            or "logout" in reason.lower()
+        )
         if event == "session.authenticated":
             self._mark_openwa_connected(account, data)
+        elif event == "session.disconnected" and logged_out:
+            account.is_active = False
+            account.token_status = TokenStatus.PENDING.value
+            account.last_error = reason or None
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "engine_status": status_value or "logged_out",
+                "health_status": "action_required",
+                "disconnect_reason": reason or "logged_out",
+                "qr_required_at": utc_now_naive().isoformat(),
+            }
+            self.db.commit()
+            self.update_step_status(
+                account.tenant_id,
+                "meta_auth",
+                StepStatus.IN_PROGRESS,
+                message="WhatsApp oturumu kapandı. Yeni QR kodunu tarayın.",
+            )
         elif event in {"session.disconnected"} or status_value in {"failed", "disconnected"}:
             account.is_active = False
             account.token_status = TokenStatus.ERROR.value
-            account.last_error = str(data.get("reason") or data.get("error") or "") or None
+            account.last_error = reason or None
             account.provider_metadata_json = {
                 **(account.provider_metadata_json or {}),
                 "engine_status": status_value or "disconnected",
