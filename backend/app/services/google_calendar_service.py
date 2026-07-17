@@ -4,7 +4,7 @@ Google Calendar OAuth + event integration service (Real Estate Pack).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.time import utc_now_naive
 from urllib.parse import parse_qs, urlencode, urlparse
 from uuid import UUID
@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.models.real_estate import RealEstateGoogleCalendarIntegration
+from app.models.appointment import Appointment
+from app.models.google_oauth_token import GoogleOAuthToken
+from app.models.tenant import Tenant
 from app.services.google_oauth_token_service import GoogleOAuthTokenService
 
 
@@ -38,6 +41,7 @@ class GoogleCalendarService:
         "https://www.googleapis.com/auth/calendar.events",
     ]
     STATE_EXP_MINUTES = 15
+    CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 
     def __init__(self, db: Session):
         self.db = db
@@ -426,6 +430,215 @@ class GoogleCalendarService:
             )
         return data.get("id")
 
+    def _tenant_access_token(self, tenant_id: UUID) -> str:
+        token_service = GoogleOAuthTokenService(self.db)
+        token_row = token_service.get_tenant_google_token(tenant_id)
+        if token_row is None:
+            raise GoogleCalendarError("Tenant için bağlı Google hesabı bulunamadı.")
+        scopes = set(token_row.scopes_json or [])
+        if self.CALENDAR_EVENTS_SCOPE not in scopes and "https://www.googleapis.com/auth/calendar" not in scopes:
+            raise GoogleCalendarError("Google Calendar izni verilmemiş.")
+        if token_service.ensure_fresh_or_expired(token_row) != "connected":
+            raise GoogleCalendarError("Google oturumunun süresi dolmuş; hesabı yeniden bağlayın.")
+        token_row = token_service.get_tenant_google_token(tenant_id)
+        access_token = decrypt_token(token_row.access_token_encrypted) if token_row and token_row.access_token_encrypted else None
+        if not access_token:
+            raise GoogleCalendarError("Aktif Google access token bulunamadı.")
+        return access_token
+
+    @staticmethod
+    def _appointment_event_payload(appointment: Appointment) -> dict:
+        end_at = appointment.starts_at + timedelta(hours=1)
+        description_parts = [
+            f"Müşteri: {appointment.customer_name}",
+            appointment.notes or "",
+            f"SvontAI randevu kimliği: {appointment.id}",
+        ]
+        payload: dict = {
+            "summary": appointment.subject,
+            "description": "\n".join(part for part in description_parts if part),
+            "start": {"dateTime": appointment.starts_at.isoformat(), "timeZone": "UTC"},
+            "end": {"dateTime": end_at.isoformat(), "timeZone": "UTC"},
+            "extendedProperties": {"private": {"svontai_appointment_id": str(appointment.id)}},
+        }
+        if appointment.customer_email:
+            payload["attendees"] = [{"email": appointment.customer_email}]
+        return payload
+
+    def sync_appointment(self, appointment: Appointment) -> str:
+        access_token = self._tenant_access_token(appointment.tenant_id)
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        base_url = f"{self.CALENDAR_API_BASE}/calendars/primary/events"
+
+        if appointment.status == "cancelled":
+            if appointment.calendar_event_id:
+                response = httpx.delete(
+                    f"{base_url}/{appointment.calendar_event_id}",
+                    headers=headers,
+                    params={"sendUpdates": "none"},
+                    timeout=20,
+                )
+                if response.status_code not in {204, 404, 410}:
+                    raise GoogleCalendarError(f"Google Calendar event silinemedi: {response.text[:300]}")
+            appointment.calendar_provider = "google"
+            appointment.calendar_sync_status = "cancelled"
+            appointment.calendar_last_error = None
+            appointment.calendar_synced_at = self._utcnow()
+            self.db.commit()
+            return "cancelled"
+
+        payload = self._appointment_event_payload(appointment)
+        if appointment.calendar_event_id:
+            response = httpx.patch(
+                f"{base_url}/{appointment.calendar_event_id}",
+                headers=headers,
+                params={"sendUpdates": "none"},
+                json=payload,
+                timeout=20,
+            )
+        else:
+            response = httpx.post(
+                base_url,
+                headers=headers,
+                params={"sendUpdates": "none"},
+                json=payload,
+                timeout=20,
+            )
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+        if not response.is_success or "error" in data:
+            detail = (data.get("error") or {}).get("message") or response.text[:300]
+            raise GoogleCalendarError(f"Google Calendar randevu senkronizasyonu başarısız: {detail}")
+
+        appointment.calendar_event_id = data.get("id") or appointment.calendar_event_id
+        appointment.calendar_provider = "google"
+        appointment.calendar_sync_status = "synced"
+        appointment.calendar_last_error = None
+        appointment.calendar_synced_at = self._utcnow()
+        self.db.commit()
+        return "synced"
+
+    def sync_pending_appointments(self, limit: int = 100) -> dict[str, int]:
+        rows = (
+            self.db.query(Appointment)
+            .join(GoogleOAuthToken, GoogleOAuthToken.tenant_id == Appointment.tenant_id)
+            .filter(
+                GoogleOAuthToken.provider == "google",
+                Appointment.calendar_sync_status.in_(["pending", "failed"]),
+            )
+            .order_by(Appointment.updated_at.asc())
+            .limit(limit)
+            .all()
+        )
+        result = {"processed": 0, "synced": 0, "cancelled": 0, "failed": 0}
+        for appointment in rows:
+            result["processed"] += 1
+            try:
+                status_value = self.sync_appointment(appointment)
+                result[status_value] += 1
+            except Exception as exc:
+                self.db.rollback()
+                appointment = self.db.get(Appointment, appointment.id)
+                if appointment is not None:
+                    appointment.calendar_sync_status = "failed"
+                    appointment.calendar_last_error = str(exc)[:1000]
+                    self.db.commit()
+                result["failed"] += 1
+        return result
+
+    def pull_appointment_updates(self, limit_tenants: int = 100) -> dict[str, int]:
+        token_rows = self.db.query(GoogleOAuthToken).filter(
+            GoogleOAuthToken.provider == "google"
+        ).limit(limit_tenants).all()
+        result = {"tenants": 0, "events": 0, "updated": 0, "failed": 0}
+
+        for token_row in token_rows:
+            tenant = self.db.get(Tenant, token_row.tenant_id)
+            if tenant is None:
+                continue
+            result["tenants"] += 1
+            try:
+                access_token = self._tenant_access_token(tenant.id)
+                sync_token = str((tenant.settings or {}).get("google_calendar_appointment_sync_token") or "")
+                params: dict[str, str | int | bool] = {
+                    "singleEvents": True,
+                    "showDeleted": True,
+                    "maxResults": 2500,
+                }
+                if sync_token:
+                    params["syncToken"] = sync_token
+                else:
+                    params["timeMin"] = (self._utcnow() - timedelta(days=90)).isoformat() + "Z"
+
+                response = httpx.get(
+                    f"{self.CALENDAR_API_BASE}/calendars/primary/events",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params=params,
+                    timeout=20,
+                )
+                if response.status_code == 410 and sync_token:
+                    params.pop("syncToken", None)
+                    params["timeMin"] = (self._utcnow() - timedelta(days=90)).isoformat() + "Z"
+                    response = httpx.get(
+                        f"{self.CALENDAR_API_BASE}/calendars/primary/events",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        params=params,
+                        timeout=20,
+                    )
+                data = response.json()
+                if not response.is_success or "error" in data:
+                    detail = (data.get("error") or {}).get("message") or response.text[:300]
+                    raise GoogleCalendarError(f"Google Calendar değişiklikleri alınamadı: {detail}")
+
+                for event in data.get("items") or []:
+                    private = ((event.get("extendedProperties") or {}).get("private") or {})
+                    appointment_id = private.get("svontai_appointment_id")
+                    if not appointment_id:
+                        continue
+                    try:
+                        appointment_uuid = UUID(str(appointment_id))
+                    except ValueError:
+                        continue
+                    appointment = self.db.query(Appointment).filter(
+                        Appointment.id == appointment_uuid,
+                        Appointment.tenant_id == tenant.id,
+                    ).first()
+                    if appointment is None:
+                        continue
+                    result["events"] += 1
+                    if event.get("status") == "cancelled":
+                        appointment.status = "cancelled"
+                        appointment.calendar_sync_status = "cancelled"
+                    else:
+                        start_at = self._parse_google_dt((event.get("start") or {}).get("dateTime"))
+                        if start_at:
+                            appointment.starts_at = start_at
+                        if event.get("summary"):
+                            appointment.subject = str(event["summary"])[:255]
+                        appointment.calendar_sync_status = "synced"
+                    appointment.calendar_provider = "google"
+                    appointment.calendar_event_id = str(event.get("id") or appointment.calendar_event_id or "") or None
+                    appointment.calendar_last_error = None
+                    appointment.calendar_synced_at = self._utcnow()
+                    result["updated"] += 1
+
+                next_sync_token = data.get("nextSyncToken")
+                if next_sync_token:
+                    tenant.settings = {
+                        **(tenant.settings or {}),
+                        "google_calendar_appointment_sync_token": str(next_sync_token),
+                    }
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                result["failed"] += 1
+        return result
+
     @staticmethod
     def _parse_google_dt(value: str) -> datetime | None:
         if not value:
@@ -433,7 +646,9 @@ class GoogleCalendarService:
         normalized = value.replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(normalized)
-            return parsed.replace(tzinfo=None)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         except Exception:
             return None
 

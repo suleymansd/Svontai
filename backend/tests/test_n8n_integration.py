@@ -37,6 +37,7 @@ def _prod_real_service_settings(**overrides):
         "N8N_INCOMING_WORKFLOW_ID": "incoming-prod",
         "SVONTAI_TO_N8N_SECRET": "secure-svontai-to-n8n-secret!",
         "N8N_TO_SVONTAI_SECRET": "secure-n8n-to-svontai-secret!",
+        "N8N_ERROR_WEBHOOK_SECRET": "secure-n8n-error-webhook-secret!",
         "ARTIFACT_STORAGE_PROVIDER": "supabase",
         "SUPABASE_URL": "https://project.supabase.co",
         "SUPABASE_SERVICE_ROLE_KEY": "supabase-service-role-key",

@@ -182,6 +182,7 @@ class Settings(BaseSettings):
     # Used for HMAC signature verification
     SVONTAI_TO_N8N_SECRET: str = "change-this-to-a-secure-random-string-svontai-to-n8n"
     N8N_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-n8n-to-svontai"
+    N8N_ERROR_WEBHOOK_SECRET: str = ""
 
     # ===========================================
     # Voice Gateway Integration (HMAC)
@@ -362,6 +363,8 @@ class Settings(BaseSettings):
             missing_real_time_config.append("USE_N8N=true")
         if not self.N8N_BASE_URL.strip() or not self.N8N_INCOMING_WORKFLOW_ID.strip():
             missing_real_time_config.append("N8N_BASE_URL/N8N_INCOMING_WORKFLOW_ID")
+        if not self.N8N_ERROR_WEBHOOK_SECRET.strip():
+            missing_real_time_config.append("N8N_ERROR_WEBHOOK_SECRET")
         if self.ARTIFACT_STORAGE_PROVIDER != "supabase":
             missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=supabase")
         if (

@@ -28,6 +28,8 @@ from app.services.voice_automation_service import VoiceAutomationService
 from app.services.onboarding_service import OnboardingService
 from app.services.analytics_service import AnalyticsService
 from app.services.push_notification_service import PushNotificationService
+from app.services.email_service import EmailService
+from app.services.google_calendar_service import GoogleCalendarService
 from zoneinfo import ZoneInfo
 
 
@@ -213,13 +215,44 @@ def _run_outbound_voice_jobs() -> None:
         db.close()
 
 
-def _send_weekly_operational_reports() -> None:
+def _sync_google_calendar_appointments() -> None:
     db = SessionLocal()
     try:
-        with scheduled_job_lock(db, "weekly_operational_push", 3600, lock_seconds=300) as job:
+        with scheduled_job_lock(db, "google_calendar_appointment_sync", 120, lock_seconds=100) as job:
+            if job is None:
+                return
+            service = GoogleCalendarService(db)
+            push_result = service.sync_pending_appointments(limit=100)
+            pull_result = service.pull_appointment_updates(limit_tenants=100)
+            if push_result.get("processed", 0) or pull_result.get("events", 0) or pull_result.get("failed", 0):
+                logger.info(
+                    "google_calendar_appointment_sync push=%s pull=%s",
+                    push_result,
+                    pull_result,
+                )
+    finally:
+        db.close()
+
+
+def _operational_report_key(local_now, period: str) -> str | None:
+    if period == "daily":
+        return local_now.date().isoformat() if local_now.hour >= 18 else None
+    if period == "weekly" and local_now.weekday() == 0 and local_now.hour >= 9:
+        return f"{local_now.isocalendar().year}-W{local_now.isocalendar().week:02d}"
+    return None
+
+
+def _send_operational_reports(period: str) -> None:
+    db = SessionLocal()
+    try:
+        job_name = f"{period}_operational_report"
+        with scheduled_job_lock(db, job_name, 3600, lock_seconds=300) as job:
             if job is None:
                 return
             for tenant in db.query(Tenant).all():
+                enabled_key = f"{period}_operational_report_enabled"
+                if (tenant.settings or {}).get(enabled_key, True) is False:
+                    continue
                 timezone_name = str((tenant.settings or {}).get("timezone") or "Europe/Istanbul")
                 try:
                     local_now = utc_now_naive().replace(tzinfo=ZoneInfo("UTC")).astimezone(
@@ -229,29 +262,48 @@ def _send_weekly_operational_reports() -> None:
                     local_now = utc_now_naive().replace(tzinfo=ZoneInfo("UTC")).astimezone(
                         ZoneInfo("Europe/Istanbul")
                     )
-                if local_now.weekday() != 0 or local_now.hour < 9:
+                report_key = _operational_report_key(local_now, period)
+                if report_key is None:
                     continue
-                week_key = f"{local_now.isocalendar().year}-W{local_now.isocalendar().week:02d}"
-                if (tenant.settings or {}).get("weekly_operational_push_week") == week_key:
+                sent_key = f"{period}_operational_report_last_sent"
+                if (tenant.settings or {}).get(sent_key) == report_key:
                     continue
-                report = AnalyticsService(db).get_operational_report(tenant, "week")
+                analytics_period = "week" if period == "weekly" else "today"
+                report = AnalyticsService(db).get_operational_report(tenant, analytics_period)
+                event_type = "weekly_report" if period == "weekly" else "daily_report"
+                label = "haftalık" if period == "weekly" else "günlük"
                 result = asyncio.run(PushNotificationService(db).send_to_tenant(
                     tenant_id=tenant.id,
-                    event_type="weekly_report",
-                    title="SvontAI haftalık raporunuz hazır",
+                    event_type=event_type,
+                    title=f"SvontAI {label} raporunuz hazır",
                     body=report["summary"],
                     url="/dashboard",
-                    tag="svontai-weekly-report",
-                    extra={"period": "week"},
+                    tag=f"svontai-{period}-report",
+                    extra={"period": analytics_period},
                 ))
-                if result.get("sent", 0) > 0:
+                email_sent = False
+                if (tenant.settings or {}).get("operational_report_email_enabled", True) is not False:
+                    email_sent = EmailService.send_email(
+                        recipients=tenant.owner.email,
+                        subject=report["title"],
+                        text_body=report["text"],
+                    )
+                if result.get("sent", 0) > 0 or email_sent:
                     tenant.settings = {
                         **(tenant.settings or {}),
-                        "weekly_operational_push_week": week_key,
+                        sent_key: report_key,
                     }
                     db.commit()
     finally:
         db.close()
+
+
+def _send_daily_operational_reports() -> None:
+    _send_operational_reports("daily")
+
+
+def _send_weekly_operational_reports() -> None:
+    _send_operational_reports("weekly")
 
 
 async def main() -> None:
@@ -264,6 +316,8 @@ async def main() -> None:
         asyncio.create_task(_run_every("openwa_session_health", 120, _sync_openwa_sessions)),
         asyncio.create_task(_run_every("stuck_run_cleanup", 60, _cleanup_stuck_runs)),
         asyncio.create_task(_run_every("outbound_voice_jobs", 30, _run_outbound_voice_jobs)),
+        asyncio.create_task(_run_every("google_calendar_appointment_sync", 120, _sync_google_calendar_appointments)),
+        asyncio.create_task(_run_every("daily_operational_report", 3600, _send_daily_operational_reports)),
         asyncio.create_task(_run_every("weekly_operational_push", 3600, _send_weekly_operational_reports)),
     ]
     try:

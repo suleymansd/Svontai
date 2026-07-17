@@ -16,6 +16,7 @@ APPROVED_ACTIVE_WORKFLOWS = {
     "SvontAI - WhatsApp Gemini v1",
     "svontai-tool-runner",
 }
+ERROR_WORKFLOW_NAME = "SvontAI - Central Error Handler"
 REQUIRED_SECURITY_NODES = {"Verify Signature", "Auth OK?", "Auth Fail"}
 RISKY_MARKERS = ("webhook.site", "localhost", "127.0.0.1")
 NODE_REFERENCE_PATTERNS = (
@@ -93,7 +94,7 @@ def _node_references(parameters: dict) -> set[str]:
 
 
 def _audit_workflow(workflow: dict) -> list[str]:
-    if not workflow.get("active"):
+    if not workflow.get("active") and workflow.get("name") != ERROR_WORKFLOW_NAME:
         return []
 
     issues = []
@@ -106,12 +107,15 @@ def _audit_workflow(workflow: dict) -> list[str]:
     if duplicate_names:
         issues.append(f"{name}: duplicate node names {duplicate_names}")
 
-    if name not in APPROVED_ACTIVE_WORKFLOWS:
+    if workflow.get("active") and name not in APPROVED_ACTIVE_WORKFLOWS:
         issues.append(f"{name}: active workflow is not approved for production")
 
-    missing_security = REQUIRED_SECURITY_NODES - node_name_set
-    if missing_security:
-        issues.append(f"{name}: missing security nodes {sorted(missing_security)}")
+    if name != ERROR_WORKFLOW_NAME:
+        missing_security = REQUIRED_SECURITY_NODES - node_name_set
+        if missing_security:
+            issues.append(f"{name}: missing security nodes {sorted(missing_security)}")
+    elif {"Error Trigger", "Normalize Error", "Report Error"} - node_name_set:
+        issues.append(f"{name}: central error reporting nodes are incomplete")
 
     for source, outputs in connections.items():
         if source not in node_name_set:
@@ -188,6 +192,19 @@ def main() -> int:
 
         workflows = [_workflow(client, base_url, headers, item["id"]) for item in summaries]
         issues = []
+        error_workflow = next(
+            (workflow for workflow in workflows if workflow.get("name") == ERROR_WORKFLOW_NAME),
+            None,
+        )
+        if error_workflow is None:
+            issues.append(f"missing workflow: {ERROR_WORKFLOW_NAME}")
+        else:
+            error_workflow_id = str(error_workflow.get("id"))
+            for workflow in workflows:
+                if workflow.get("name") in APPROVED_ACTIVE_WORKFLOWS:
+                    configured = str((workflow.get("settings") or {}).get("errorWorkflow") or "")
+                    if configured != error_workflow_id:
+                        issues.append(f"{workflow['name']}: central error workflow is not configured")
         for workflow in workflows:
             issues.extend(_audit_workflow(workflow))
         issues.extend(_duplicate_webhooks(workflows))

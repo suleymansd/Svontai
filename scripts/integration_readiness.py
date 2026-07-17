@@ -51,6 +51,7 @@ CHECKS = {
         "N8N_API_KEY",
         "SVONTAI_TO_N8N_SECRET",
         "N8N_TO_SVONTAI_SECRET",
+        "N8N_ERROR_WEBHOOK_SECRET",
     ],
     "frontend": [
         "NEXT_PUBLIC_BACKEND_URL",

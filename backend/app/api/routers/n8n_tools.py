@@ -10,27 +10,32 @@ Auth: Authorization: Bearer <n8n_callback_jwt> (tenant-scoped).
 from __future__ import annotations
 
 import re
+import secrets
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.n8n_security import verify_n8n_bearer_token
 from app.db.session import get_db
 from app.models.bot import Bot
+from app.models.automation import AutomationRun
 from app.models.call import Call
 from app.models.call import CallTranscript
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
+from app.models.incident import Incident
 from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
 from app.services.push_notification_service import send_tenant_push_notification
+from app.services.system_event_service import SystemEventService
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1/n8n", tags=["n8n Tools"])
 
@@ -58,6 +63,90 @@ async def _verify_tenant(request: Request, tenant_id: str) -> None:
     verified_tenant_id = auth.get("tenant_id")
     if verified_tenant_id and verified_tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant mismatch")
+
+
+def _verify_error_webhook(authorization: str | None = Header(default=None)) -> None:
+    expected = settings.N8N_ERROR_WEBHOOK_SECRET.strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="n8n error reporting is not configured",
+        )
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    supplied = authorization.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(supplied, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+
+class N8NErrorReportRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    execution_id: str = Field(..., alias="executionId", min_length=1, max_length=100)
+    workflow_id: str | None = Field(default=None, alias="workflowId", max_length=100)
+    workflow_name: str = Field(default="unknown", alias="workflowName", max_length=255)
+    last_node: str | None = Field(default=None, alias="lastNode", max_length=255)
+    error_message: str = Field(..., alias="errorMessage", min_length=1, max_length=2000)
+    error_stack: str | None = Field(default=None, alias="errorStack", max_length=8000)
+    execution_url: str | None = Field(default=None, alias="executionUrl", max_length=1000)
+    mode: str | None = Field(default=None, max_length=50)
+
+
+@router.post("/errors/report")
+async def report_n8n_error(
+    body: N8NErrorReportRequest,
+    _: None = Depends(_verify_error_webhook),
+    db: Session = Depends(get_db),
+) -> dict[str, str | bool | None]:
+    run = db.query(AutomationRun).filter(
+        AutomationRun.n8n_execution_id == body.execution_id
+    ).first()
+    tenant_id = str(run.tenant_id) if run and run.tenant_id else None
+    correlation_id = run.correlation_id if run else None
+
+    event = SystemEventService(db).log(
+        tenant_id=tenant_id,
+        source="n8n",
+        level="error",
+        code="N8N_EXECUTION_FAILED",
+        message=f"{body.workflow_name}: {body.error_message}"[:500],
+        meta_json={
+            "execution_id": body.execution_id,
+            "workflow_id": body.workflow_id,
+            "workflow_name": body.workflow_name,
+            "last_node": body.last_node,
+            "execution_url": body.execution_url,
+            "mode": body.mode,
+            "error_stack": (body.error_stack or "")[:4000] or None,
+            "automation_run_id": str(run.id) if run else None,
+        },
+        correlation_id=correlation_id,
+    )
+
+    title = f"n8n workflow failed: {body.workflow_name}"[:255]
+    incident = db.query(Incident).filter(
+        Incident.tenant_id == tenant_id,
+        Incident.title == title,
+        Incident.status != "resolved",
+    ).first()
+    if incident is None:
+        incident = Incident(
+            tenant_id=tenant_id,
+            title=title,
+            severity="sev3",
+            status="open",
+            root_cause=f"Last node: {body.last_node or 'unknown'}; execution: {body.execution_id}",
+        )
+        db.add(incident)
+        db.commit()
+        db.refresh(incident)
+
+    return {
+        "ok": True,
+        "event_id": event.id,
+        "incident_id": incident.id,
+        "tenant_id": tenant_id,
+    }
 
 
 class AIReplyRequest(BaseModel):

@@ -111,6 +111,7 @@ class PushNotificationService:
             "ai_reply": row.notify_ai_reply,
             "new_lead": row.notify_new_lead,
             "appointment": row.notify_appointment,
+            "daily_report": row.notify_weekly_report,
             "weekly_report": row.notify_weekly_report,
         }
         return bool(mapping.get(event_type, True))

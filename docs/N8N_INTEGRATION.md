@@ -101,6 +101,7 @@ N8N_API_KEY=
 # Security (Mutlaka değiştirin!)
 SVONTAI_TO_N8N_SECRET=your-secure-random-string-svontai-to-n8n
 N8N_TO_SVONTAI_SECRET=your-secure-random-string-n8n-to-svontai
+N8N_ERROR_WEBHOOK_SECRET=your-secure-random-string-error-webhook
 
 # Default Workflow
 N8N_INCOMING_WORKFLOW_ID=svontai-incoming
@@ -114,6 +115,13 @@ N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=change-this-password
 ```
 
+n8n servisine ayrıca aşağıdaki değişkenleri ekleyin:
+
+```env
+SVONTAI_BACKEND_URL=https://your-backend.example.com
+N8N_ERROR_WEBHOOK_SECRET=your-secure-random-string-error-webhook
+```
+
 ### 3. Database Migration
 
 ```bash
@@ -124,11 +132,12 @@ alembic upgrade head
 
 ### 4. n8n Workflow Import
 
-1. n8n Dashboard'a gidin: http://localhost:5678
-2. Credentials > Add Credential
-3. Workflows > Import from File
-4. `n8n/workflows/IncomingMessage.json` dosyasını yükleyin
-5. Workflow'u aktifleştirin
+Production workflow ve merkezi hata akışını API üzerinden doğrulayın:
+
+```bash
+python scripts/install_n8n_error_workflow.py
+python scripts/audit_n8n_workflows.py
+```
 
 ## 🔧 Yapılandırma
 

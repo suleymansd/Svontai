@@ -96,9 +96,9 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Railway web service must set `RUN_SCHEDULED_JOBS_IN_WEB=false`; the worker owns scheduled jobs.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
-- Alembic head must include revision `039`.
+- Alembic head must include revision `040`.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
-- `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
+- `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
 
 ## Manual Customer UI Smoke
 Run this as a real customer after automated smoke passes.

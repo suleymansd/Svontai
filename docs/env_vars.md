@@ -52,6 +52,7 @@
 - `N8N_API_KEY`
 - `SVONTAI_TO_N8N_SECRET`
 - `N8N_TO_SVONTAI_SECRET`
+- `N8N_ERROR_WEBHOOK_SECRET`
 - `N8N_INCOMING_WORKFLOW_ID`
 - `N8N_TIMEOUT_SECONDS`
 - `N8N_RETRY_COUNT`
@@ -117,8 +118,8 @@
 ## Worker / Scheduler
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
-- Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, stuck automation run cleanup and outbound voice jobs.
-- Current Alembic migration head: `039`.
+- Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, Google Calendar appointment sync, stuck automation run cleanup, outbound voice jobs, and daily/weekly operational reports.
+- Current Alembic migration head: `040`.
 
 ## n8n execution capacity
 - SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.
@@ -135,6 +136,8 @@
   - `N8N_CONCURRENCY_PRODUCTION_LIMIT=20`
   - `N8N_SECURE_COOKIE=true`
 - Keep `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` while workflow signature verification reads `SVONTAI_TO_N8N_SECRET` from the n8n environment.
+- Run `python scripts/install_n8n_error_workflow.py` with backend n8n envs to install the central error handler and attach it to production workflows.
+- The n8n service must also receive `SVONTAI_BACKEND_URL` and the same `N8N_ERROR_WEBHOOK_SECRET` as the backend.
 - Move n8n to queue mode with Redis and separate workers only when observed concurrent execution demand exceeds the regular-mode limit.
 
 

@@ -69,6 +69,16 @@ class Appointment(Base):
         DateTime,
         nullable=True
     )
+    calendar_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    calendar_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    calendar_sync_status: Mapped[str] = mapped_column(
+        String(30),
+        default="pending",
+        nullable=False,
+        index=True,
+    )
+    calendar_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    calendar_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=utc_now_naive,

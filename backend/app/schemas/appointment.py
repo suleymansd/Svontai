@@ -42,6 +42,11 @@ class AppointmentResponse(BaseModel):
     reminder_before_minutes: int
     reminder_before_sent_at: datetime | None
     reminder_after_sent_at: datetime | None
+    calendar_provider: str | None
+    calendar_event_id: str | None
+    calendar_sync_status: str
+    calendar_last_error: str | None
+    calendar_synced_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

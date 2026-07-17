@@ -125,6 +125,9 @@ async def update_appointment(
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(appointment, key, value)
+    if {"customer_name", "customer_email", "subject", "starts_at", "notes", "status"} & update_data.keys():
+        appointment.calendar_sync_status = "pending"
+        appointment.calendar_last_error = None
     db.commit()
     db.refresh(appointment)
 

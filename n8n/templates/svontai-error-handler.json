@@ -1,0 +1,80 @@
+{
+  "name": "SvontAI - Central Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst error = execution.error || {};\nreturn [{ json: {\n  executionId: String(execution.id || 'unknown'),\n  workflowId: workflow.id ? String(workflow.id) : null,\n  workflowName: String(workflow.name || 'unknown'),\n  lastNode: execution.lastNodeExecuted ? String(execution.lastNodeExecuted) : null,\n  errorMessage: String(error.message || execution.errorMessage || 'Unknown n8n execution error').slice(0, 2000),\n  errorStack: error.stack ? String(error.stack).slice(0, 8000) : null,\n  executionUrl: execution.url ? String(execution.url) : null,\n  mode: execution.mode ? String(execution.mode) : null\n} }];"
+      },
+      "id": "normalize-error",
+      "name": "Normalize Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SVONTAI_BACKEND_URL + '/api/v1/n8n/errors/report' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.N8N_ERROR_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "report-error",
+      "name": "Report Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 300]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Error": {
+      "main": [
+        [
+          {
+            "node": "Report Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
