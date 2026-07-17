@@ -135,6 +135,13 @@ def test_manual_billing_config_and_plan_request_are_idempotent(client):
         headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
         payload = {"plan": "pro", "interval": "monthly"}
 
+        direct_upgrade = client.post(
+            "/subscription/upgrade",
+            json={"plan_name": "pro", "interval": "monthly"},
+            headers=headers,
+        )
+        assert direct_upgrade.status_code == 409, direct_upgrade.text
+
         first = client.post("/billing/manual-request", json=payload, headers=headers)
         assert first.status_code == 200, first.text
         assert first.json()["status"] == "pending"
