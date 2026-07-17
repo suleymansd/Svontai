@@ -219,7 +219,11 @@ class OnboardingService:
         account.app_id = None
         account.phone_number_id = None
         account.access_token_encrypted = None
-        account.token_status = TokenStatus.ACTIVE.value
+        account.token_status = (
+            TokenStatus.ACTIVE.value
+            if started.get("status") == "ready"
+            else TokenStatus.PENDING.value
+        )
         account.webhook_url = webhook_url
         account.webhook_status = WebhookStatus.VERIFIED.value
         account.is_verified = True
@@ -257,12 +261,27 @@ class OnboardingService:
         account.provider_metadata_json = {
             **(account.provider_metadata_json or {}),
             "engine_status": status_value,
-            "health_status": "connected",
         }
         account.last_error = session.get("lastError")
         if status_value == "ready":
             self._mark_openwa_connected(account, session)
-        elif status_value in {"failed", "disconnected"}:
+        elif status_value in {"qr_ready", "qr", "authentication_required", "logged_out"}:
+            account.is_active = False
+            account.token_status = TokenStatus.PENDING.value
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "health_status": "action_required",
+            }
+            self.db.commit()
+        elif status_value in {"created", "initializing", "connecting", "starting"}:
+            account.is_active = False
+            account.token_status = TokenStatus.PENDING.value
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "health_status": "connecting",
+            }
+            self.db.commit()
+        elif status_value in {"failed", "disconnected", "stopped", "error"}:
             account.is_active = False
             account.token_status = TokenStatus.ERROR.value
             account.provider_metadata_json = {
@@ -321,11 +340,21 @@ class OnboardingService:
                 "health_status": "disconnected",
             }
             self.db.commit()
+        elif event == "session.status" and status_value == "ready":
+            self._mark_openwa_connected(account, data)
         elif event == "session.status" and status_value:
+            health_status = (
+                "action_required"
+                if status_value in {"qr_ready", "qr", "authentication_required", "logged_out"}
+                else "connecting"
+            )
+            if health_status == "action_required":
+                account.is_active = False
+                account.token_status = TokenStatus.PENDING.value
             account.provider_metadata_json = {
                 **(account.provider_metadata_json or {}),
                 "engine_status": status_value,
-                "health_status": "connected",
+                "health_status": health_status,
             }
             self.db.commit()
 
@@ -339,7 +368,17 @@ class OnboardingService:
         if phone:
             account.display_phone_number = phone if phone.startswith("+") else f"+{phone}"
         account.provider_metadata_json = {
-            **(account.provider_metadata_json or {}),
+            **{
+                key: value
+                for key, value in (account.provider_metadata_json or {}).items()
+                if key not in {
+                    "qr_alerted_at",
+                    "qr_required_at",
+                    "reconnect_failure_count",
+                    "reconnect_alerted_at",
+                    "last_reconnect_attempt_at",
+                }
+            },
             "engine_status": "ready",
             "health_status": "connected",
             "push_name": data.get("pushName"),
