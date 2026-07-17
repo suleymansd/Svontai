@@ -274,6 +274,10 @@ export const adminApi = {
   suspendTenant: (id: string) => api.post(`/admin/tenants/${id}/suspend`),
   unsuspendTenant: (id: string) => api.post(`/admin/tenants/${id}/unsuspend`),
   deleteTenant: (id: string) => api.delete(`/admin/tenants/${id}`),
+  updateTenantPlan: (id: string, data: {
+    plan_type: 'free' | 'pro' | 'premium' | 'enterprise'
+    note: string
+  }) => api.put(`/admin/tenants/${id}/plan`, data),
 
   // Plans
   listPlans: (params?: { page?: number; page_size?: number; search?: string; is_active?: boolean; is_public?: boolean }) =>
@@ -384,8 +388,14 @@ export const paymentsApi = {
 }
 
 export const billingApi = {
+  getConfig: () => api.get('/billing/config'),
   getPlan: () => api.get('/billing/plan'),
   getLimits: () => api.get('/billing/limits'),
+  createManualPlanRequest: (data: {
+    plan: 'pro' | 'premium' | 'enterprise'
+    interval?: 'monthly' | 'yearly'
+    note?: string
+  }) => api.post('/billing/manual-request', data),
   createStripeCheckoutSession: (data: { plan: 'pro' | 'premium'; interval?: 'monthly' | 'yearly' }) =>
     api.post('/billing/stripe/checkout-session', data),
   createStripePortalSession: (params?: { return_url?: string }) =>

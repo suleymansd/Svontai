@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Check, Star } from 'lucide-react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { Reveal } from '@/components/marketing/reveal'
 import { Button } from '@/components/ui/button'
@@ -51,6 +51,14 @@ export default function PricingPage() {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
   const [activeCheckoutPlan, setActiveCheckoutPlan] = useState<'pro' | 'premium' | null>(null)
   const { toast } = useToast()
+  const { data: billingConfig } = useQuery<{
+    mode: 'manual' | 'stripe'
+    payments_enabled: boolean
+    contact_url: string
+  }>({
+    queryKey: ['billing-config'],
+    queryFn: () => billingApi.getConfig().then((response) => response.data),
+  })
 
   const checkoutMutation = useMutation({
     mutationFn: async (input: { plan: 'pro' | 'premium'; interval: 'monthly' | 'yearly' }) => {
@@ -88,6 +96,11 @@ export default function PricingPage() {
 
   const handleCheckout = (plan: 'pro' | 'premium') => {
     if (typeof window === 'undefined') return
+    if (billingConfig?.mode !== 'stripe' || !billingConfig.payments_enabled) {
+      const contactUrl = billingConfig?.contact_url || '/contact'
+      window.location.href = `${contactUrl}?plan=${plan}&interval=${billing}`
+      return
+    }
     const token = localStorage.getItem('access_token')
     if (!token) {
       window.location.href = '/login?next=/pricing'
@@ -152,15 +165,19 @@ export default function PricingPage() {
                       onClick={() => handleCheckout(plan.key as 'pro' | 'premium')}
                       disabled={checkoutMutation.isPending}
                     >
-                      {checkoutMutation.isPending && activeCheckoutPlan === plan.key ? 'Yönlendiriliyor...' : 'Kurulumu Başlat'}
+                      {checkoutMutation.isPending && activeCheckoutPlan === plan.key
+                        ? 'Yönlendiriliyor...'
+                        : billingConfig?.mode === 'stripe' && billingConfig.payments_enabled
+                          ? 'Kurulumu Başlat'
+                          : 'Görüşme Talebi Oluştur'}
                     </Button>
                   )}
                   {plan.key === 'enterprise' && (
-                    <a href="mailto:sales@svontai.com?subject=SvontAI%20Kurumsal%20Plan">
+                    <Link href="/contact?plan=enterprise">
                       <Button className="w-full" variant="outline">
                         Satışla İletişime Geç
                       </Button>
-                    </a>
+                    </Link>
                   )}
                 </CardContent>
               </Card>

@@ -112,6 +112,7 @@ def main() -> int:
     strict = args.profile == "prod"
     failures = 0
     openwa_enabled = _enabled("OPENWA_ENABLED", loaded)
+    billing_mode = _env_value("BILLING_MODE", loaded).strip().lower() or "manual"
 
     ai_provider = _env_value("AI_PROVIDER", loaded).strip().lower() or "openai"
     ai_key = "GEMINI_API_KEY" if ai_provider == "gemini" else "OPENAI_API_KEY"
@@ -137,7 +138,7 @@ def main() -> int:
         if name == "meta_whatsapp":
             active = (strict and not openwa_enabled) or any(_present(key, loaded) for key in keys)
         elif name == "stripe":
-            active = strict or _enabled("PAYMENTS_ENABLED", loaded)
+            active = billing_mode == "stripe" and (strict or _enabled("PAYMENTS_ENABLED", loaded))
         elif name == "voice_twilio":
             active = strict or _env_value("VOICE_OUTBOUND_MODE", loaded).strip().lower() == "live"
         elif name == "n8n":
@@ -156,6 +157,16 @@ def main() -> int:
             _print_check(name, "FAIL", f"missing {', '.join(missing)}")
         else:
             _print_check(name, "OK", "required variables are present")
+
+    if billing_mode == "manual":
+        if _enabled("PAYMENTS_ENABLED", loaded):
+            failures += 1
+            _print_check("billing", "FAIL", "PAYMENTS_ENABLED must be false in manual mode")
+        else:
+            _print_check("billing", "OK", "manual plan activation is enabled; Stripe is not required")
+    elif billing_mode != "stripe":
+        failures += 1
+        _print_check("billing", "FAIL", "BILLING_MODE must be manual or stripe")
 
     insecure = []
     for key, defaults in INSECURE_DEFAULTS.items():

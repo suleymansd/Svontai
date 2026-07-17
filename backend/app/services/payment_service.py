@@ -65,10 +65,10 @@ class PaymentService:
         return "active"
 
     def _require_payments_enabled(self) -> None:
-        if not settings.PAYMENTS_ENABLED:
+        if settings.BILLING_MODE != "stripe" or not settings.PAYMENTS_ENABLED:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Ödeme altyapısı aktif değil"
+                detail="Online ödeme aktif değil. Plan işlemleri için satış ekibiyle iletişime geçin."
             )
         if settings.PAYMENTS_PROVIDER != "stripe":
             raise HTTPException(

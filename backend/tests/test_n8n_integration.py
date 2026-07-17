@@ -25,6 +25,7 @@ def _prod_real_service_settings(**overrides):
         "EMAIL_ENABLED": True,
         "EMAIL_PROVIDER": "resend",
         "RESEND_API_KEY": "re_live_test",
+        "BILLING_MODE": "stripe",
         "PAYMENTS_ENABLED": True,
         "STRIPE_SECRET_KEY": "sk_live_test",
         "STRIPE_WEBHOOK_SECRET": "whsec_live_test",
@@ -310,6 +311,23 @@ class TestProductionSecretValidation:
         
         assert settings.ENVIRONMENT == "prod"
         assert settings.USE_N8N is True
+
+    def test_manual_billing_does_not_require_stripe_in_production(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            BILLING_MODE="manual",
+            PAYMENTS_ENABLED=False,
+            STRIPE_SECRET_KEY="",
+            STRIPE_WEBHOOK_SECRET="",
+            STRIPE_SUCCESS_URL="",
+            STRIPE_CANCEL_URL="",
+            STRIPE_PORTAL_RETURN_URL="",
+            STRIPE_PRICE_IDS={},
+        ))
+
+        assert configured.BILLING_MODE == "manual"
+        assert configured.PAYMENTS_ENABLED is False
 
     def test_gemini_key_satisfies_production_ai_requirement(self):
         from app.core.config import Settings

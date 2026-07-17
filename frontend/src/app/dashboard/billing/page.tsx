@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { paymentsApi, subscriptionApi } from '@/lib/api'
+import { billingApi, paymentsApi, subscriptionApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -50,6 +50,13 @@ interface Subscription {
   current_period_end: string | null
   messages_used: number
   message_limit: number
+}
+
+interface BillingConfig {
+  mode: 'manual' | 'stripe'
+  payments_enabled: boolean
+  contact_email: string
+  contact_url: string
 }
 
 const planIcons: Record<string, React.ElementType> = {
@@ -112,9 +119,20 @@ export default function BillingPage() {
     queryFn: () => subscriptionApi.getCurrentSubscription().then(res => res.data),
   })
 
+  const { data: billingConfig, isLoading: billingConfigLoading } = useQuery<BillingConfig>({
+    queryKey: ['billing-config'],
+    queryFn: () => billingApi.getConfig().then(res => res.data),
+  })
+
   const upgradeMutation = useMutation({
     mutationFn: async (input: { planName: string; requiresPayment: boolean }) => {
       if (input.requiresPayment) {
+        if (billingConfig?.mode === 'manual') {
+          return billingApi.createManualPlanRequest({
+            plan: input.planName as 'pro' | 'premium' | 'enterprise',
+            interval: billingInterval,
+          })
+        }
         const response = await paymentsApi.createCheckout({ plan_name: input.planName, interval: billingInterval })
         const checkoutUrl = response.data?.checkout_url
         if (checkoutUrl && typeof window !== 'undefined') {
@@ -140,7 +158,7 @@ export default function BillingPage() {
     },
   })
 
-  const isLoading = plansLoading || subscriptionLoading
+  const isLoading = plansLoading || subscriptionLoading || billingConfigLoading
 
   const currentPlanIndex = plans?.findIndex(p => p.name === subscription?.plan_name) ?? -1
 
@@ -320,7 +338,7 @@ export default function BillingPage() {
                       ) : isCurrentPlan ? (
                         'Mevcut Plan'
                       ) : isUpgrade ? (
-                        'Yükselt'
+                        billingConfig?.mode === 'manual' ? 'Plan Talebi Oluştur' : 'Yükselt'
                       ) : (
                         'Düşür'
                       )}
@@ -332,15 +350,15 @@ export default function BillingPage() {
           )}
         </div>
 
-        {/* Payment Note */}
+        {/* Activation Note */}
         <Card className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-semibold text-amber-900 dark:text-amber-100">Ödeme Entegrasyonu</h4>
+                <h4 className="font-semibold text-amber-900 dark:text-amber-100">Plan Aktivasyonu</h4>
                 <p className="text-sm text-amber-700 dark:text-amber-200 mt-1">
-                  Ücretli planlar için Stripe checkout altyapısı hazır. Ödeme anahtarları/price id’ler eklendiğinde ödeme ekranı otomatik açılacak.
+                  Ücretli planlar şu anda ekibimiz tarafından etkinleştirilir. Talebinizi bırakın; görüşme sonrasında planınız hesabınıza tanımlansın.
                 </p>
               </div>
             </div>
@@ -356,7 +374,7 @@ export default function BillingPage() {
             <div>
               <h4 className="font-medium mb-1">Planımı dilediğim zaman değiştirebilir miyim?</h4>
               <p className="text-sm text-muted-foreground">
-                Evet, planınızı istediğiniz zaman yükseltebilir veya düşürebilirsiniz. Değişiklikler anında uygulanır.
+                Evet. Ücretli plan değişiklikleri ekibimizin onayından sonra hesabınıza uygulanır.
               </p>
             </div>
             <div>
@@ -368,7 +386,7 @@ export default function BillingPage() {
             <div>
               <h4 className="font-medium mb-1">Ücretli planlar nasıl başlar?</h4>
               <p className="text-sm text-muted-foreground">
-                Ücretli planlar Stripe checkout tamamlandıktan sonra etkinleşir. Demo ve staging ortamlarında canlı ödeme alınmaz.
+                Plan talebi oluşturduğunuzda ekibimiz sizinle iletişime geçer. Görüşme tamamlandıktan sonra planınız manuel olarak etkinleştirilir.
               </p>
             </div>
           </CardContent>

@@ -415,7 +415,7 @@ export default function HomePage() {
               },
               {
                 q: 'Deneme süresi var mı?',
-                a: 'Demo workspace ile ürünü risksiz inceleyebilirsiniz. Ücretli planlar Stripe checkout üzerinden etkinleşir.'
+                a: 'Demo workspace ile ürünü risksiz inceleyebilirsiniz. Ücretli planlar görüşme sonrasında ekibimiz tarafından hesabınıza tanımlanır.'
               },
               {
                 q: 'Verilerim güvende mi?',

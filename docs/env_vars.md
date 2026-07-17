@@ -63,7 +63,10 @@
 - `VOICE_OUTBOUND_PROVIDER` (`twilio`)
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
+- `BILLING_MODE` (`manual` | `stripe`, default: `manual`)
 - `PAYMENTS_ENABLED`
+- `SALES_CONTACT_EMAIL`
+- `SALES_CONTACT_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_IDS`
@@ -76,6 +79,7 @@
 - `ENVIRONMENT=prod` rejects insecure default JWT, n8n and voice gateway secrets at startup.
 - `USE_N8N` defaults to `false`; set `N8N_BASE_URL` explicitly for Railway/n8n deployments.
 - `ALLOW_UNPAID_PLAN_UPGRADES` is forced off in production.
+- `BILLING_MODE=manual` does not require Stripe and requires `PAYMENTS_ENABLED=false`. Customers create a plan request; admins activate the agreed plan from the tenant detail page.
 - Webhook alias credentials are required: `WEBHOOK_USERNAME` and `WEBHOOK_PASSWORD`.
 - Run `alembic upgrade head` before starting the API. Runtime schema compatibility patches are dev-only.
 
@@ -90,8 +94,11 @@
   - Backend env: `OPENWA_ENABLED=true`, `OPENWA_BASE_URL`, `OPENWA_API_KEY`, `OPENWA_WEBHOOK_SECRET`, `OPENWA_WEBHOOK_PUBLIC_URL`.
   - `OPENWA_API_KEY` must equal OpenWA's `API_MASTER_KEY`.
   - `OPENWA_WEBHOOK_PUBLIC_URL` must be the public SmartWA backend URL.
-- Stripe:
-  - Set `PAYMENTS_ENABLED=true`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`.
+- Manual billing (current launch mode):
+  - Set `BILLING_MODE=manual`, `PAYMENTS_ENABLED=false`, `SALES_CONTACT_EMAIL` and `SALES_CONTACT_URL`.
+  - Plan requests create an idempotent support ticket and system event. Complete the commercial agreement outside SmartWA, then activate the plan from the admin tenant page.
+- Stripe (future):
+  - Set `BILLING_MODE=stripe`, `PAYMENTS_ENABLED=true`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`.
   - Set `STRIPE_PRICE_IDS`, for example `{"pro":{"monthly":"price_...","yearly":"price_..."},"premium":{"monthly":"price_...","yearly":"price_..."}}`.
   - Configure Stripe webhook target: `<BACKEND_URL>/billing/stripe/webhook`.
 - Voice / Twilio:
@@ -149,7 +156,7 @@
 
 ## Production smoke
 - Run `python scripts/prod_smoke.py` after Railway/Vercel deploys.
-- Run `python scripts/integration_readiness.py --profile prod` before launch to verify Meta, Stripe, Twilio, n8n and frontend env presence without printing secret values or calling live provider APIs.
+- Run `python scripts/integration_readiness.py --profile prod` before launch to verify enabled providers, billing mode, Twilio, n8n and frontend env presence without printing secret values or calling live provider APIs.
 - For local files, use `python scripts/integration_readiness.py --env-file backend/.env --profile dev`.
 - Required for public checks: `BACKEND_URL` and/or `FRONTEND_URL`.
 - When both values are provided, the smoke test calls `FRONTEND_URL/api/frontend-config` and fails if the frontend is not configured to use the same backend URL.

@@ -141,8 +141,11 @@ class Settings(BaseSettings):
     WEB_PUSH_SUBJECT: str = "mailto:support@svontai.com"
 
     # Payments
+    BILLING_MODE: Literal["manual", "stripe"] = "manual"
     PAYMENTS_ENABLED: bool = False
     PAYMENTS_PROVIDER: Literal["stripe"] = "stripe"
+    SALES_CONTACT_EMAIL: str = "sales@svontai.com"
+    SALES_CONTACT_URL: str = "/contact"
 
     # Stripe
     STRIPE_SECRET_KEY: str = ""
@@ -348,17 +351,20 @@ class Settings(BaseSettings):
             not self.SMTP_HOST.strip() or not self.SMTP_USERNAME.strip() or not self.SMTP_PASSWORD.strip()
         ):
             missing_real_time_config.append("SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD")
-        if not self.PAYMENTS_ENABLED:
-            missing_real_time_config.append("PAYMENTS_ENABLED=true")
-        if (
-            not self.STRIPE_SECRET_KEY.strip()
-            or not self.STRIPE_WEBHOOK_SECRET.strip()
-            or not self.STRIPE_SUCCESS_URL.strip()
-            or not self.STRIPE_CANCEL_URL.strip()
-            or not self.STRIPE_PORTAL_RETURN_URL.strip()
-            or not self.STRIPE_PRICE_IDS
-        ):
-            missing_real_time_config.append("Stripe live checkout/webhook/price envs")
+        if self.BILLING_MODE == "stripe":
+            if not self.PAYMENTS_ENABLED:
+                missing_real_time_config.append("PAYMENTS_ENABLED=true")
+            if (
+                not self.STRIPE_SECRET_KEY.strip()
+                or not self.STRIPE_WEBHOOK_SECRET.strip()
+                or not self.STRIPE_SUCCESS_URL.strip()
+                or not self.STRIPE_CANCEL_URL.strip()
+                or not self.STRIPE_PORTAL_RETURN_URL.strip()
+                or not self.STRIPE_PRICE_IDS
+            ):
+                missing_real_time_config.append("Stripe live checkout/webhook/price envs")
+        elif self.PAYMENTS_ENABLED:
+            missing_real_time_config.append("PAYMENTS_ENABLED=false when BILLING_MODE=manual")
         if not self.USE_N8N:
             missing_real_time_config.append("USE_N8N=true")
         if not self.N8N_BASE_URL.strip() or not self.N8N_INCOMING_WORKFLOW_ID.strip():

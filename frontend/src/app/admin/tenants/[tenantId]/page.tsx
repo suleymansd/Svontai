@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { Activity, ShieldCheck } from 'lucide-react'
@@ -24,11 +24,19 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [flagInput, setFlagInput] = useState('')
+  const [selectedPlan, setSelectedPlan] = useState<'free' | 'pro' | 'premium' | 'enterprise'>('free')
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-tenant', tenantId],
     queryFn: () => adminApi.getTenant(tenantId).then((res) => res.data),
   })
+
+  useEffect(() => {
+    const currentPlan = String(data?.plan_name || 'free').toLowerCase()
+    if (['free', 'pro', 'premium', 'enterprise'].includes(currentPlan)) {
+      setSelectedPlan(currentPlan as typeof selectedPlan)
+    }
+  }, [data?.plan_name])
 
   const suspendMutation = useMutation({
     mutationFn: () => adminApi.suspendTenant(tenantId),
@@ -51,6 +59,24 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
       toast({ title: 'Feature flags güncellendi' })
+    },
+  })
+
+  const updatePlanMutation = useMutation({
+    mutationFn: () => adminApi.updateTenantPlan(tenantId, {
+      plan_type: selectedPlan,
+      note: 'Müşteri görüşmesi sonrasında manuel plan aktivasyonu',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
+      toast({ title: 'Plan etkinleştirildi', description: `${selectedPlan} planı tenant hesabına tanımlandı.` })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Plan güncellenemedi',
+        description: error.response?.data?.detail?.message || error.response?.data?.detail || 'İşlem başarısız oldu.',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -112,6 +138,29 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
             </Button>
             <Button variant="outline" onClick={() => unsuspendMutation.mutate()} disabled={unsuspendMutation.isPending}>
               Unsuspend
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center">
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={selectedPlan}
+              onChange={(event) => setSelectedPlan(event.target.value as typeof selectedPlan)}
+              aria-label="Tenant planı"
+            >
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="premium">Premium</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+            <Button
+              onClick={() => {
+                if (window.confirm(`${selectedPlan} planını bu müşteri için etkinleştirmek istediğinize emin misiniz?`)) {
+                  updatePlanMutation.mutate()
+                }
+              }}
+              disabled={updatePlanMutation.isPending || selectedPlan === String(data?.plan_name || '').toLowerCase()}
+            >
+              Planı Etkinleştir
             </Button>
           </div>
         </SectionCard>

@@ -7,6 +7,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.plans import PLAN_MONTHLY_TOOL_RUN_LIMITS
 from app.models.subscription import TenantSubscription
+from app.models.ticket import Ticket
 from app.models.tool import Tool
 from app.models.tool_run import ToolRun
 from app.services.payment_service import CheckoutSessionResult, PaymentService
@@ -114,6 +115,48 @@ def test_billing_checkout_session_returns_url(client, monkeypatch):
     )
     assert response.status_code == 200, response.text
     assert response.json().get("url") == "https://checkout.stripe.test/session"
+
+
+def test_manual_billing_config_and_plan_request_are_idempotent(client):
+    from app.db import session as session_module
+
+    previous_mode = settings.BILLING_MODE
+    previous_payments_enabled = settings.PAYMENTS_ENABLED
+    settings.BILLING_MODE = "manual"
+    settings.PAYMENTS_ENABLED = False
+
+    try:
+        config_response = client.get("/billing/config")
+        assert config_response.status_code == 200, config_response.text
+        assert config_response.json()["mode"] == "manual"
+        assert config_response.json()["payments_enabled"] is False
+
+        access_token, tenant_id = _register_and_login(client)
+        headers = {"Authorization": f"Bearer {access_token}", "X-Tenant-ID": tenant_id}
+        payload = {"plan": "pro", "interval": "monthly"}
+
+        first = client.post("/billing/manual-request", json=payload, headers=headers)
+        assert first.status_code == 200, first.text
+        assert first.json()["status"] == "pending"
+        assert first.json()["duplicate"] is False
+
+        second = client.post("/billing/manual-request", json=payload, headers=headers)
+        assert second.status_code == 200, second.text
+        assert second.json()["ticket_id"] == first.json()["ticket_id"]
+        assert second.json()["duplicate"] is True
+
+        db = session_module.SessionLocal()
+        try:
+            tickets = db.query(Ticket).filter(
+                Ticket.tenant_id == tenant_id,
+                Ticket.subject.like("Plan talebi:%"),
+            ).all()
+            assert len(tickets) == 1
+        finally:
+            db.close()
+    finally:
+        settings.BILLING_MODE = previous_mode
+        settings.PAYMENTS_ENABLED = previous_payments_enabled
 
 
 def test_billing_webhook_updates_subscription_and_is_idempotent(client, monkeypatch):

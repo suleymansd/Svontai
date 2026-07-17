@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Mail, ShieldCheck } from 'lucide-react'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { Reveal } from '@/components/marketing/reveal'
@@ -18,6 +18,17 @@ export default function ContactPage() {
     company: '',
     message: '',
   })
+
+  useEffect(() => {
+    const params = new URL(window.location.href).searchParams
+    const plan = params.get('plan')
+    const interval = params.get('interval')
+    if (!plan) return
+    setForm((current) => ({
+      ...current,
+      message: current.message || `${plan.toUpperCase()} planı${interval ? ` (${interval})` : ''} için görüşmek istiyorum.`,
+    }))
+  }, [])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -47,8 +58,8 @@ export default function ContactPage() {
                     <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                   </div>
                   <div className="space-y-2">
-                    <Label>Şirket</Label>
-                    <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} required />
+                    <Label>İşletme / Marka</Label>
+                    <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -82,14 +93,14 @@ export default function ContactPage() {
                   <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
                   <div>
                     <p className="font-medium">Görüşmede netleştirdiklerimiz</p>
-                    <p className="mt-1 text-sm text-muted-foreground">WhatsApp bağlantısı, bilgi formasyonu, bot tonu, arama otomasyonu, ödeme/plan ve canlıya alma adımları.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">WhatsApp bağlantısı, bilgi formasyonu, bot tonu, arama otomasyonu, plan ve canlıya alma adımları.</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
             <Card className="border-border/60">
               <CardContent className="p-6 text-sm text-muted-foreground">
-                Talebinizi aldıktan sonra işletme bilgilerinize göre self-serve veya concierge kurulum akışını öneririz.
+                Talebinizi aldıktan sonra sizinle doğrudan iletişime geçer, uygun planı hesabınıza manuel olarak tanımlarız.
               </CardContent>
             </Card>
           </div>

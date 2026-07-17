@@ -18,9 +18,12 @@ from app.dependencies.permissions import require_permissions
 from app.models.plan import Plan
 from app.models.stripe_webhook_event import StripeWebhookEvent
 from app.models.tenant import Tenant
+from app.models.ticket import Ticket, TicketMessage
 from app.models.user import User
+from app.services.audit_log_service import AuditLogService
 from app.services.billing_service import BillingService
 from app.services.payment_service import PaymentService
+from app.services.system_event_service import SystemEventService
 
 try:
     import stripe  # type: ignore
@@ -70,6 +73,28 @@ class StripePortalResponse(BaseModel):
     url: str
 
 
+class BillingConfigResponse(BaseModel):
+    mode: Literal["manual", "stripe"]
+    payments_enabled: bool
+    contact_email: str
+    contact_url: str
+
+
+class ManualPlanRequest(BaseModel):
+    plan: Literal["pro", "premium", "enterprise"]
+    interval: Literal["monthly", "yearly"] = "monthly"
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ManualPlanRequestResponse(BaseModel):
+    status: Literal["pending"]
+    ticket_id: str
+    duplicate: bool
+    contact_email: str
+    contact_url: str
+    message: str
+
+
 def _to_dict(obj: Any) -> dict:
     if obj is None:
         return {}
@@ -99,6 +124,105 @@ def _parse_uuid(raw: str | None, field_name: str) -> UUID:
         return UUID(value)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} invalid") from exc
+
+
+@router.get("/config", response_model=BillingConfigResponse)
+async def get_billing_config() -> BillingConfigResponse:
+    """Expose the active billing flow without leaking provider credentials."""
+    return BillingConfigResponse(
+        mode=settings.BILLING_MODE,
+        payments_enabled=settings.BILLING_MODE == "stripe" and settings.PAYMENTS_ENABLED,
+        contact_email=settings.SALES_CONTACT_EMAIL,
+        contact_url=settings.SALES_CONTACT_URL,
+    )
+
+
+@router.post("/manual-request", response_model=ManualPlanRequestResponse)
+async def create_manual_plan_request(
+    payload: ManualPlanRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> ManualPlanRequestResponse:
+    if settings.BILLING_MODE != "manual":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Manuel plan talebi bu ortamda aktif değil.",
+        )
+
+    plan = db.query(Plan).filter(Plan.name == payload.plan, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan bulunamadı")
+
+    subject = f"Plan talebi: {plan.display_name} ({payload.interval})"
+    existing = db.query(Ticket).filter(
+        Ticket.tenant_id == str(current_tenant.id),
+        Ticket.subject == subject,
+        Ticket.status.in_(["open", "pending", "in_progress"]),
+    ).order_by(Ticket.created_at.desc()).first()
+    if existing:
+        return ManualPlanRequestResponse(
+            status="pending",
+            ticket_id=str(existing.id),
+            duplicate=True,
+            contact_email=settings.SALES_CONTACT_EMAIL,
+            contact_url=settings.SALES_CONTACT_URL,
+            message="Bu plan için açık talebiniz bulunuyor. Ekibimiz sizinle iletişime geçecek.",
+        )
+
+    ticket = Ticket(
+        tenant_id=str(current_tenant.id),
+        requester_id=str(current_user.id),
+        subject=subject,
+        status="open",
+        priority="normal",
+        last_activity_at=utc_now_naive(),
+    )
+    db.add(ticket)
+    db.flush()
+    message = TicketMessage(
+        ticket_id=ticket.id,
+        sender_id=str(current_user.id),
+        sender_type="user",
+        body=(
+            f"{current_tenant.name} için {plan.display_name} planı "
+            f"({payload.interval}) talep edildi."
+            + (f"\n\nNot: {payload.note.strip()}" if payload.note and payload.note.strip() else "")
+        ),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(ticket)
+
+    AuditLogService(db).log(
+        action="billing.manual_plan_request",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="ticket",
+        resource_id=str(ticket.id),
+        payload={"plan": payload.plan, "interval": payload.interval},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    SystemEventService(db).log(
+        tenant_id=str(current_tenant.id),
+        source="billing",
+        level="info",
+        code="manual_plan_requested",
+        message=f"{plan.display_name} planı için manuel aktivasyon talebi oluşturuldu.",
+        meta_json={"plan": payload.plan, "interval": payload.interval, "ticket_id": str(ticket.id)},
+    )
+
+    return ManualPlanRequestResponse(
+        status="pending",
+        ticket_id=str(ticket.id),
+        duplicate=False,
+        contact_email=settings.SALES_CONTACT_EMAIL,
+        contact_url=settings.SALES_CONTACT_URL,
+        message="Talebiniz alındı. Ekibimiz plan aktivasyonu için sizinle iletişime geçecek.",
+    )
 
 
 @router.get("/plan", response_model=BillingPlanResponse)

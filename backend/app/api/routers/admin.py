@@ -1263,7 +1263,11 @@ async def override_tenant_plan(
     admin: User = Depends(require_admin),
     request: Request = None,
 ):
-    if settings.ENVIRONMENT == "prod" and not settings.ALLOW_ADMIN_PLAN_OVERRIDE:
+    if (
+        settings.ENVIRONMENT == "prod"
+        and settings.BILLING_MODE != "manual"
+        and not settings.ALLOW_ADMIN_PLAN_OVERRIDE
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -1348,7 +1352,11 @@ async def force_tenant_plan(
     admin: User = Depends(require_admin),
     request: Request = None,
 ):
-    if settings.ENVIRONMENT == "prod" and not settings.ALLOW_ADMIN_PLAN_OVERRIDE:
+    if (
+        settings.ENVIRONMENT == "prod"
+        and settings.BILLING_MODE != "manual"
+        and not settings.ALLOW_ADMIN_PLAN_OVERRIDE
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

@@ -129,8 +129,10 @@ def test_admin_plan_override_disabled_in_prod(client):
 
     previous_environment = settings.ENVIRONMENT
     previous_allow_override = settings.ALLOW_ADMIN_PLAN_OVERRIDE
+    previous_billing_mode = settings.BILLING_MODE
     settings.ENVIRONMENT = "prod"
     settings.ALLOW_ADMIN_PLAN_OVERRIDE = False
+    settings.BILLING_MODE = "stripe"
 
     try:
         response = client.put(
@@ -144,3 +146,30 @@ def test_admin_plan_override_disabled_in_prod(client):
     finally:
         settings.ENVIRONMENT = previous_environment
         settings.ALLOW_ADMIN_PLAN_OVERRIDE = previous_allow_override
+        settings.BILLING_MODE = previous_billing_mode
+
+
+def test_admin_plan_override_allowed_in_prod_manual_billing(client):
+    _, tenant_id = _register_and_login_with_tenant(client)
+    admin_token = _create_and_login_super_admin(client)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    previous_environment = settings.ENVIRONMENT
+    previous_allow_override = settings.ALLOW_ADMIN_PLAN_OVERRIDE
+    previous_billing_mode = settings.BILLING_MODE
+    settings.ENVIRONMENT = "prod"
+    settings.ALLOW_ADMIN_PLAN_OVERRIDE = False
+    settings.BILLING_MODE = "manual"
+
+    try:
+        response = client.put(
+            f"/admin/tenants/{tenant_id}/plan",
+            json={"plan_type": "pro", "note": "manual agreement completed"},
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["new_plan"] == "pro"
+    finally:
+        settings.ENVIRONMENT = previous_environment
+        settings.ALLOW_ADMIN_PLAN_OVERRIDE = previous_allow_override
+        settings.BILLING_MODE = previous_billing_mode

@@ -182,6 +182,11 @@ async def upgrade_subscription(
 
     requires_payment = float(plan.price_monthly) > 0 or float(plan.price_yearly) > 0
     if requires_payment and not settings.ALLOW_UNPAID_PLAN_UPGRADES:
+        if settings.BILLING_MODE == "manual":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bu plan manuel olarak etkinleştirilir. Plan talebi oluşturun; ekibimiz sizinle iletişime geçecektir."
+            )
         if not settings.PAYMENTS_ENABLED:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

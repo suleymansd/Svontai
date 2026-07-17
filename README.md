@@ -252,9 +252,15 @@ RESEND_API_KEY=re_...
 SMTP_FROM_EMAIL=no-reply@<your-domain>
 SMTP_FROM_NAME=SvontAI
 
-# Payments (Stripe - optional, enable when ready)
-PAYMENTS_ENABLED=true
+# Billing (current launch mode: manual activation, no online payment)
+BILLING_MODE=manual
+PAYMENTS_ENABLED=false
 PAYMENTS_PROVIDER=stripe
+SALES_CONTACT_EMAIL=sales@svontai.com
+SALES_CONTACT_URL=/contact
+
+# Future Stripe mode: set BILLING_MODE=stripe and PAYMENTS_ENABLED=true,
+# then provide all Stripe values below.
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 # Optional convenience envs (monthly)
@@ -491,6 +497,8 @@ curl -X PATCH "https://<your-railway-domain>/admin/tools/<tool_id>" \
 Billing API (tenant auth required except webhook):
 - `GET /billing/plan`
 - `GET /billing/limits`
+- `GET /billing/config`
+- `POST /billing/manual-request`
 - `POST /billing/stripe/checkout-session`
 - `GET /billing/stripe/portal`
 - `POST /billing/stripe/webhook` (Stripe signature required)
