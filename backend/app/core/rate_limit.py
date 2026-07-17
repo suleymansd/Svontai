@@ -1,26 +1,89 @@
-"""Simple in-memory rate limiting utilities."""
+"""Distributed rate limiting with a safe in-process fallback."""
 
 from collections import defaultdict, deque
 from datetime import timedelta
+import hashlib
+import logging
 from threading import Lock
 from typing import Iterable
 
 from fastapi import HTTPException, Request, status
 
 from app.core.time import utc_now_naive
+from app.core.config import settings
+
+try:
+    import redis
+except ImportError:  # pragma: no cover - dependency is present in production
+    redis = None
+
+
+logger = logging.getLogger(__name__)
+
+_REDIS_RATE_LIMIT_SCRIPT = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+"""
 
 
 class RateLimiter:
-    """Basic sliding-window rate limiter."""
+    """Rate limiter shared through Redis when configured."""
 
-    def __init__(self, max_attempts: int, window_seconds: int) -> None:
+    def __init__(self, max_attempts: int, window_seconds: int, name: str = "generic") -> None:
         self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
         self.window = timedelta(seconds=window_seconds)
+        self.name = name
         self.attempts = defaultdict(deque)
         self._lock = Lock()
+        self._redis_client = None
+        self._redis_warning_logged = False
 
     def allow(self, key: str) -> bool:
         """Return True if request is allowed."""
+        if settings.RATE_LIMIT_BACKEND == "redis":
+            redis_result = self._allow_redis(key)
+            if redis_result is not None:
+                return redis_result
+
+        return self._allow_memory(key)
+
+    def _allow_redis(self, key: str) -> bool | None:
+        if redis is None:
+            self._warn_redis_fallback("redis dependency is unavailable")
+            return None
+        try:
+            if self._redis_client is None:
+                self._redis_client = redis.Redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    socket_connect_timeout=1,
+                    socket_timeout=1,
+                )
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            redis_key = f"{settings.RATE_LIMIT_REDIS_PREFIX}:{self.name}:{digest}"
+            current = int(self._redis_client.eval(
+                _REDIS_RATE_LIMIT_SCRIPT,
+                1,
+                redis_key,
+                self.window_seconds,
+            ))
+            return current <= self.max_attempts
+        except Exception as exc:
+            self._redis_client = None
+            self._warn_redis_fallback(str(exc))
+            return None
+
+    def _warn_redis_fallback(self, reason: str) -> None:
+        if self._redis_warning_logged:
+            return
+        self._redis_warning_logged = True
+        logger.error("Redis rate limiter unavailable; using memory fallback (%s)", reason)
+
+    def _allow_memory(self, key: str) -> bool:
         now = utc_now_naive()
         window_start = now - self.window
         with self._lock:
@@ -39,6 +102,7 @@ class RateLimiter:
         """Clear limiter state. Intended for tests and local diagnostics."""
         with self._lock:
             self.attempts.clear()
+        self._redis_warning_logged = False
 
 
 def client_ip(request: Request) -> str:
@@ -71,21 +135,22 @@ def clear_rate_limiters(limiters: Iterable[RateLimiter]) -> None:
         limiter.clear()
 
 
-login_rate_limiter = RateLimiter(max_attempts=5, window_seconds=60)
-register_rate_limiter = RateLimiter(max_attempts=5, window_seconds=300)
-refresh_rate_limiter = RateLimiter(max_attempts=20, window_seconds=300)
-password_reset_rate_limiter = RateLimiter(max_attempts=3, window_seconds=300)
-email_verification_rate_limiter = RateLimiter(max_attempts=5, window_seconds=300)
-email_confirm_rate_limiter = RateLimiter(max_attempts=20, window_seconds=300)
-global_ip_rate_limiter = RateLimiter(max_attempts=5000, window_seconds=60)
-webhook_rate_limiter = RateLimiter(max_attempts=300, window_seconds=60)
-openwa_webhook_rate_limiter = RateLimiter(max_attempts=300, window_seconds=60)
-whatsapp_connect_rate_limiter = RateLimiter(max_attempts=10, window_seconds=600)
-whatsapp_send_minute_rate_limiter = RateLimiter(max_attempts=20, window_seconds=60)
-whatsapp_send_hour_rate_limiter = RateLimiter(max_attempts=200, window_seconds=3600)
-public_chat_init_rate_limiter = RateLimiter(max_attempts=30, window_seconds=60)
-public_chat_send_rate_limiter = RateLimiter(max_attempts=60, window_seconds=60)
-public_lead_rate_limiter = RateLimiter(max_attempts=20, window_seconds=600)
-assistant_rate_limiter = RateLimiter(max_attempts=60, window_seconds=60)
-tool_run_rate_limiter = RateLimiter(max_attempts=60, window_seconds=60)
-voice_test_call_rate_limiter = RateLimiter(max_attempts=10, window_seconds=600)
+login_rate_limiter = RateLimiter(5, 60, "login")
+register_rate_limiter = RateLimiter(5, 300, "register")
+refresh_rate_limiter = RateLimiter(20, 300, "refresh")
+password_reset_rate_limiter = RateLimiter(3, 300, "password-reset")
+email_verification_rate_limiter = RateLimiter(5, 300, "email-verification")
+email_confirm_rate_limiter = RateLimiter(20, 300, "email-confirm")
+global_ip_rate_limiter = RateLimiter(5000, 60, "global-ip")
+webhook_rate_limiter = RateLimiter(300, 60, "webhook")
+openwa_webhook_rate_limiter = RateLimiter(300, 60, "openwa-webhook")
+whatsapp_connect_rate_limiter = RateLimiter(10, 600, "whatsapp-connect")
+whatsapp_send_minute_rate_limiter = RateLimiter(20, 60, "whatsapp-send-minute")
+whatsapp_send_hour_rate_limiter = RateLimiter(200, 3600, "whatsapp-send-hour")
+public_chat_init_rate_limiter = RateLimiter(30, 60, "public-chat-init")
+public_chat_send_rate_limiter = RateLimiter(60, 60, "public-chat-send")
+public_lead_rate_limiter = RateLimiter(20, 600, "public-lead")
+public_contact_rate_limiter = RateLimiter(5, 600, "public-contact")
+assistant_rate_limiter = RateLimiter(60, 60, "assistant")
+tool_run_rate_limiter = RateLimiter(60, 60, "tool-run")
+voice_test_call_rate_limiter = RateLimiter(10, 600, "voice-test-call")

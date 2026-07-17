@@ -64,3 +64,49 @@ def test_artifact_service_store_and_signed_download(client, tmp_path):
         db.close()
         settings.ARTIFACT_STORAGE_PROVIDER = old_provider
         settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH = old_local_path
+
+
+def test_supabase_bucket_is_created_once(monkeypatch):
+    from app.services import artifact_service as artifact_module
+
+    calls: list[tuple[str, str]] = []
+
+    class _Response:
+        def __init__(self, status_code: int):
+            self.status_code = status_code
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def get(self, url, **_kwargs):
+            calls.append(("GET", url))
+            return _Response(404)
+
+        def post(self, url, **_kwargs):
+            calls.append(("POST", url))
+            return _Response(200)
+
+    old_url = settings.SUPABASE_URL
+    old_key = settings.SUPABASE_SERVICE_ROLE_KEY
+    old_bucket = settings.SUPABASE_STORAGE_BUCKET
+    settings.SUPABASE_URL = "https://project.supabase.co"
+    settings.SUPABASE_SERVICE_ROLE_KEY = "service-key"
+    settings.SUPABASE_STORAGE_BUCKET = "svontai-artifacts"
+    monkeypatch.setattr(artifact_module.httpx, "Client", _Client)
+    try:
+        provider = artifact_module._SupabaseStorageProvider()
+        provider.ensure_bucket()
+        provider.ensure_bucket()
+    finally:
+        settings.SUPABASE_URL = old_url
+        settings.SUPABASE_SERVICE_ROLE_KEY = old_key
+        settings.SUPABASE_STORAGE_BUCKET = old_bucket
+
+    assert [method for method, _url in calls] == ["GET", "POST"]

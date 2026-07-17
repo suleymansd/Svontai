@@ -47,6 +47,10 @@
 - `PASSWORD_RESET_MAX_ATTEMPTS`
 - `ENVIRONMENT` (`dev` | `prod`)
 - `REDIS_URL`
+- `RATE_LIMIT_BACKEND` (`memory` | `redis`; production requires `redis`)
+- `RATE_LIMIT_REDIS_PREFIX`
+- `SENTRY_DSN`
+- `SENTRY_TRACES_SAMPLE_RATE`
 - `USE_N8N`
 - `N8N_BASE_URL`
 - `N8N_API_KEY`
@@ -126,7 +130,7 @@
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, Google Calendar appointment sync, stuck automation run cleanup, outbound voice jobs, and daily/weekly operational reports.
-- Current Alembic migration head: `040`.
+- Current Alembic migration head: `041`.
 
 ## n8n execution capacity
 - SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.
@@ -150,8 +154,8 @@
 
 ## Rate limiting / Abuse protection
 - Built-in API rate limits protect global IP traffic, auth/register/login/refresh, email verification, password reset, WhatsApp webhooks, public chat, public lead capture, assistant/tool execution and voice test-call endpoints.
-- The built-in limiter is process-local and is suitable for the first single-instance Railway web service.
-- Before horizontal scaling, put Cloudflare/Vercel/Railway edge protection in front of the API or replace `backend/app/core/rate_limit.py` with a Redis-backed implementation using `REDIS_URL` so limits are shared across web instances.
+- Production uses the Railway Redis service with `RATE_LIMIT_BACKEND=redis`; hashed keys and counters are shared across all API instances.
+- If Redis is briefly unavailable, the limiter logs the failure and falls back to process-local protection instead of dropping all traffic.
 - In production, Meta webhook POST requests require a valid `X-Hub-Signature-256`; missing or invalid signatures are rejected.
 
 ## Production smoke

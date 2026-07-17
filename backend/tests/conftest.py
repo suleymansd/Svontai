@@ -37,6 +37,7 @@ def client(monkeypatch):
         rate_limit_module.public_chat_init_rate_limiter,
         rate_limit_module.public_chat_send_rate_limiter,
         rate_limit_module.public_lead_rate_limiter,
+        rate_limit_module.public_contact_rate_limiter,
         rate_limit_module.assistant_rate_limiter,
         rate_limit_module.tool_run_rate_limiter,
         rate_limit_module.voice_test_call_rate_limiter,

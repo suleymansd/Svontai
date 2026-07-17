@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bot, CalendarCheck, PhoneCall, RefreshCw, Settings2, Sparkles } from 'lucide-react'
+import { AlertCircle, Bot, CalendarCheck, PhoneCall, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { callsApi, voiceAutomationApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -54,6 +54,13 @@ type CallIntent = {
   created_at: string
 }
 
+type VoiceCapabilities = {
+  mode: 'dry_run' | 'live'
+  live_ready: boolean
+  provider: string
+  supported_providers: string[]
+}
+
 const triggerLabels: Record<string, string> = {
   explicit_call_request: 'Müşteri arama istedi',
   appointment_intent: 'Randevu niyeti',
@@ -85,6 +92,10 @@ export default function CallsPage() {
     queryKey: ['voice-settings'],
     queryFn: () => voiceAutomationApi.getSettings().then((res) => res.data),
   })
+  const capabilitiesQuery = useQuery<VoiceCapabilities>({
+    queryKey: ['voice-capabilities'],
+    queryFn: () => voiceAutomationApi.getCapabilities().then((res) => res.data),
+  })
   const callsQuery = useQuery<CallRow[]>({
     queryKey: ['calls', 'voice-dashboard'],
     queryFn: () => callsApi.list({ limit: 50 }).then((res) => res.data),
@@ -103,13 +114,14 @@ export default function CallsPage() {
       setForm({
         ...defaultForm,
         ...settingsQuery.data,
+        provider: capabilitiesQuery.data?.provider || settingsQuery.data.provider || 'twilio',
         from_number: settingsQuery.data.from_number || '',
         allowed_triggers_json: settingsQuery.data.allowed_triggers_json?.length
           ? settingsQuery.data.allowed_triggers_json
           : defaultForm.allowed_triggers_json,
       })
     }
-  }, [settingsQuery.data])
+  }, [capabilitiesQuery.data?.provider, settingsQuery.data])
 
   const saveMutation = useMutation({
     mutationFn: () => voiceAutomationApi.updateSettings(form).then((res) => res.data),
@@ -190,15 +202,28 @@ export default function CallsPage() {
   )
 
   const latestJobStatus = jobsQuery.data?.[0]?.status || 'beklemede yok'
+  const isVoiceLive = capabilitiesQuery.data?.live_ready === true
 
   return (
     <ContentContainer>
       <div className="space-y-6">
         <PageHeader
           title="AI Arama Asistanı"
-          description="WhatsApp konuşmalarından doğan sıcak müşterileri otomatik arayın, görüşmeleri özetleyin ve randevuları sisteme işleyin."
+          description={isVoiceLive
+            ? 'WhatsApp konuşmalarından doğan sıcak müşterileri otomatik arayın, görüşmeleri özetleyin ve randevuları sisteme işleyin.'
+            : 'Arama kayıtlarını görüntüleyin. Canlı AI arama özelliği sağlayıcı bağlantısı tamamlandıktan sonra açılacak.'}
           icon={<Icon3DBadge icon={PhoneCall} from="from-emerald-500" to="to-cyan-500" />}
         />
+
+        {!isVoiceLive && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-medium">Canlı AI arama yakında</p>
+              <p className="text-sm opacity-80">Bu ortamda gerçek telefon araması yapılmaz. Mevcut kayıtlar ve güvenli test akışları korunur.</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-4">
           <div className="rounded-xl border bg-card p-4">
@@ -206,7 +231,7 @@ export default function CallsPage() {
               <Bot className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Durum</p>
-                <p className="font-semibold">{form.enabled ? 'Aktif' : 'Kapalı'}</p>
+                <p className="font-semibold">{isVoiceLive ? (form.enabled ? 'Aktif' : 'Kapalı') : 'Yakında'}</p>
               </div>
             </div>
           </div>
@@ -251,25 +276,23 @@ export default function CallsPage() {
               <Label>AI arama asistanı</Label>
               <div className="flex h-11 items-center justify-between rounded-xl border px-3">
                 <span className="text-sm">{form.enabled ? 'Aktif' : 'Kapalı'}</span>
-                <Switch checked={form.enabled} onCheckedChange={(enabled) => setForm({ ...form, enabled })} />
+                <Switch checked={form.enabled && isVoiceLive} disabled={!isVoiceLive} onCheckedChange={(enabled) => setForm({ ...form, enabled })} />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Servis</Label>
-              <Select value={form.provider} onValueChange={(provider) => setForm({ ...form, provider })}>
+              <Select value={form.provider} disabled={!isVoiceLive} onValueChange={(provider) => setForm({ ...form, provider })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="vapi">Vapi</SelectItem>
                   <SelectItem value="twilio">Twilio</SelectItem>
-                  <SelectItem value="telnyx">Telnyx</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Arayan numara</Label>
-              <Input value={form.from_number || ''} onChange={(event) => setForm({ ...form, from_number: event.target.value })} placeholder="+905..." />
+              <Input disabled={!isVoiceLive} value={form.from_number || ''} onChange={(event) => setForm({ ...form, from_number: event.target.value })} placeholder="+905..." />
             </div>
             <div className="space-y-2">
               <Label>Arama koşulu</Label>
@@ -319,7 +342,7 @@ export default function CallsPage() {
               />
             </div>
             <div className="flex items-end">
-              <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || settingsQuery.isLoading}>
+              <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={!isVoiceLive || saveMutation.isPending || settingsQuery.isLoading}>
                 {saveMutation.isPending && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
                 Ayarları Kaydet
               </Button>
@@ -342,8 +365,8 @@ export default function CallsPage() {
               <Input value={testName} onChange={(event) => setTestName(event.target.value)} placeholder="Müşteri adı" />
             </div>
             <div className="flex items-end">
-              <Button variant="outline" onClick={() => testMutation.mutate()} disabled={!testPhone || testMutation.isPending}>
-                Test Oluştur
+              <Button variant="outline" onClick={() => testMutation.mutate()} disabled={!isVoiceLive || !testPhone || testMutation.isPending}>
+                {isVoiceLive ? 'Test Oluştur' : 'Yakında'}
               </Button>
             </div>
           </CardContent>

@@ -33,6 +33,7 @@ from app.models.ticket import Ticket, TicketMessage
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.onboarding import AuditLog
 from app.models.real_estate import RealEstatePackSettings
+from app.models.sales_inquiry import SalesInquiry
 from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
@@ -69,6 +70,30 @@ class AdminStats(BaseModel):
     new_users_week: int
     messages_today: int
     messages_week: int
+
+
+class SalesInquiryAdminItem(BaseModel):
+    id: str
+    name: str
+    email: str
+    company: str | None
+    phone: str | None
+    plan: str | None
+    interval: str | None
+    message: str
+    status: str
+    email_delivered: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SalesInquiryListResponse(BaseModel):
+    items: list[SalesInquiryAdminItem]
+    total: int
+
+
+class SalesInquiryStatusUpdate(BaseModel):
+    status: Literal["new", "contacted", "qualified", "closed", "spam"]
 
 
 class UserListResponse(BaseModel):
@@ -1394,6 +1419,88 @@ async def force_tenant_plan(
         tenant_id=str(tenant.id),
         new_plan=normalize_plan_code(subscription.plan.plan_type or subscription.plan.name),
         status="ok",
+    )
+
+
+@router.get("/sales-inquiries", response_model=SalesInquiryListResponse)
+async def list_sales_inquiries(
+    inquiry_status: str | None = Query(default=None, alias="status"),
+    search: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SalesInquiryListResponse:
+    query = db.query(SalesInquiry)
+    if inquiry_status:
+        query = query.filter(SalesInquiry.status == inquiry_status)
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        query = query.filter(
+            func.lower(SalesInquiry.name).like(pattern)
+            | func.lower(SalesInquiry.email).like(pattern)
+            | func.lower(func.coalesce(SalesInquiry.company, "")).like(pattern)
+        )
+    total = query.count()
+    rows = query.order_by(SalesInquiry.created_at.desc()).limit(limit).all()
+    return SalesInquiryListResponse(
+        items=[
+            SalesInquiryAdminItem(
+                id=str(row.id),
+                name=row.name,
+                email=row.email,
+                company=row.company,
+                phone=row.phone,
+                plan=row.plan,
+                interval=row.interval,
+                message=row.message,
+                status=row.status,
+                email_delivered=row.email_delivered,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ],
+        total=total,
+    )
+
+
+@router.patch("/sales-inquiries/{inquiry_id}", response_model=SalesInquiryAdminItem)
+async def update_sales_inquiry(
+    inquiry_id: str,
+    payload: SalesInquiryStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SalesInquiryAdminItem:
+    inquiry = db.get(SalesInquiry, inquiry_id)
+    if inquiry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Satış talebi bulunamadı")
+    old_status = inquiry.status
+    inquiry.status = payload.status
+    db.commit()
+    db.refresh(inquiry)
+    log_admin_action(
+        db,
+        admin,
+        "admin.sales_inquiry.update",
+        "sales_inquiry",
+        str(inquiry.id),
+        {"old_status": old_status, "new_status": payload.status},
+        request=request,
+    )
+    return SalesInquiryAdminItem(
+        id=str(inquiry.id),
+        name=inquiry.name,
+        email=inquiry.email,
+        company=inquiry.company,
+        phone=inquiry.phone,
+        plan=inquiry.plan,
+        interval=inquiry.interval,
+        message=inquiry.message,
+        status=inquiry.status,
+        email_delivered=inquiry.email_delivered,
+        created_at=inquiry.created_at,
+        updated_at=inquiry.updated_at,
     )
 
 

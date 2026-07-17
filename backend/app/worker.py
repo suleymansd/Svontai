@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.time import utc_now_naive
+from app.core.observability import capture_exception, configure_observability
 from app.db.session import SessionLocal, engine
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.models.tenant import Tenant
@@ -30,11 +31,13 @@ from app.services.analytics_service import AnalyticsService
 from app.services.push_notification_service import PushNotificationService
 from app.services.email_service import EmailService
 from app.services.google_calendar_service import GoogleCalendarService
+from app.services.openwa_client import openwa_client
 from zoneinfo import ZoneInfo
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("smartwa.worker")
+configure_observability("worker")
 
 
 def _expected_migration_heads() -> set[str]:
@@ -84,6 +87,7 @@ async def _run_every(name: str, interval_seconds: int, fn) -> None:
             await asyncio.to_thread(fn)
         except Exception as exc:
             logger.warning("%s failed: %s", name, exc)
+            capture_exception(exc)
         await asyncio.sleep(interval_seconds)
 
 
@@ -143,8 +147,49 @@ def _sync_openwa_sessions() -> None:
             service = OnboardingService(db)
             for account in accounts:
                 was_active = account.is_active
+                previous_metadata = dict(account.provider_metadata_json or {})
+                previous_failures = int(previous_metadata.get("reconnect_failure_count") or 0)
                 try:
                     result = asyncio.run(service.refresh_openwa_status(account.tenant_id))
+                    should_reconnect = bool(
+                        not result.get("connected")
+                        and (
+                            was_active
+                            or previous_failures > 0
+                            or previous_metadata.get("health_status") == "disconnected"
+                        )
+                    )
+                    if should_reconnect:
+                        asyncio.run(openwa_client.start_session(account.provider_session_id))
+                        result = asyncio.run(service.refresh_openwa_status(account.tenant_id))
+
+                    if result.get("connected"):
+                        if previous_failures:
+                            account.provider_metadata_json = {
+                                key: value
+                                for key, value in (account.provider_metadata_json or {}).items()
+                                if key not in {
+                                    "reconnect_failure_count",
+                                    "reconnect_alerted_at",
+                                    "last_reconnect_attempt_at",
+                                }
+                            }
+                            db.commit()
+                            SystemEventService(db).log(
+                                tenant_id=str(account.tenant_id),
+                                source="openwa",
+                                level="info",
+                                code="OPENWA_SESSION_RECOVERED",
+                                message="WhatsApp QR oturumu otomatik olarak yeniden bağlandı.",
+                                meta_json={"session_id": account.provider_session_id},
+                            )
+                        continue
+
+                    if should_reconnect:
+                        raise RuntimeError(
+                            f"OpenWA session did not recover (status={result.get('status') or 'unknown'})"
+                        )
+
                     if was_active and not result.get("connected"):
                         SystemEventService(db).log(
                             tenant_id=str(account.tenant_id),
@@ -158,12 +203,43 @@ def _sync_openwa_sessions() -> None:
                             },
                         )
                 except Exception as exc:
+                    metadata = dict(account.provider_metadata_json or {})
+                    failure_count = int(metadata.get("reconnect_failure_count") or 0) + 1
                     account.provider_metadata_json = {
-                        **(account.provider_metadata_json or {}),
+                        **metadata,
                         "health_status": "unavailable",
+                        "reconnect_failure_count": failure_count,
+                        "last_reconnect_attempt_at": utc_now_naive().isoformat(),
                     }
                     account.last_error = str(exc)[:1000]
                     db.commit()
+                    SystemEventService(db).log(
+                        tenant_id=str(account.tenant_id),
+                        source="openwa",
+                        level="error",
+                        code="OPENWA_RECONNECT_FAILED",
+                        message="WhatsApp QR oturumu otomatik olarak yeniden bağlanamadı.",
+                        meta_json={
+                            "session_id": account.provider_session_id,
+                            "failure_count": failure_count,
+                            "error": str(exc)[:300],
+                        },
+                    )
+                    if failure_count >= 3 and not metadata.get("reconnect_alerted_at"):
+                        asyncio.run(PushNotificationService(db).send_to_tenant(
+                            tenant_id=account.tenant_id,
+                            event_type="integration_alert",
+                            title="WhatsApp bağlantınız kontrol edilmeli",
+                            body="SvontAI yeniden bağlanmayı denedi. Telefonunuzdan QR bağlantısını yenileyin.",
+                            url="/dashboard/setup/whatsapp",
+                            tag="svontai-openwa-reconnect",
+                            extra={"failure_count": failure_count},
+                        ))
+                        account.provider_metadata_json = {
+                            **(account.provider_metadata_json or {}),
+                            "reconnect_alerted_at": utc_now_naive().isoformat(),
+                        }
+                        db.commit()
                     logger.warning(
                         "openwa_session_health tenant_id=%s failed=%s",
                         account.tenant_id,

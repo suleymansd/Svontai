@@ -5,7 +5,50 @@ from uuid import UUID
 
 import pytest
 
-from app.core.rate_limit import client_ip
+from app.core.rate_limit import RateLimiter, client_ip
+
+
+class _FakeRedisClient:
+    def __init__(self):
+        self.counts: dict[str, int] = {}
+
+    def eval(self, _script, _key_count, key, _window):
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key]
+
+
+def test_redis_rate_limiter_is_shared_by_hashed_key(monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+
+    fake_client = _FakeRedisClient()
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_BACKEND", "redis")
+    monkeypatch.setattr(rate_limit_module, "redis", object())
+    first_instance = RateLimiter(2, 60, "distributed-test")
+    second_instance = RateLimiter(2, 60, "distributed-test")
+    first_instance._redis_client = fake_client
+    second_instance._redis_client = fake_client
+
+    assert first_instance.allow("tenant:secret-user-key") is True
+    assert second_instance.allow("tenant:secret-user-key") is True
+    assert first_instance.allow("tenant:secret-user-key") is False
+    stored_key = next(iter(fake_client.counts))
+    assert "secret-user-key" not in stored_key
+
+
+def test_redis_failure_falls_back_to_memory(monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+
+    class _UnavailableRedis:
+        def eval(self, *_args):
+            raise ConnectionError("offline")
+
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_BACKEND", "redis")
+    monkeypatch.setattr(rate_limit_module, "redis", object())
+    limiter = RateLimiter(1, 60, "fallback-test")
+    limiter._redis_client = _UnavailableRedis()
+
+    assert limiter.allow("same-key") is True
+    assert limiter.allow("same-key") is False
 
 
 def test_register_rate_limit_blocks_repeated_attempts(client):

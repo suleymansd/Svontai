@@ -52,6 +52,7 @@ interface OnboardingStatus {
   provider: 'meta_cloud' | 'openwa' | null
   provider_status: string | null
   openwa_enabled: boolean
+  meta_cloud_enabled: boolean
 }
 
 interface StartResponse {
@@ -475,7 +476,7 @@ export default function WhatsAppSetupPage() {
         <CardHeader>
           <CardTitle>Kurulum Adımları</CardTitle>
           <CardDescription>
-            Her adım otomatik olarak tamamlanır, sadece Meta ile giriş yapmanız yeterli
+            QR bağlantısını tamamlayın; kalan hazırlığı SvontAI otomatik yürütür
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -500,19 +501,21 @@ export default function WhatsAppSetupPage() {
                     onConnected={() => refetch()}
                   />
                 ) : null}
-                <Button
-                  size="lg"
-                  variant={status?.openwa_enabled ? 'outline' : 'default'}
-                  onClick={() => startMutation.mutate()}
-                  disabled={startMutation.isPending || isConnecting}
-                >
-                  {startMutation.isPending || isConnecting ? (
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  ) : (
-                    <Shield className="w-5 h-5 mr-2" />
-                  )}
-                  Meta Cloud ile Bağla
-                </Button>
+                {status?.meta_cloud_enabled ? (
+                  <Button
+                    size="lg"
+                    variant={status.openwa_enabled ? 'outline' : 'default'}
+                    onClick={() => startMutation.mutate()}
+                    disabled={startMutation.isPending || isConnecting}
+                  >
+                    {startMutation.isPending || isConnecting ? (
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    ) : (
+                      <Shield className="w-5 h-5 mr-2" />
+                    )}
+                    Meta Cloud ile Bağla
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -605,19 +608,21 @@ export default function WhatsAppSetupPage() {
                         onConnected={() => refetch()}
                       />
                     ) : null}
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => startMutation.mutate()}
-                      disabled={startMutation.isPending}
-                    >
-                      {startMutation.isPending ? (
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      ) : (
-                        <Shield className="w-5 h-5 mr-2" />
-                      )}
-                      Meta Cloud ile Bağla
-                    </Button>
+                    {status.meta_cloud_enabled ? (
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={() => startMutation.mutate()}
+                        disabled={startMutation.isPending}
+                      >
+                        {startMutation.isPending ? (
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        ) : (
+                          <Shield className="w-5 h-5 mr-2" />
+                        )}
+                        Meta Cloud ile Bağla
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               )}

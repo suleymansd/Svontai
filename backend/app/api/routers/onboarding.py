@@ -63,6 +63,7 @@ class OnboardingStatusResponse(BaseModel):
     provider: Optional[str] = None
     provider_status: Optional[str] = None
     openwa_enabled: bool = False
+    meta_cloud_enabled: bool = False
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -138,6 +139,16 @@ async def start_whatsapp_onboarding(
         rate_limit_key(request, "whatsapp-connect", current_tenant.id),
         "Çok fazla WhatsApp bağlantı denemesi. Lütfen birkaç dakika sonra tekrar deneyin.",
     )
+    if not (
+        settings.META_APP_ID.strip()
+        and settings.META_APP_SECRET.strip()
+        and settings.META_CONFIG_ID.strip()
+        and settings.META_REDIRECT_URI.startswith("https://")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Meta Cloud bağlantısı henüz kullanıma açılmadı. WhatsApp QR yöntemini kullanın.",
+        )
     service = OnboardingService(db)
     
     try:
@@ -355,6 +366,12 @@ async def get_whatsapp_onboarding_status(
             else (account.token_status if account else None)
         ),
         openwa_enabled=bool(settings.OPENWA_ENABLED and openwa_client.configured),
+        meta_cloud_enabled=bool(
+            settings.META_APP_ID.strip()
+            and settings.META_APP_SECRET.strip()
+            and settings.META_CONFIG_ID.strip()
+            and settings.META_REDIRECT_URI.startswith("https://")
+        ),
     )
 
 

@@ -22,6 +22,7 @@ from app.models.tool_run import ToolRun
 from app.models.user import User
 from app.models.whatsapp_account import WhatsAppAccount
 from app.services.audit_log_service import AuditLogService
+from app.services.artifact_service import ArtifactService
 from app.services.billing_service import BillingService
 from app.services.subscription_service import SubscriptionService
 from app.services.system_event_service import SystemEventService
@@ -351,7 +352,10 @@ class AutopilotService:
         if settings.ARTIFACT_STORAGE_PROVIDER == "supabase":
             ready = bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY and settings.SUPABASE_STORAGE_BUCKET)
             if ready:
-                return self._item("artifacts", "connected", 90, "Supabase artifact storage hazır.")
+                healthy, message = ArtifactService(self.db).check_storage_health()
+                if healthy:
+                    return self._item("artifacts", "connected", 95, message)
+                return self._item("artifacts", "missing", 40, message)
             return self._item("artifacts", "missing", 50, "Supabase artifact storage eksik yapılandırılmış.")
         return self._item("artifacts", "connected", 75, "Local artifact storage etkin.")
 

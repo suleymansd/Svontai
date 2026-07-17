@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Sora } from 'next/font/google'
+import { headers } from 'next/headers'
 import './globals.css'
 import { Providers } from '@/components/providers'
 
@@ -42,11 +43,12 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  await headers()
   return (
     <html lang="tr" suppressHydrationWarning>
       <body className={`${sora.variable} font-sans antialiased`}>

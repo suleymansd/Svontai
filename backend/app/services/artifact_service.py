@@ -76,9 +76,43 @@ class _SupabaseStorageProvider:
         self.base_url = (settings.SUPABASE_URL or "").rstrip("/")
         self.service_key = settings.SUPABASE_SERVICE_ROLE_KEY or ""
         self.bucket = settings.SUPABASE_STORAGE_BUCKET or "svontai-artifacts"
+        self._bucket_ready = False
 
     def is_configured(self) -> bool:
         return bool(self.base_url and self.service_key and self.bucket)
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.service_key}",
+            "apikey": self.service_key,
+            "Content-Type": "application/json",
+        }
+
+    def ensure_bucket(self) -> None:
+        if not self.is_configured():
+            raise RuntimeError("Supabase storage is not configured")
+        if self._bucket_ready:
+            return
+
+        with httpx.Client(timeout=20) as client:
+            response = client.get(
+                f"{self.base_url}/storage/v1/bucket/{quote(self.bucket, safe='')}",
+                headers=self._headers(),
+            )
+            if response.status_code == 404:
+                response = client.post(
+                    f"{self.base_url}/storage/v1/bucket",
+                    headers=self._headers(),
+                    json={
+                        "id": self.bucket,
+                        "name": self.bucket,
+                        "public": False,
+                        "file_size_limit": 25 * 1024 * 1024,
+                    },
+                )
+            if response.status_code not in (200, 201):
+                raise RuntimeError(f"Supabase bucket check failed ({response.status_code})")
+        self._bucket_ready = True
 
     def store_bytes(
         self,
@@ -91,13 +125,13 @@ class _SupabaseStorageProvider:
     ) -> StoredArtifact:
         if not self.is_configured():
             raise RuntimeError("Supabase storage is not configured")
+        self.ensure_bucket()
 
         safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", (file_name or "").strip()) or f"{tool_slug}.bin"
         object_path = f"{tenant_id}/{request_id}/{safe_name}"
         upload_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{quote(object_path)}"
         headers = {
-            "Authorization": f"Bearer {self.service_key}",
-            "apikey": self.service_key,
+            **self._headers(),
             "x-upsert": "true",
             "Content-Type": "application/octet-stream",
         }
@@ -110,13 +144,10 @@ class _SupabaseStorageProvider:
     def create_signed_url(self, path: str, expires_seconds: int) -> str:
         if not self.is_configured():
             raise RuntimeError("Supabase storage is not configured")
+        self.ensure_bucket()
 
         sign_url = f"{self.base_url}/storage/v1/object/sign/{self.bucket}/{quote(path)}"
-        headers = {
-            "Authorization": f"Bearer {self.service_key}",
-            "apikey": self.service_key,
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         with httpx.Client(timeout=20) as client:
             response = client.post(sign_url, headers=headers, json={"expiresIn": max(60, int(expires_seconds))})
             response.raise_for_status()
@@ -167,6 +198,17 @@ class ArtifactService:
 
     def _selected_storage_provider(self) -> str:
         return (settings.ARTIFACT_STORAGE_PROVIDER or "local").strip().lower()
+
+    def check_storage_health(self) -> tuple[bool, str]:
+        provider = self._selected_storage_provider()
+        if provider == "supabase":
+            try:
+                self._supabase_provider.ensure_bucket()
+                return True, "Supabase artifact storage bağlantısı doğrulandı."
+            except Exception as exc:
+                logger.warning("Supabase storage health check failed: %s", exc)
+                return False, "Supabase artifact storage erişimi doğrulanamadı."
+        return True, "Local artifact storage etkin."
 
     def _store_file_bytes(
         self,

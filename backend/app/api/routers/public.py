@@ -4,11 +4,12 @@ No authentication required.
 """
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -17,6 +18,7 @@ from app.models.conversation import Conversation, ConversationSource, Conversati
 from app.models.message import Message, MessageSender
 from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead
+from app.models.sales_inquiry import SalesInquiry
 from app.schemas.public import (
     ChatInitRequest,
     ChatInitResponse,
@@ -28,10 +30,15 @@ from app.schemas.public import (
 from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
+from app.services.email_service import EmailService
+from app.services.system_event_service import SystemEventService
+from app.core.config import settings
+from app.core.time import utc_now_naive
 from app.core.rate_limit import (
     public_chat_init_rate_limiter,
     public_chat_send_rate_limiter,
     public_lead_rate_limiter,
+    public_contact_rate_limiter,
     rate_limit_key,
     require_rate_limit,
 )
@@ -40,9 +47,106 @@ router = APIRouter(prefix="/public", tags=["Public Chat"])
 logger = logging.getLogger(__name__)
 
 
+class SalesInquiryCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    company: str | None = Field(default=None, max_length=180)
+    phone: str | None = Field(default=None, max_length=40)
+    plan: str | None = Field(default=None, max_length=30)
+    interval: str | None = Field(default=None, max_length=20)
+    message: str = Field(min_length=5, max_length=3000)
+    website: str | None = Field(default=None, max_length=200)
+
+
+class SalesInquiryAccepted(BaseModel):
+    accepted: bool
+    inquiry_id: str | None = None
+    duplicate: bool = False
+    message: str
+
+
 def generate_external_user_id() -> str:
     """Generate a unique external user ID for anonymous users."""
     return f"web_{secrets.token_urlsafe(16)}"
+
+
+@router.post("/contact", response_model=SalesInquiryAccepted, status_code=status.HTTP_202_ACCEPTED)
+async def create_sales_inquiry(
+    payload: SalesInquiryCreate,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> SalesInquiryAccepted:
+    require_rate_limit(
+        public_contact_rate_limiter,
+        rate_limit_key(http_request, "public-contact"),
+        "Çok fazla iletişim talebi gönderdiniz. Lütfen daha sonra tekrar deneyin.",
+    )
+
+    # Honeypot submissions receive a normal response without entering the sales queue.
+    if payload.website and payload.website.strip():
+        return SalesInquiryAccepted(
+            accepted=True,
+            message="Talebiniz alındı. Ekibimiz sizinle iletişime geçecek.",
+        )
+
+    normalized_email = str(payload.email).strip().lower()
+    cutoff = utc_now_naive() - timedelta(hours=6)
+    existing = db.query(SalesInquiry).filter(
+        SalesInquiry.email == normalized_email,
+        SalesInquiry.status.in_(["new", "contacted"]),
+        SalesInquiry.created_at >= cutoff,
+    ).order_by(SalesInquiry.created_at.desc()).first()
+    if existing:
+        return SalesInquiryAccepted(
+            accepted=True,
+            inquiry_id=str(existing.id),
+            duplicate=True,
+            message="Açık talebiniz bulunuyor. Ekibimiz sizinle iletişime geçecek.",
+        )
+
+    inquiry = SalesInquiry(
+        name=payload.name.strip(),
+        email=normalized_email,
+        company=(payload.company or "").strip() or None,
+        phone=(payload.phone or "").strip() or None,
+        plan=(payload.plan or "").strip().lower() or None,
+        interval=(payload.interval or "").strip().lower() or None,
+        message=payload.message.strip(),
+    )
+    db.add(inquiry)
+    db.commit()
+    db.refresh(inquiry)
+
+    email_delivered = EmailService.send_email(
+        settings.SALES_CONTACT_EMAIL,
+        f"Yeni SvontAI satış talebi: {inquiry.name}",
+        (
+            f"Ad Soyad: {inquiry.name}\n"
+            f"E-posta: {inquiry.email}\n"
+            f"Telefon: {inquiry.phone or '-'}\n"
+            f"İşletme / Marka: {inquiry.company or '-'}\n"
+            f"Plan: {inquiry.plan or '-'}\n"
+            f"Dönem: {inquiry.interval or '-'}\n\n"
+            f"Mesaj:\n{inquiry.message}\n\n"
+            f"Talep ID: {inquiry.id}"
+        ),
+    )
+    inquiry.email_delivered = email_delivered
+    db.commit()
+
+    SystemEventService(db).log(
+        tenant_id=None,
+        source="sales",
+        level="info" if email_delivered else "warn",
+        code="SALES_INQUIRY_CREATED",
+        message="Yeni satış ve kurulum talebi oluşturuldu.",
+        meta_json={"inquiry_id": str(inquiry.id), "email_delivered": email_delivered},
+    )
+    return SalesInquiryAccepted(
+        accepted=True,
+        inquiry_id=str(inquiry.id),
+        message="Talebiniz alındı. Ekibimiz sizinle iletişime geçecek.",
+    )
 
 
 @router.post("/chat/init", response_model=ChatInitResponse)

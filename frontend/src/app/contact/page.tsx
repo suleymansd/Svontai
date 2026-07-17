@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Mail, ShieldCheck } from 'lucide-react'
+import { Loader2, Mail, ShieldCheck } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { Reveal } from '@/components/marketing/reveal'
 import { Badge } from '@/components/ui/badge'
@@ -10,33 +11,61 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { contactApi } from '@/lib/api'
+import { useToast } from '@/components/ui/use-toast'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 export default function ContactPage() {
+  const { toast } = useToast()
   const [form, setForm] = useState({
     name: '',
     email: '',
     company: '',
+    phone: '',
     message: '',
+    website: '',
   })
+  const [requestedPlan, setRequestedPlan] = useState('')
+  const [requestedInterval, setRequestedInterval] = useState('')
 
   useEffect(() => {
     const params = new URL(window.location.href).searchParams
     const plan = params.get('plan')
     const interval = params.get('interval')
     if (!plan) return
+    setRequestedPlan(plan)
+    setRequestedInterval(interval || '')
     setForm((current) => ({
       ...current,
       message: current.message || `${plan.toUpperCase()} planı${interval ? ` (${interval})` : ''} için görüşmek istiyorum.`,
     }))
   }, [])
 
+  const inquiryMutation = useMutation({
+    mutationFn: () => contactApi.createInquiry({
+      ...form,
+      plan: requestedPlan || undefined,
+      interval: requestedInterval || undefined,
+    }),
+    onSuccess: (response) => {
+      toast({
+        title: 'Talebiniz alındı',
+        description: response.data?.message || 'Ekibimiz sizinle iletişime geçecek.',
+      })
+      setForm({ name: '', email: '', company: '', phone: '', message: '', website: '' })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Talep gönderilemedi',
+        description: getApiErrorMessage(error, 'Lütfen bilgileri kontrol edip tekrar deneyin.'),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    const subject = encodeURIComponent('SmartWA Demo ve Concierge Kurulum Talebi')
-    const body = encodeURIComponent(
-      `Ad Soyad: ${form.name}\nE-posta: ${form.email}\nŞirket: ${form.company}\n\nMesaj:\n${form.message}`
-    )
-    window.location.href = `mailto:sales@svontai.com?subject=${subject}&body=${body}`
+    inquiryMutation.mutate()
   }
 
   return (
@@ -54,23 +83,34 @@ export default function ContactPage() {
               <form className="space-y-4" onSubmit={handleSubmit}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Ad Soyad</Label>
-                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                    <Label htmlFor="contact-name">Ad Soyad</Label>
+                    <Input id="contact-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                   </div>
                   <div className="space-y-2">
-                    <Label>İşletme / Marka</Label>
-                    <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+                    <Label htmlFor="contact-company">İşletme / Marka</Label>
+                    <Input id="contact-company" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>E-posta</Label>
-                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                  <Label htmlFor="contact-email">E-posta</Label>
+                  <Input id="contact-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
-                  <Label>Mesajınız</Label>
-                  <Textarea rows={6} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Sektör, WhatsApp numarası durumu, günlük mesaj yoğunluğu ve beklediğiniz otomasyon akışını yazabilirsiniz." required />
+                  <Label htmlFor="contact-phone">Telefon</Label>
+                  <Input id="contact-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                 </div>
-                <Button type="submit" className="w-full">Görüşme Talebi Gönder</Button>
+                <div className="space-y-2">
+                  <Label htmlFor="contact-message">Mesajınız</Label>
+                  <Textarea id="contact-message" rows={6} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Sektör, WhatsApp numarası durumu, günlük mesaj yoğunluğu ve beklediğiniz otomasyon akışını yazabilirsiniz." required />
+                </div>
+                <div className="hidden" aria-hidden="true">
+                  <Label htmlFor="website">Website</Label>
+                  <Input id="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+                </div>
+                <Button type="submit" className="w-full" disabled={inquiryMutation.isPending}>
+                  {inquiryMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Görüşme Talebi Gönder
+                </Button>
               </form>
             </CardContent>
           </Card>

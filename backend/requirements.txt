@@ -18,6 +18,8 @@ openai>=1.9.0
 
 # HTTP Client
 httpx>=0.26.0
+redis>=5.0.0
+sentry-sdk[fastapi]>=2.0.0
 
 # Payments
 stripe>=8.5.0

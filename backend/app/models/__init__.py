@@ -47,6 +47,7 @@ from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.stripe_webhook_event import StripeWebhookEvent
 from app.models.autopilot import SetupRun, IntegrationHealthCheck, AgencyClient, ScheduledJob
 from app.models.push_subscription import PushSubscription
+from app.models.sales_inquiry import SalesInquiry
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -119,6 +120,7 @@ __all__ = [
     "ToolRun",
     "Artifact",
     "PushSubscription",
+    "SalesInquiry",
     "Ticket",
     "TicketMessage",
     "PasswordResetCode",

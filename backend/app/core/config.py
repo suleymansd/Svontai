@@ -168,6 +168,12 @@ class Settings(BaseSettings):
     
     # Redis (optional)
     REDIS_URL: str = "redis://localhost:6379"
+    RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
+    RATE_LIMIT_REDIS_PREFIX: str = "svontai:rate-limit"
+
+    # External error tracking (Sentry free tier is sufficient for launch).
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.05
     
     # ===========================================
     # n8n Workflow Engine Integration
@@ -380,6 +386,10 @@ class Settings(BaseSettings):
             or not self.ARTIFACT_SIGNING_SECRET.strip()
         ):
             missing_real_time_config.append("Supabase artifact storage envs")
+        if self.RATE_LIMIT_BACKEND != "redis" or not self.REDIS_URL.strip():
+            missing_real_time_config.append("RATE_LIMIT_BACKEND=redis/REDIS_URL")
+        if not self.SENTRY_DSN.strip():
+            missing_real_time_config.append("SENTRY_DSN")
         if self.WEBHOOK_PUBLIC_URL.startswith("http://localhost") or self.BACKEND_URL.startswith("http://localhost"):
             missing_real_time_config.append("public WEBHOOK_PUBLIC_URL/BACKEND_URL")
         if self.FRONTEND_URL.startswith("http://localhost"):

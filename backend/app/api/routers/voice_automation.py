@@ -14,6 +14,7 @@ from app.models.tenant import Tenant
 from app.models.voice_automation import CallIntent, OutboundCallJob
 from app.services.voice_automation_service import VoiceAutomationService
 from app.core.rate_limit import rate_limit_key, require_rate_limit, voice_test_call_rate_limiter
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/voice-automation", tags=["Voice Automation"])
@@ -102,6 +103,13 @@ class TestCallRequest(BaseModel):
     reason: str = Field(default="Panel test araması", max_length=500)
 
 
+class VoiceCapabilitiesResponse(BaseModel):
+    mode: str
+    live_ready: bool
+    provider: str
+    supported_providers: list[str]
+
+
 @router.get("/settings", response_model=VoiceSettingsResponse)
 async def get_voice_settings(
     current_tenant: Tenant = Depends(get_current_tenant),
@@ -109,6 +117,24 @@ async def get_voice_settings(
     _: None = Depends(require_permissions(["tools:read"])),
 ):
     return VoiceAutomationService(db).get_or_create_settings(current_tenant.id)
+
+
+@router.get("/capabilities", response_model=VoiceCapabilitiesResponse)
+async def get_voice_capabilities(
+    _: None = Depends(require_permissions(["tools:read"])),
+) -> VoiceCapabilitiesResponse:
+    live_ready = bool(
+        settings.VOICE_OUTBOUND_MODE == "live"
+        and settings.VOICE_GATEWAY_PUBLIC_URL.strip()
+        and settings.TWILIO_ACCOUNT_SID.strip()
+        and settings.TWILIO_AUTH_TOKEN.strip()
+    )
+    return VoiceCapabilitiesResponse(
+        mode=settings.VOICE_OUTBOUND_MODE,
+        live_ready=live_ready,
+        provider=settings.VOICE_OUTBOUND_PROVIDER,
+        supported_providers=["twilio"],
+    )
 
 
 @router.patch("/settings", response_model=VoiceSettingsResponse)

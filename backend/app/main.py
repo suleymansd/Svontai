@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.rate_limit import global_ip_rate_limiter, rate_limit_key
+from app.core.observability import configure_observability
 from app.api.routers import (
     auth_router,
     users_router,
@@ -83,6 +84,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+configure_observability("api")
 
 
 def _ensure_leads_schema_compatibility() -> None:

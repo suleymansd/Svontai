@@ -133,7 +133,13 @@ class ToolRunnerService:
         tenant_settings = self.db.query(TenantTool).filter(TenantTool.tenant_id == tenant_id).all()
         by_slug = {row.tool_slug: row for row in tenant_settings}
 
-        tools = self.db.query(Tool).order_by(Tool.created_at.desc()).all()
+        # Customer catalog only exposes production-ready tools. Draft and
+        # coming-soon definitions remain available in the admin catalog.
+        tools = self.db.query(Tool).filter(
+            Tool.status == "active",
+            Tool.coming_soon.is_(False),
+            Tool.is_public.is_(True),
+        ).order_by(Tool.created_at.desc()).all()
         items: list[ToolRegistryItem] = []
         for tool in tools:
             slug = tool.slug or tool.key

@@ -203,6 +203,7 @@ export const callsApi = {
 }
 
 export const voiceAutomationApi = {
+  getCapabilities: () => api.get('/voice-automation/capabilities'),
   getSettings: () => api.get('/voice-automation/settings'),
   updateSettings: (data: Record<string, unknown>) => api.patch('/voice-automation/settings', data),
   listIntents: (params?: { status?: string; limit?: number }) =>
@@ -274,6 +275,10 @@ export const adminApi = {
   suspendTenant: (id: string) => api.post(`/admin/tenants/${id}/suspend`),
   unsuspendTenant: (id: string) => api.post(`/admin/tenants/${id}/unsuspend`),
   deleteTenant: (id: string) => api.delete(`/admin/tenants/${id}`),
+  listSalesInquiries: (params?: { status?: string; search?: string; limit?: number }) =>
+    api.get('/admin/sales-inquiries', { params }),
+  updateSalesInquiry: (id: string, status: 'new' | 'contacted' | 'qualified' | 'closed' | 'spam') =>
+    api.patch(`/admin/sales-inquiries/${id}`, { status }),
   updateTenantPlan: (id: string, data: {
     plan_type: 'free' | 'pro' | 'premium' | 'enterprise'
     note: string
@@ -400,6 +405,19 @@ export const billingApi = {
     api.post('/billing/stripe/checkout-session', data),
   createStripePortalSession: (params?: { return_url?: string }) =>
     api.get('/billing/stripe/portal', { params }),
+}
+
+export const contactApi = {
+  createInquiry: (data: {
+    name: string
+    email: string
+    company?: string
+    phone?: string
+    plan?: string
+    interval?: string
+    message: string
+    website?: string
+  }) => api.post('/public/contact', data),
 }
 
 // Tenant Onboarding API (Setup Wizard)

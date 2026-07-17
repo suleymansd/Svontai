@@ -27,7 +27,8 @@ import {
   Package,
   LifeBuoy,
   AlertTriangle,
-  BookOpen
+  BookOpen,
+  Inbox
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -36,6 +37,7 @@ const navigation = [
   { name: 'Launch Board', href: '/admin/launch', icon: Rocket },
   { name: 'Kullanıcılar', href: '/admin/users', icon: Users },
   { name: 'Müşteriler', href: '/admin/customers', icon: Building2 },
+  { name: 'Satış Talepleri', href: '/admin/inquiries', icon: Inbox },
   { name: 'Tenantlar', href: '/admin/tenants', icon: Building2 },
   { name: 'Planlar', href: '/admin/plans', icon: Package },
   { name: 'Araçlar', href: '/admin/tools', icon: Boxes },
