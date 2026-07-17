@@ -15,14 +15,30 @@ TARGET_WORKFLOWS = {
     "svontai-tool-runner",
 }
 ERROR_WORKFLOW_NAME = "SvontAI - Central Error Handler"
+WRITABLE_SETTINGS = {
+    "executionOrder",
+    "saveDataErrorExecution",
+    "saveDataSuccessExecution",
+    "saveManualExecutions",
+    "saveExecutionProgress",
+    "executionTimeout",
+    "timezone",
+    "callerPolicy",
+    "errorWorkflow",
+}
 
 
 def _workflow_payload(workflow: dict) -> dict:
+    settings = {
+        key: value
+        for key, value in (workflow.get("settings") or {}).items()
+        if key in WRITABLE_SETTINGS
+    }
     return {
         "name": workflow["name"],
         "nodes": workflow.get("nodes", []),
         "connections": workflow.get("connections", {}),
-        "settings": workflow.get("settings", {}),
+        "settings": settings,
     }
 
 
