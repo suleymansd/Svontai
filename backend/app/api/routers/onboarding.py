@@ -234,6 +234,79 @@ async def get_openwa_qr(
         )
 
 
+@router.post("/whatsapp/openwa/reconnect", response_model=OpenWAStatusResponse)
+async def reconnect_openwa(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> OpenWAStatusResponse:
+    require_rate_limit(
+        whatsapp_connect_rate_limiter,
+        rate_limit_key(request, "openwa-reconnect", current_tenant.id),
+        "Çok fazla yeniden bağlantı denemesi. Lütfen birkaç dakika sonra tekrar deneyin.",
+    )
+    service = OnboardingService(db)
+    try:
+        result = await service.reconnect_openwa(current_tenant.id)
+        if not result.get("connected"):
+            result = await service.get_openwa_qr(current_tenant.id)
+        SystemEventService(db).log(
+            tenant_id=str(current_tenant.id),
+            source="openwa",
+            level="info",
+            code="OPENWA_SESSION_RECOVERY_STARTED",
+            message="WhatsApp QR oturumu yeniden bağlantı için hazırlandı.",
+            meta_json={"session_id": result.get("session_id"), "user_id": str(current_user.id)},
+            correlation_id=None,
+        )
+        return OpenWAStatusResponse(**result)
+    except OpenWAError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND if exc.status_code == 404 else status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        )
+
+
+@router.post("/whatsapp/openwa/qr/refresh", response_model=OpenWAStatusResponse)
+async def refresh_openwa_qr(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+) -> OpenWAStatusResponse:
+    require_rate_limit(
+        whatsapp_connect_rate_limiter,
+        rate_limit_key(request, "openwa-qr-refresh", current_tenant.id),
+        "Çok fazla QR yenileme denemesi. Lütfen birkaç dakika sonra tekrar deneyin.",
+    )
+    service = OnboardingService(db)
+    try:
+        result = await service.reconnect_openwa(
+            current_tenant.id,
+            force_new_session=True,
+        )
+        if not result.get("connected"):
+            result = await service.get_openwa_qr(current_tenant.id)
+        SystemEventService(db).log(
+            tenant_id=str(current_tenant.id),
+            source="openwa",
+            level="warn",
+            code="OPENWA_QR_ROTATED",
+            message="WhatsApp bağlantısı için yeni QR kodu üretildi.",
+            meta_json={"session_id": result.get("session_id"), "user_id": str(current_user.id)},
+            correlation_id=None,
+        )
+        return OpenWAStatusResponse(**result)
+    except OpenWAError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND if exc.status_code == 404 else status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        )
+
+
 @router.post("/whatsapp/openwa/disconnect")
 async def disconnect_openwa(
     current_user: User = Depends(get_current_user),
@@ -341,8 +414,14 @@ async def get_whatsapp_onboarding_status(
     """
     service = OnboardingService(db)
     
-    steps = service.get_onboarding_steps(current_tenant.id)
     account = service.get_whatsapp_account(current_tenant.id)
+    if account and account.provider == "openwa" and account.provider_session_id:
+        try:
+            await service.refresh_openwa_status(current_tenant.id)
+        except OpenWAError:
+            pass
+        account = service.get_whatsapp_account(current_tenant.id)
+    steps = service.get_onboarding_steps(current_tenant.id)
     
     # Find current step (first non-done step)
     current_step = None

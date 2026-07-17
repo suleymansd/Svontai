@@ -369,6 +369,8 @@ export const onboardingApi = {
       accepted_unofficial_risk: acceptedUnofficialRisk,
     }),
   getOpenWAQr: () => api.get('/api/onboarding/whatsapp/openwa/qr'),
+  reconnectOpenWA: () => api.post('/api/onboarding/whatsapp/openwa/reconnect'),
+  refreshOpenWAQr: () => api.post('/api/onboarding/whatsapp/openwa/qr/refresh'),
   disconnectOpenWA: () => api.post('/api/onboarding/whatsapp/openwa/disconnect'),
   getWhatsAppStatus: () => api.get('/api/onboarding/whatsapp/status'),
   getWhatsAppAccount: () => api.get('/api/onboarding/whatsapp/account'),

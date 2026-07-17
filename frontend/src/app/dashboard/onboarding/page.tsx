@@ -87,6 +87,7 @@ export default function OnboardingPage() {
   const whatsappQuery = useQuery({
     queryKey: ['whatsapp-onboarding-status'],
     queryFn: () => onboardingApi.getWhatsAppStatus().then(res => res.data),
+    refetchInterval: 10000,
   })
 
   const saveProfileMutation = useMutation({
@@ -401,6 +402,7 @@ export default function OnboardingPage() {
                   <OpenWAConnectDialog
                     enabled
                     connected={whatsappConnected}
+                    providerStatus={whatsappQuery.data?.provider_status}
                     onConnected={() => {
                       queryClient.invalidateQueries({ queryKey: ['whatsapp-onboarding-status'] })
                       queryClient.invalidateQueries({ queryKey: ['onboarding-status'] })
