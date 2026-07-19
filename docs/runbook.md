@@ -103,13 +103,13 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 
 ## Database backup and restore
 
-- Use Railway native volume backups for the production PostgreSQL service. Production database credentials must not be stored in GitHub Actions.
-- In Railway, open `Postgres > Backups`, create and lock a manual pre-launch backup, then enable daily, weekly, and monthly schedules.
-- Keep the Railway defaults as the minimum retention policy: daily backups for 6 days, weekly backups for 1 month, and monthly backups for 3 months.
-- Create another manual backup before a destructive migration or high-risk production change.
-- Run a restore drill before launch and after major schema changes. Restore the backup to a staged volume in the same Railway project, attach it to an isolated PostgreSQL service, and verify Alembic head `041` plus critical tables before deleting the staged copy.
-- Never overwrite the active production volume for a restore test. A production restore requires an incident record, an approved maintenance window, and a verified rollback point.
-- Restrict Railway project administration and backup restore permissions to production operators. Do not copy database URLs, backup contents, or credentials into logs, issues, chat, or CI artifacts.
+- Railway native volume backups are preferred when the project is upgraded to Pro. Until then, `.github/workflows/database-backup.yml` creates a daily encrypted PostgreSQL dump and immediately tests a restore into an isolated PostgreSQL 16 service.
+- `PRODUCTION_DATABASE_URL` and `BACKUP_ENCRYPTION_KEY` must exist only in the protected `production-backup` GitHub Environment. Do not create repository-level copies.
+- Only the GPG-encrypted dump is uploaded. It is retained for 7 days; plaintext dump files are removed from the ephemeral runner after every run.
+- The restore test must verify Alembic head `041` and critical tables. A failed dump, decrypt, restore, or schema check opens or updates the backup incident.
+- Run the workflow manually before launch and before a destructive migration or high-risk production change. Never restore over the active production database during a drill.
+- When Railway Pro is enabled, activate native daily, weekly, and monthly backups, complete an isolated restore drill, then retire the external workflow and delete both GitHub Environment secrets.
+- Restrict GitHub environment administration and workflow changes to production operators. Do not copy database URLs, backup contents, or credentials into logs, issues, chat, or unencrypted artifacts.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
 - `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
 
