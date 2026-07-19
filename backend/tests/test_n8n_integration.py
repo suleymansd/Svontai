@@ -332,6 +332,33 @@ class TestProductionSecretValidation:
         assert configured.BILLING_MODE == "manual"
         assert configured.PAYMENTS_ENABLED is False
 
+    def test_railway_volume_satisfies_production_storage_requirement(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            ARTIFACT_STORAGE_PROVIDER="railway_volume",
+            ARTIFACT_STORAGE_LOCAL_BASE_PATH="/app/backend/storage/artifacts",
+            RAILWAY_VOLUME_MOUNT_PATH="/app/backend/storage",
+            SUPABASE_URL="",
+            SUPABASE_SERVICE_ROLE_KEY="",
+        ))
+
+        assert configured.ARTIFACT_STORAGE_PROVIDER == "railway_volume"
+
+    def test_production_rejects_local_or_outside_volume_artifact_storage(self):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError, match="railway_volume or supabase"):
+            Settings(**_prod_real_service_settings(ARTIFACT_STORAGE_PROVIDER="local"))
+
+        with pytest.raises(ValidationError, match="inside RAILWAY_VOLUME_MOUNT_PATH"):
+            Settings(**_prod_real_service_settings(
+                ARTIFACT_STORAGE_PROVIDER="railway_volume",
+                ARTIFACT_STORAGE_LOCAL_BASE_PATH="/tmp/artifacts",
+                RAILWAY_VOLUME_MOUNT_PATH="/app/backend/storage",
+            ))
+
     def test_gemini_key_satisfies_production_ai_requirement(self):
         from app.core.config import Settings
 

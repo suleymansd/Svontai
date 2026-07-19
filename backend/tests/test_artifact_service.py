@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import os
 import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.responses import FileResponse
+import pytest
 
 from app.core.config import settings
 from app.schemas.tool_runner import ToolRunArtifact
@@ -60,6 +62,8 @@ def test_artifact_service_store_and_signed_download(client, tmp_path):
         response = service.build_download_response(uuid.UUID(artifact_id), expires, sig)
         assert isinstance(response, FileResponse)
         assert Path(response.path).read_bytes() == b"hello-artifact"
+        assert response.headers["cache-control"] == "private, no-store, max-age=0"
+        assert response.headers["x-content-type-options"] == "nosniff"
     finally:
         db.close()
         settings.ARTIFACT_STORAGE_PROVIDER = old_provider
@@ -110,3 +114,55 @@ def test_supabase_bucket_is_created_once(monkeypatch):
         settings.SUPABASE_STORAGE_BUCKET = old_bucket
 
     assert [method for method, _url in calls] == ["GET", "POST"]
+
+
+def test_railway_volume_sanitizes_paths_and_uses_private_permissions(client, tmp_path):
+    from app.db import session as session_module
+
+    old_provider = settings.ARTIFACT_STORAGE_PROVIDER
+    old_local_path = settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH
+    old_size_limit = settings.ARTIFACT_MAX_FILE_SIZE_BYTES
+    settings.ARTIFACT_STORAGE_PROVIDER = "railway_volume"
+    settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH = str(tmp_path / "volume")
+    settings.ARTIFACT_MAX_FILE_SIZE_BYTES = 8
+
+    db = session_module.SessionLocal()
+    try:
+        service = ArtifactService(db)
+        persisted = service.persist_tool_artifacts(
+            tenant_id=uuid.uuid4(),
+            request_id="../../outside",
+            tool_slug="report_generator",
+            artifacts=[
+                ToolRunArtifact(
+                    type="file",
+                    name="../../secret.txt",
+                    meta={"content_base64": base64.b64encode(b"private").decode("utf-8")},
+                )
+            ],
+        )
+        stored_path = Path(persisted[0].path or "")
+        assert persisted[0].storage_provider == "railway_volume"
+        assert ".." not in stored_path.parts
+        absolute_path = service._local_provider.resolve_path(str(stored_path))
+        assert absolute_path.is_file()
+        assert os.stat(absolute_path).st_mode & 0o777 == 0o600
+
+        with pytest.raises(ValueError, match="size limit"):
+            service.persist_tool_artifacts(
+                tenant_id=uuid.uuid4(),
+                request_id="oversized",
+                tool_slug="report_generator",
+                artifacts=[
+                    ToolRunArtifact(
+                        type="file",
+                        name="large.txt",
+                        meta={"content_base64": base64.b64encode(b"123456789").decode("utf-8")},
+                    )
+                ],
+            )
+    finally:
+        db.close()
+        settings.ARTIFACT_STORAGE_PROVIDER = old_provider
+        settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH = old_local_path
+        settings.ARTIFACT_MAX_FILE_SIZE_BYTES = old_size_limit

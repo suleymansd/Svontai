@@ -328,6 +328,47 @@ def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
     assert not _openwa_qr_is_ready({"status": "initializing", "qrCode": None})
 
 
+def test_openwa_connected_state_clears_auto_rotation_guard(client):
+    from app.db.session import SessionLocal
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.onboarding_service import OnboardingService
+
+    _, tenant_id = _create_tenant(client)
+    db = SessionLocal()
+    try:
+        account = WhatsAppAccount(
+            tenant_id=UUID(tenant_id),
+            provider="openwa",
+            provider_session_id="rotated-session",
+            token_status="pending",
+            webhook_status="verified",
+            is_active=False,
+            is_verified=True,
+            provider_metadata_json={
+                "risk_accepted": True,
+                "auto_session_rotation_started_at": "2026-07-19T10:00:00",
+                "auto_session_rotated_at": "2026-07-19T10:00:01",
+                "auto_session_rotated_from": "old-session",
+                "auto_session_rotated_to": "rotated-session",
+            },
+        )
+        db.add(account)
+        db.commit()
+
+        OnboardingService(db).sync_openwa_webhook_event(
+            account,
+            "session.authenticated",
+            {"status": "ready", "phone": "905551112233"},
+        )
+        db.refresh(account)
+
+        assert account.is_active is True
+        assert account.provider_metadata_json["health_status"] == "connected"
+        assert not any(key.startswith("auto_session_rotat") for key in account.provider_metadata_json)
+    finally:
+        db.close()
+
+
 def test_openwa_logout_webhook_marks_account_for_new_qr(client):
     from app.db.session import SessionLocal
     from app.models.whatsapp_account import WhatsAppAccount

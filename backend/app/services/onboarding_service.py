@@ -275,7 +275,12 @@ class OnboardingService:
         session: Dict[str, Any] = {}
 
         if force_new_session and old_session_id:
-            await openwa_client.delete_session(old_session_id)
+            try:
+                await openwa_client.delete_session(old_session_id)
+            except OpenWAError as exc:
+                if exc.status_code != 404:
+                    raise
+            session_name = f"svontai-{tenant_id.hex[:16]}-{secrets.token_hex(4)}"
         elif old_session_id:
             try:
                 session = await openwa_client.get_session(old_session_id)
@@ -525,6 +530,10 @@ class OnboardingService:
                 key: value
                 for key, value in (account.provider_metadata_json or {}).items()
                 if key not in {
+                    "auto_session_rotation_started_at",
+                    "auto_session_rotated_at",
+                    "auto_session_rotated_from",
+                    "auto_session_rotated_to",
                     "qr_alerted_at",
                     "qr_required_at",
                     "reconnect_failure_count",

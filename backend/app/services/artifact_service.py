@@ -6,13 +6,16 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import logging
+import os
 import re
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import HTTPException, status
@@ -34,16 +37,18 @@ class StoredArtifact:
 
 
 class _LocalStorageProvider:
-    def __init__(self) -> None:
+    def __init__(self, provider_name: str = "local") -> None:
+        self.provider_name = provider_name
         base_path = Path(settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH or "storage/artifacts")
         if not base_path.is_absolute():
             base_path = Path.cwd() / base_path
-        self.base_path = base_path
+        self.base_path = base_path.resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.base_path.chmod(0o700)
 
     @staticmethod
     def _safe_name(name: str, fallback: str) -> str:
-        normalized = re.sub(r"[^a-zA-Z0-9._-]+", "_", (name or "").strip())
+        normalized = re.sub(r"[^a-zA-Z0-9._-]+", "_", (name or "").strip())[:180]
         normalized = normalized.strip("._")
         return normalized or fallback
 
@@ -56,13 +61,32 @@ class _LocalStorageProvider:
         file_name: str,
         data: bytes,
     ) -> StoredArtifact:
-        fallback_name = f"{tool_slug}-{uuid.uuid4().hex[:8]}.bin"
+        max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
+        if len(data) > max_size:
+            raise ValueError(f"Artifact exceeds the {max_size} byte size limit")
+
+        safe_request_id = self._safe_name(request_id, uuid.uuid4().hex)
+        fallback_name = f"{self._safe_name(tool_slug, 'artifact')}-{uuid.uuid4().hex[:8]}.bin"
         safe_name = self._safe_name(file_name, fallback_name)
-        relative = Path(str(tenant_id)) / request_id / safe_name
-        full_path = self.base_path / relative
+        relative = Path(str(tenant_id)) / safe_request_id / safe_name
+        full_path = (self.base_path / relative).resolve()
+        if self.base_path not in full_path.parents:
+            raise ValueError("Invalid artifact destination")
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(data)
-        return StoredArtifact(storage_provider="local", path=str(relative), url=None)
+        full_path.parent.chmod(0o700)
+
+        fd, temporary_name = tempfile.mkstemp(prefix=".upload-", dir=full_path.parent)
+        try:
+            with os.fdopen(fd, "wb") as temporary_file:
+                temporary_file.write(data)
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+            os.chmod(temporary_name, 0o600)
+            os.replace(temporary_name, full_path)
+        finally:
+            if os.path.exists(temporary_name):
+                os.unlink(temporary_name)
+        return StoredArtifact(storage_provider=self.provider_name, path=str(relative), url=None)
 
     def resolve_path(self, relative_path: str) -> Path:
         candidate = (self.base_path / relative_path).resolve()
@@ -163,7 +187,8 @@ class _SupabaseStorageProvider:
 class ArtifactService:
     def __init__(self, db: Session):
         self.db = db
-        self._local_provider = _LocalStorageProvider()
+        local_name = "railway_volume" if settings.ARTIFACT_STORAGE_PROVIDER == "railway_volume" else "local"
+        self._local_provider = _LocalStorageProvider(local_name)
         self._supabase_provider = _SupabaseStorageProvider()
 
     @staticmethod
@@ -194,7 +219,14 @@ class ArtifactService:
     def _decode_base64(value: str) -> bytes:
         if "," in value and value.strip().startswith("data:"):
             value = value.split(",", 1)[1]
-        return base64.b64decode(value, validate=True)
+        max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
+        max_encoded_size = ((max_size + 2) // 3) * 4 + 16
+        if len(value) > max_encoded_size:
+            raise ValueError(f"Artifact exceeds the {max_size} byte size limit")
+        decoded = base64.b64decode(value, validate=True)
+        if len(decoded) > max_size:
+            raise ValueError(f"Artifact exceeds the {max_size} byte size limit")
+        return decoded
 
     def _selected_storage_provider(self) -> str:
         return (settings.ARTIFACT_STORAGE_PROVIDER or "local").strip().lower()
@@ -208,6 +240,16 @@ class ArtifactService:
             except Exception as exc:
                 logger.warning("Supabase storage health check failed: %s", exc)
                 return False, "Supabase artifact storage erişimi doğrulanamadı."
+        if provider == "railway_volume":
+            try:
+                probe = self._local_provider.base_path / ".healthcheck"
+                probe.write_bytes(b"ok")
+                probe.chmod(0o600)
+                probe.unlink(missing_ok=True)
+                return True, "Railway kalıcı artifact volume bağlantısı doğrulandı."
+            except OSError as exc:
+                logger.warning("Railway volume health check failed: %s", exc)
+                return False, "Railway kalıcı artifact volume yazılabilir değil."
         return True, "Local artifact storage etkin."
 
     def _store_file_bytes(
@@ -260,7 +302,7 @@ class ArtifactService:
             if isinstance(raw_base64, str) and raw_base64.strip():
                 try:
                     file_bytes = self._decode_base64(raw_base64.strip())
-                except (binascii.Error, ValueError) as exc:
+                except binascii.Error as exc:
                     raise ValueError(f"Invalid artifact base64 payload at index {index}") from exc
 
                 stored = self._store_file_bytes(
@@ -335,22 +377,51 @@ class ArtifactService:
         artifact = self.verify_signed_download(artifact_id, expires, sig)
         remaining_seconds = max(60, expires - self._now_ts())
 
-        if artifact.storage_provider == "local" and artifact.path:
+        private_headers = {
+            "Cache-Control": "private, no-store, max-age=0",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        }
+
+        if artifact.storage_provider in {"local", "railway_volume"} and artifact.path:
             file_path = self._local_provider.resolve_path(artifact.path)
             if not file_path.exists():
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact file not found")
             media_type = (artifact.meta_json or {}).get("content_type")
-            return FileResponse(path=file_path, filename=artifact.name, media_type=media_type)
+            return FileResponse(
+                path=file_path,
+                filename=_LocalStorageProvider._safe_name(artifact.name, "artifact.bin"),
+                media_type=media_type,
+                headers=private_headers,
+            )
 
         if artifact.storage_provider == "supabase" and artifact.path:
             try:
                 signed = self._supabase_provider.create_signed_url(artifact.path, remaining_seconds)
-                return RedirectResponse(url=signed, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+                return RedirectResponse(url=signed, status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers=private_headers)
             except Exception as exc:
                 logger.warning("Supabase signed url generation failed: %s", exc)
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase signed URL failed")
 
         if artifact.url:
-            return RedirectResponse(url=artifact.url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+            parsed = urlparse(artifact.url)
+            host = (parsed.hostname or "").lower()
+            unsafe_host = not host or host == "localhost" or host.endswith(".local")
+            try:
+                address = ipaddress.ip_address(host)
+                unsafe_host = unsafe_host or any(
+                    (
+                        address.is_private,
+                        address.is_loopback,
+                        address.is_link_local,
+                        address.is_reserved,
+                        address.is_unspecified,
+                    )
+                )
+            except ValueError:
+                pass
+            if parsed.scheme != "https" or parsed.username or parsed.password or unsafe_host:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsafe artifact source URL")
+            return RedirectResponse(url=artifact.url, status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers=private_headers)
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact source unavailable")
