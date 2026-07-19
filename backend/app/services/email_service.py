@@ -9,10 +9,15 @@ import smtplib
 import base64
 from email.message import EmailMessage
 from typing import Sequence
+from urllib.parse import quote
 
 import httpx
 
 from app.core.config import settings
+from app.services.email_templates import (
+    render_operational_report_email,
+    render_verification_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,7 @@ class EmailService:
         subject: str,
         text_body: str,
         attachments: Sequence[dict] | None = None,
+        html_body: str | None = None,
     ) -> bool:
         """Send an email. Returns False when disabled or on failure."""
         normalized = EmailService._normalize_recipients(recipients)
@@ -52,6 +58,7 @@ class EmailService:
                 subject=subject,
                 text_body=text_body,
                 attachments=attachments,
+                html_body=html_body,
             )
 
         return EmailService._send_via_smtp(
@@ -59,6 +66,7 @@ class EmailService:
             subject=subject,
             text_body=text_body,
             attachments=attachments,
+            html_body=html_body,
         )
 
     @staticmethod
@@ -67,6 +75,7 @@ class EmailService:
         subject: str,
         text_body: str,
         attachments: Sequence[dict] | None = None,
+        html_body: str | None = None,
     ) -> bool:
         api_key = settings.RESEND_API_KEY.strip()
         if not api_key:
@@ -83,6 +92,8 @@ class EmailService:
             "subject": subject,
             "text": text_body,
         }
+        if html_body:
+            payload["html"] = html_body
         if attachments:
             payload["attachments"] = [
                 {
@@ -121,6 +132,7 @@ class EmailService:
         subject: str,
         text_body: str,
         attachments: Sequence[dict] | None = None,
+        html_body: str | None = None,
     ) -> bool:
         message = EmailMessage()
         from_name = settings.SMTP_FROM_NAME.strip()
@@ -129,6 +141,8 @@ class EmailService:
         message["To"] = ", ".join(recipients)
         message["Subject"] = subject
         message.set_content(text_body)
+        if html_body:
+            message.add_alternative(html_body, subtype="html")
         for item in attachments or []:
             raw_content = item.get("content")
             if not raw_content:
@@ -194,6 +208,23 @@ class EmailService:
         return EmailService.send_email(email, subject, text)
 
     @staticmethod
+    def send_operational_report_email(
+        recipients: str | Sequence[str],
+        report: dict,
+    ) -> bool:
+        dashboard_url = f"{settings.FRONTEND_URL.strip().rstrip('/')}/dashboard"
+        html = render_operational_report_email(
+            report=report,
+            dashboard_url=dashboard_url,
+        )
+        return EmailService.send_email(
+            recipients=recipients,
+            subject=str(report.get("title") or "SvontAI operasyon raporu"),
+            text_body=str(report.get("text") or report.get("summary") or ""),
+            html_body=html,
+        )
+
+    @staticmethod
     def send_password_changed_confirmation(email: str, full_name: str) -> bool:
         subject = "SvontAI şifreniz güncellendi"
         text = (
@@ -231,7 +262,18 @@ class EmailService:
             "Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayın.\n\n"
             "SvontAI"
         )
-        return EmailService.send_email(email, subject, text)
+        verification_url = (
+            f"{settings.FRONTEND_URL.strip().rstrip('/')}/verify-email"
+            f"?email={quote(email.strip())}"
+        )
+        html = render_verification_email(
+            full_name=full_name,
+            email=email,
+            code=code,
+            expire_minutes=expire_minutes,
+            verification_url=verification_url,
+        )
+        return EmailService.send_email(email, subject, text, html_body=html)
 
     @staticmethod
     def send_plan_change_email(
