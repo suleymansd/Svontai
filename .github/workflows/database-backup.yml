@@ -1,0 +1,138 @@
+name: Encrypted Database Backup
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  backup-and-restore-test:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: restore-test
+          POSTGRES_DB: restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      RESTORE_DATABASE_URL: postgresql://postgres:restore-test@127.0.0.1:5432/restore_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DATABASE_URL"
+          test -n "$BACKUP_ENCRYPTION_KEY"
+          case "$PRODUCTION_DATABASE_URL" in
+            postgresql://*|postgres://*) ;;
+            *) echo "Invalid production database URL scheme" >&2; exit 1 ;;
+          esac
+
+      - name: Create production dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            --env DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            --volume /tmp:/backup \
+            postgres:16-alpine \
+            sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges --file=/backup/svontai.dump'
+
+      - name: Encrypt backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$BACKUP_ENCRYPTION_KEY" \
+            --symmetric --cipher-algo AES256 \
+            --output /tmp/svontai.dump.gpg /tmp/svontai.dump
+
+      - name: Verify encrypted backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$BACKUP_ENCRYPTION_KEY" \
+            --decrypt --output /tmp/svontai.restore.dump /tmp/svontai.dump.gpg
+          test "$(sha256sum /tmp/svontai.dump | cut -d ' ' -f 1)" = \
+            "$(sha256sum /tmp/svontai.restore.dump | cut -d ' ' -f 1)"
+
+      - name: Restore into isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            --env RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+            --volume /tmp:/backup \
+            postgres:16-alpine \
+            sh -c 'pg_restore --dbname="$RESTORE_DATABASE_URL" --no-owner --no-privileges /backup/svontai.restore.dump'
+
+      - name: Verify restored schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            --env RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+            postgres:16-alpine \
+            sh -c 'test "$(psql "$RESTORE_DATABASE_URL" -Atc "select version_num from alembic_version")" = "041"'
+          docker run --rm --network host \
+            --env RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+            postgres:16-alpine \
+            sh -c 'psql "$RESTORE_DATABASE_URL" -Atc "select to_regclass('"'"'public.tenants'"'"'), to_regclass('"'"'public.users'"'"'), to_regclass('"'"'public.messages'"'"'), to_regclass('"'"'public.sales_inquiries'"'"')"' \
+            | grep -q "tenants"
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: svontai-postgres-${{ github.run_id }}
+          path: /tmp/svontai.dump.gpg
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Secure cleanup
+        if: always()
+        shell: bash
+        run: |
+          shred -u /tmp/svontai.dump /tmp/svontai.restore.dump 2>/dev/null || true
+
+      - name: Open backup incident
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[backup] PostgreSQL backup or restore verification failed'
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'backup',
+            })
+            const body = `Encrypted backup verification failed at ${new Date().toISOString()}. Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const existing = issues.find((issue) => issue.title === title)
+            if (existing) {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body })
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['backup'] })
+            }
