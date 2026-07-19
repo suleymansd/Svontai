@@ -516,10 +516,9 @@ def _send_operational_reports(period: str) -> None:
                 ))
                 email_sent = False
                 if (tenant.settings or {}).get("operational_report_email_enabled", True) is not False:
-                    email_sent = EmailService.send_email(
+                    email_sent = EmailService.send_operational_report_email(
                         recipients=tenant.owner.email,
-                        subject=report["title"],
-                        text_body=report["text"],
+                        report=report,
                     )
                 if result.get("sent", 0) > 0 or email_sent:
                     tenant.settings = {
