@@ -103,12 +103,13 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 
 ## Database backup and restore
 
-- `.github/workflows/database-backup.yml` creates a weekly PostgreSQL custom-format dump.
-- The dump is encrypted with AES-256 before upload; only the encrypted artifact is retained for 14 days.
-- Every run restores into an isolated PostgreSQL 16 service and verifies Alembic head `041` plus critical tables.
-- Repository secrets `PRODUCTION_DATABASE_URL` and `BACKUP_ENCRYPTION_KEY` are mandatory. Rotate the encryption key only after retaining any old key needed for existing backup artifacts.
-- Limit repository administrator access: GitHub Actions can read `PRODUCTION_DATABASE_URL`; never print or copy this value into logs or issues.
-- Run the workflow manually after every migration that changes critical data and at least once before launch.
+- Use Railway native volume backups for the production PostgreSQL service. Production database credentials must not be stored in GitHub Actions.
+- In Railway, open `Postgres > Backups`, create and lock a manual pre-launch backup, then enable daily, weekly, and monthly schedules.
+- Keep the Railway defaults as the minimum retention policy: daily backups for 6 days, weekly backups for 1 month, and monthly backups for 3 months.
+- Create another manual backup before a destructive migration or high-risk production change.
+- Run a restore drill before launch and after major schema changes. Restore the backup to a staged volume in the same Railway project, attach it to an isolated PostgreSQL service, and verify Alembic head `041` plus critical tables before deleting the staged copy.
+- Never overwrite the active production volume for a restore test. A production restore requires an incident record, an approved maintenance window, and a verified rollback point.
+- Restrict Railway project administration and backup restore permissions to production operators. Do not copy database URLs, backup contents, or credentials into logs, issues, chat, or CI artifacts.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
 - `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
 
