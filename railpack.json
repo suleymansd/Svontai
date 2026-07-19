@@ -1,6 +1,10 @@
 {
   "$schema": "https://schema.railpack.com",
   "provider": "python",
+  "buildAptPackages": [
+    "bison",
+    "flex"
+  ],
   "packages": {
     "postgres": "17"
   }
