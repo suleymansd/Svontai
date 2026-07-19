@@ -83,12 +83,29 @@
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STORAGE_BUCKET`
+- `DATABASE_BACKUP_ENABLED`
+- `DATABASE_BACKUP_INTERVAL_SECONDS`
+- `DATABASE_BACKUP_RETENTION_DAYS`
+- `DATABASE_BACKUP_VERIFY_RESTORE`
+- `DATABASE_BACKUP_ENCRYPTION_KEY_B64`
+- `DATABASE_BACKUP_R2_ENDPOINT_URL`
+- `DATABASE_BACKUP_R2_ACCESS_KEY_ID`
+- `DATABASE_BACKUP_R2_SECRET_ACCESS_KEY`
+- `DATABASE_BACKUP_R2_BUCKET`
+- `DATABASE_BACKUP_R2_PREFIX`
 
 `ARTIFACT_STORAGE_PROVIDER=local` yalnızca geliştirme içindir. Railway production'da
 `railway_volume` seçildiğinde `ARTIFACT_STORAGE_LOCAL_BASE_PATH`, Railway tarafından
 sağlanan `RAILWAY_VOLUME_MOUNT_PATH` içinde olmalıdır. Birden fazla backend replica
 kullanılacaksa paylaşılan object storage için `supabase` seçilmelidir. Artifact indirme
 bağlantıları HMAC imzalı, kısa ömürlü ve cache kapalıdır.
+
+Production database backups run inside the Railway worker and upload only
+AES-256-GCM ciphertext to a private Cloudflare R2 bucket. Keep `r2.dev` public
+access disabled and issue a bucket-scoped Object Read & Write token. Generate
+`DATABASE_BACKUP_ENCRYPTION_KEY_B64` as 32 random bytes encoded with base64;
+store it separately from R2 credentials and never rotate it before old backups
+have expired or been re-encrypted.
 
 ## Production defaults
 - `SERVICE_ROLE=api` web servisi için, `SERVICE_ROLE=worker` dedicated worker için zorunludur.

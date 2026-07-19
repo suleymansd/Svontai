@@ -3,6 +3,7 @@ Application configuration using Pydantic Settings.
 All environment variables are loaded and validated here.
 """
 
+import base64
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -176,6 +177,19 @@ class Settings(BaseSettings):
     # External error tracking (Sentry free tier is sufficient for launch).
     SENTRY_DSN: str = ""
     SENTRY_TRACES_SAMPLE_RATE: float = 0.05
+
+    # Encrypted PostgreSQL backups. The worker dumps over Railway's private
+    # network and uploads only AES-256-GCM ciphertext to a private R2 bucket.
+    DATABASE_BACKUP_ENABLED: bool = False
+    DATABASE_BACKUP_INTERVAL_SECONDS: int = 86400
+    DATABASE_BACKUP_RETENTION_DAYS: int = 30
+    DATABASE_BACKUP_VERIFY_RESTORE: bool = True
+    DATABASE_BACKUP_ENCRYPTION_KEY_B64: str = ""
+    DATABASE_BACKUP_R2_ENDPOINT_URL: str = ""
+    DATABASE_BACKUP_R2_ACCESS_KEY_ID: str = ""
+    DATABASE_BACKUP_R2_SECRET_ACCESS_KEY: str = ""
+    DATABASE_BACKUP_R2_BUCKET: str = ""
+    DATABASE_BACKUP_R2_PREFIX: str = "postgres"
     
     # ===========================================
     # n8n Workflow Engine Integration
@@ -405,6 +419,28 @@ class Settings(BaseSettings):
             missing_real_time_config.append("RATE_LIMIT_BACKEND=redis/REDIS_URL")
         if not self.SENTRY_DSN.strip():
             missing_real_time_config.append("SENTRY_DSN")
+        if self.DATABASE_BACKUP_ENABLED:
+            if self.DATABASE_BACKUP_INTERVAL_SECONDS < 3600:
+                missing_real_time_config.append("DATABASE_BACKUP_INTERVAL_SECONDS>=3600")
+            if self.DATABASE_BACKUP_RETENTION_DAYS < 7:
+                missing_real_time_config.append("DATABASE_BACKUP_RETENTION_DAYS>=7")
+            if not self.DATABASE_BACKUP_R2_ENDPOINT_URL.startswith("https://"):
+                missing_real_time_config.append("https DATABASE_BACKUP_R2_ENDPOINT_URL")
+            if (
+                not self.DATABASE_BACKUP_R2_ACCESS_KEY_ID.strip()
+                or not self.DATABASE_BACKUP_R2_SECRET_ACCESS_KEY.strip()
+                or not self.DATABASE_BACKUP_R2_BUCKET.strip()
+            ):
+                missing_real_time_config.append("R2 backup bucket credentials")
+            try:
+                backup_key = base64.b64decode(
+                    self.DATABASE_BACKUP_ENCRYPTION_KEY_B64,
+                    validate=True,
+                )
+            except Exception:
+                backup_key = b""
+            if len(backup_key) != 32:
+                missing_real_time_config.append("32-byte DATABASE_BACKUP_ENCRYPTION_KEY_B64")
         if self.WEBHOOK_PUBLIC_URL.startswith("http://localhost") or self.BACKEND_URL.startswith("http://localhost"):
             missing_real_time_config.append("public WEBHOOK_PUBLIC_URL/BACKEND_URL")
         if self.FRONTEND_URL.startswith("http://localhost"):
