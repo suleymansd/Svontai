@@ -104,7 +104,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 ## Database backup and restore
 
 - The Railway worker creates a PostgreSQL custom-format dump over the private network. The dump is catalog-checked, encrypted with AES-256-GCM, decrypted, checksum-verified, and restored into a randomly named temporary database before upload.
-- Railway currently builds from the repository root with Railpack. Keep `boto3` in the root `requirements.txt` and `postgresql-client` in `railpack.json`; the worker must have `pg_dump`, `pg_restore`, `psql`, `createdb`, and `dropdb` at runtime.
+- Railway currently builds from the repository root with Railpack. Keep `boto3` in the root `requirements.txt` and Mise `postgres=17` in `railpack.json`; the worker must have PostgreSQL 17 `pg_dump`, `pg_restore`, `psql`, `createdb`, and `dropdb` at runtime.
 - Only the authenticated ciphertext is uploaded to the private Cloudflare R2 bucket. Keep public `r2.dev` access disabled and restrict the API token to Object Read & Write on the backup bucket only.
 - The worker verifies the uploaded object size and SHA-256 metadata. Backups older than `DATABASE_BACKUP_RETENTION_DAYS` are removed automatically; production defaults to 30 days.
 - The restore test checks the Alembic heads and critical tables, then force-deletes only the randomly named temporary restore database. It never restores over the active production database.
