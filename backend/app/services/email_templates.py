@@ -103,6 +103,50 @@ def render_verification_email(
     )
 
 
+def render_password_reset_email(
+    *,
+    full_name: str,
+    email: str,
+    code: str,
+    expire_minutes: int,
+    reset_url: str,
+) -> str:
+    content = f"""
+      <p style="margin:0 0 12px;font-size:16px;line-height:25px;color:#344054;">Merhaba {_safe(full_name)},</p>
+      <p style="margin:0 0 24px;font-size:15px;line-height:24px;color:#475467;">SvontAI hesabınızın şifresini yenilemek için bir istek aldık. Devam etmek için aşağıdaki tek kullanımlık kodu girin.</p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 20px;">
+        <tr>
+          <td align="center" style="padding:24px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;">
+            <div style="font-size:11px;line-height:16px;font-weight:700;color:#0e7490;text-transform:uppercase;">Şifre sıfırlama kodunuz</div>
+            <div style="margin-top:8px;font-family:'Courier New',monospace;font-size:36px;line-height:44px;font-weight:700;letter-spacing:8px;color:#101828;">{_safe(code)}</div>
+            <div style="margin-top:8px;font-size:13px;line-height:18px;color:#475467;">Kod {_safe(expire_minutes)} dakika geçerlidir ve yalnızca bir kez kullanılabilir.</div>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 24px;">
+        <tr>
+          <td align="center" bgcolor="#0e7490" style="border-radius:6px;">
+            <a href="{_safe(reset_url)}" style="display:inline-block;padding:13px 22px;font-size:14px;line-height:20px;font-weight:700;color:#ffffff;text-decoration:none;">Şifre sıfırlama ekranını aç</a>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="padding:14px 16px;background:#fffaeb;border-left:3px solid #f79009;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#475467;"><strong style="color:#7a2e0e;">Hesabınızı koruyun:</strong> Bu kod {_safe(email)} adresi için üretildi. Kodu kimseyle paylaşmayın; SvontAI ekibi sizden kodu istemez.</p>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:20px 0 0;font-size:13px;line-height:20px;color:#667085;">Bu isteği siz oluşturmadıysanız herhangi bir işlem yapmanız gerekmez. Kod süresi dolduğunda geçersiz olacaktır.</p>
+    """
+    return _layout(
+        preheader="SvontAI şifre yenileme kodunuz hazır.",
+        eyebrow="Hesap kurtarma",
+        title="Şifrenizi güvenle yenileyin",
+        content=content,
+    )
+
+
 def _metric_cell(label: str, value: Any, accent: str = "#0e7490") -> str:
     return f"""
       <td width="50%" valign="top" style="padding:5px;">

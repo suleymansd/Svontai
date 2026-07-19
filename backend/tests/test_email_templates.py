@@ -3,6 +3,7 @@ from app.services import email_service as email_service_module
 from app.services.email_service import EmailService
 from app.services.email_templates import (
     render_operational_report_email,
+    render_password_reset_email,
     render_verification_email,
 )
 
@@ -60,6 +61,22 @@ def test_operational_report_template_uses_real_metrics():
     assert "https://svontai.example/dashboard" in html
 
 
+def test_password_reset_template_has_security_context_and_escapes_content():
+    html = render_password_reset_email(
+        full_name="Doğüncü <Admin>",
+        email="owner@example.com",
+        code="438190",
+        expire_minutes=10,
+        reset_url="https://svontai.example/forgot-password?email=owner%40example.com",
+    )
+
+    assert "Şifrenizi güvenle yenileyin" in html
+    assert "438190" in html
+    assert "yalnızca bir kez kullanılabilir" in html
+    assert "Doğüncü &lt;Admin&gt;" in html
+    assert "https://svontai.example/forgot-password?email=owner%40example.com" in html
+
+
 def test_resend_payload_contains_plain_text_and_html(monkeypatch):
     captured = {}
 
@@ -110,3 +127,27 @@ def test_operational_report_sender_preserves_plain_text_fallback(monkeypatch):
     assert captured["text_body"] == "Plain text report"
     assert "Kontrol panelini aç" in captured["html_body"]
     assert captured["subject"] == "Doğüncü İşletmesi - SvontAI Bugün Raporu"
+
+
+def test_password_reset_sender_adds_html_and_prefilled_reset_url(monkeypatch):
+    captured = {}
+
+    def fake_send_email(*args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://svontai.example")
+    monkeypatch.setattr(EmailService, "send_email", staticmethod(fake_send_email))
+
+    sent = EmailService.send_password_reset_code(
+        email="owner+test@example.com",
+        full_name="Doğüncü",
+        code="438190",
+        expire_minutes=10,
+    )
+
+    assert sent is True
+    assert "438190" in captured["html_body"]
+    assert "email=owner%2Btest%40example.com" in captured["html_body"]
+    assert captured["args"][1] == "SvontAI şifre sıfırlama kodunuz"
