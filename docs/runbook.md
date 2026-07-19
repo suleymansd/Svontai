@@ -93,6 +93,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 ### Deployment checks
 - Railway web service command must run `alembic upgrade head` before API start.
 - Railway worker service must run `python -m app.worker`.
+- Railway web service must set `SERVICE_ROLE=api`; worker must set `SERVICE_ROLE=worker`.
 - Railway web service must set `RUN_SCHEDULED_JOBS_IN_WEB=false`; the worker owns scheduled jobs.
 - Railway backend must mount a persistent volume and use `ARTIFACT_STORAGE_PROVIDER=railway_volume`; local ephemeral storage is forbidden in production.
 - Artifact volume paths use private directory/file permissions (`0700`/`0600`) and signed download URLs should expire in 300 seconds.

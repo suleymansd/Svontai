@@ -359,6 +359,21 @@ class TestProductionSecretValidation:
                 RAILWAY_VOLUME_MOUNT_PATH="/app/backend/storage",
             ))
 
+    def test_production_worker_delegates_artifact_storage_to_api(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            SERVICE_ROLE="worker",
+            ARTIFACT_STORAGE_PROVIDER="local",
+            ARTIFACT_STORAGE_LOCAL_BASE_PATH="storage/artifacts",
+            RAILWAY_VOLUME_MOUNT_PATH="",
+            ARTIFACT_SIGNING_SECRET="",
+            SUPABASE_URL="",
+            SUPABASE_SERVICE_ROLE_KEY="",
+        ))
+
+        assert configured.SERVICE_ROLE == "worker"
+
     def test_gemini_key_satisfies_production_ai_requirement(self):
         from app.core.config import Settings
 

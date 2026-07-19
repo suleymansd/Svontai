@@ -377,6 +377,13 @@ class AutopilotService:
         return self._item("email", "missing", 60, "E-posta gönderimi kapalı; sistem içi bildirimler çalışır.", repairable=False)
 
     def _check_artifacts(self, tenant: Tenant) -> dict:
+        if settings.SERVICE_ROLE == "worker":
+            return self._item(
+                "artifacts",
+                "connected",
+                90,
+                "Artifact storage sağlık kontrolü kalıcı volume bağlı API servisine devredildi.",
+            )
         if settings.ARTIFACT_STORAGE_PROVIDER in {"supabase", "railway_volume"}:
             if settings.ARTIFACT_STORAGE_PROVIDER == "railway_volume":
                 ready = bool(settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH and settings.ARTIFACT_SIGNING_SECRET)
