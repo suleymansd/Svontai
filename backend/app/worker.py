@@ -233,6 +233,59 @@ def _sync_openwa_sessions() -> None:
                             previous_failures=previous_failures,
                             previous_health=str(previous_metadata.get("health_status") or ""),
                         )
+                        rotation_already_attempted = bool(
+                            previous_metadata.get("auto_session_rotation_started_at")
+                            or previous_metadata.get("auto_session_rotated_at")
+                        )
+                        if recovery_action == "reconnect" and not rotation_already_attempted:
+                            old_session_id = account.provider_session_id
+                            rotation_started_at = utc_now_naive().isoformat()
+                            account.provider_metadata_json = {
+                                **(account.provider_metadata_json or {}),
+                                "auto_session_rotation_started_at": rotation_started_at,
+                                "auto_session_rotated_from": old_session_id,
+                            }
+                            db.commit()
+                            result = asyncio.run(
+                                service.reconnect_openwa(
+                                    account.tenant_id,
+                                    force_new_session=True,
+                                )
+                            )
+                            db.refresh(account)
+                            account.provider_metadata_json = {
+                                **(account.provider_metadata_json or {}),
+                                "auto_session_rotated_at": utc_now_naive().isoformat(),
+                                "auto_session_rotated_from": old_session_id,
+                                "auto_session_rotated_to": account.provider_session_id,
+                            }
+                            db.commit()
+                            SystemEventService(db).log(
+                                tenant_id=str(account.tenant_id),
+                                source="openwa",
+                                level="warn",
+                                code="OPENWA_SESSION_AUTO_ROTATED",
+                                message="Bozuk WhatsApp oturumu silindi ve yeni QR oturumu oluşturuldu.",
+                                meta_json={
+                                    "previous_session_id": old_session_id,
+                                    "session_id": account.provider_session_id,
+                                },
+                            )
+                            asyncio.run(PushNotificationService(db).send_to_tenant(
+                                tenant_id=account.tenant_id,
+                                event_type="integration_alert",
+                                title="Yeni WhatsApp QR kodu hazır",
+                                body="Eski oturum güvenli şekilde yenilendi. Telefonunuzdan yeni QR kodunu tarayın.",
+                                url="/dashboard/setup/whatsapp",
+                                tag="svontai-openwa-session-rotated",
+                            ))
+                            recovery_action = _openwa_recovery_action(
+                                status=str(result.get("status") or "unknown"),
+                                connected=bool(result.get("connected")),
+                                was_active=was_active,
+                                previous_failures=previous_failures,
+                                previous_health=str(previous_metadata.get("health_status") or ""),
+                            )
 
                     if recovery_action == "qr_required":
                         _mark_openwa_qr_required(db, account)

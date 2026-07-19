@@ -75,9 +75,20 @@
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_IDS`
 - `ARTIFACT_STORAGE_PROVIDER`
+- `ARTIFACT_STORAGE_LOCAL_BASE_PATH`
+- `RAILWAY_VOLUME_MOUNT_PATH`
+- `ARTIFACT_MAX_FILE_SIZE_BYTES`
+- `ARTIFACT_SIGNED_URL_EXPIRES_SECONDS`
+- `ARTIFACT_SIGNING_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STORAGE_BUCKET`
+
+`ARTIFACT_STORAGE_PROVIDER=local` yalnızca geliştirme içindir. Railway production'da
+`railway_volume` seçildiğinde `ARTIFACT_STORAGE_LOCAL_BASE_PATH`, Railway tarafından
+sağlanan `RAILWAY_VOLUME_MOUNT_PATH` içinde olmalıdır. Birden fazla backend replica
+kullanılacaksa paylaşılan object storage için `supabase` seçilmelidir. Artifact indirme
+bağlantıları HMAC imzalı, kısa ömürlü ve cache kapalıdır.
 
 ## Production defaults
 - `ENVIRONMENT=prod` rejects insecure default JWT, n8n and voice gateway secrets at startup.

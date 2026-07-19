@@ -5,6 +5,7 @@ All environment variables are loaded and validated here.
 
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Optional
 from urllib.parse import quote_plus
 
@@ -230,10 +231,12 @@ class Settings(BaseSettings):
     # ===========================================
     # Artifact Storage (Tool outputs)
     # ===========================================
-    ARTIFACT_STORAGE_PROVIDER: Literal["local", "supabase"] = "local"
+    ARTIFACT_STORAGE_PROVIDER: Literal["local", "railway_volume", "supabase"] = "local"
     ARTIFACT_STORAGE_LOCAL_BASE_PATH: str = "storage/artifacts"
-    ARTIFACT_SIGNED_URL_EXPIRES_SECONDS: int = 3600
+    ARTIFACT_MAX_FILE_SIZE_BYTES: int = 25 * 1024 * 1024
+    ARTIFACT_SIGNED_URL_EXPIRES_SECONDS: int = 300
     ARTIFACT_SIGNING_SECRET: str = ""
+    RAILWAY_VOLUME_MOUNT_PATH: str = ""
 
     # Supabase Storage (v1 real provider for Railway)
     SUPABASE_URL: str = ""
@@ -377,15 +380,25 @@ class Settings(BaseSettings):
             missing_real_time_config.append("N8N_BASE_URL/N8N_INCOMING_WORKFLOW_ID")
         if not self.N8N_ERROR_WEBHOOK_SECRET.strip():
             missing_real_time_config.append("N8N_ERROR_WEBHOOK_SECRET")
-        if self.ARTIFACT_STORAGE_PROVIDER != "supabase":
-            missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=supabase")
-        if (
-            not self.SUPABASE_URL.strip()
-            or not self.SUPABASE_SERVICE_ROLE_KEY.strip()
-            or not self.SUPABASE_STORAGE_BUCKET.strip()
-            or not self.ARTIFACT_SIGNING_SECRET.strip()
-        ):
-            missing_real_time_config.append("Supabase artifact storage envs")
+        if self.ARTIFACT_STORAGE_PROVIDER == "supabase":
+            if (
+                not self.SUPABASE_URL.strip()
+                or not self.SUPABASE_SERVICE_ROLE_KEY.strip()
+                or not self.SUPABASE_STORAGE_BUCKET.strip()
+                or not self.ARTIFACT_SIGNING_SECRET.strip()
+            ):
+                missing_real_time_config.append("Supabase artifact storage envs")
+        elif self.ARTIFACT_STORAGE_PROVIDER == "railway_volume":
+            artifact_path = Path(self.ARTIFACT_STORAGE_LOCAL_BASE_PATH).expanduser()
+            mount_path = Path(self.RAILWAY_VOLUME_MOUNT_PATH).expanduser() if self.RAILWAY_VOLUME_MOUNT_PATH else None
+            if not artifact_path.is_absolute() or not self.ARTIFACT_SIGNING_SECRET.strip():
+                missing_real_time_config.append("absolute ARTIFACT_STORAGE_LOCAL_BASE_PATH/ARTIFACT_SIGNING_SECRET")
+            if not mount_path or not mount_path.is_absolute():
+                missing_real_time_config.append("RAILWAY_VOLUME_MOUNT_PATH")
+            elif artifact_path != mount_path and mount_path not in artifact_path.parents:
+                missing_real_time_config.append("artifact path must be inside RAILWAY_VOLUME_MOUNT_PATH")
+        else:
+            missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=railway_volume or supabase")
         if self.RATE_LIMIT_BACKEND != "redis" or not self.REDIS_URL.strip():
             missing_real_time_config.append("RATE_LIMIT_BACKEND=redis/REDIS_URL")
         if not self.SENTRY_DSN.strip():

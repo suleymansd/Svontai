@@ -94,6 +94,8 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Railway web service command must run `alembic upgrade head` before API start.
 - Railway worker service must run `python -m app.worker`.
 - Railway web service must set `RUN_SCHEDULED_JOBS_IN_WEB=false`; the worker owns scheduled jobs.
+- Railway backend must mount a persistent volume and use `ARTIFACT_STORAGE_PROVIDER=railway_volume`; local ephemeral storage is forbidden in production.
+- Artifact volume paths use private directory/file permissions (`0700`/`0600`) and signed download URLs should expire in 300 seconds.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
 - Alembic head must include revision `041`.
@@ -104,6 +106,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - The dump is encrypted with AES-256 before upload; only the encrypted artifact is retained for 14 days.
 - Every run restores into an isolated PostgreSQL 16 service and verifies Alembic head `041` plus critical tables.
 - Repository secrets `PRODUCTION_DATABASE_URL` and `BACKUP_ENCRYPTION_KEY` are mandatory. Rotate the encryption key only after retaining any old key needed for existing backup artifacts.
+- Limit repository administrator access: GitHub Actions can read `PRODUCTION_DATABASE_URL`; never print or copy this value into logs or issues.
 - Run the workflow manually after every migration that changes critical data and at least once before launch.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
 - `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.

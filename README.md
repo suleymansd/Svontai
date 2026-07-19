@@ -304,9 +304,12 @@ N8N_TO_SVONTAI_SECRET=change-this-to-a-secure-random-string-n8n-to-svontai
 TOOL_RUNNER_DEBUG=false
 
 # Tool Marketplace v1 - Artifact storage
-ARTIFACT_STORAGE_PROVIDER=local
-ARTIFACT_STORAGE_LOCAL_BASE_PATH=storage/artifacts
-ARTIFACT_SIGNED_URL_EXPIRES_SECONDS=3600
+# Dev only: local. Railway production: railway_volume. Multi-replica: supabase.
+ARTIFACT_STORAGE_PROVIDER=railway_volume
+ARTIFACT_STORAGE_LOCAL_BASE_PATH=/app/backend/storage/artifacts
+RAILWAY_VOLUME_MOUNT_PATH=/app/backend/storage
+ARTIFACT_MAX_FILE_SIZE_BYTES=26214400
+ARTIFACT_SIGNED_URL_EXPIRES_SECONDS=300
 ARTIFACT_SIGNING_SECRET=change-this-to-a-secure-random-string-artifacts
 
 # If ARTIFACT_STORAGE_PROVIDER=supabase

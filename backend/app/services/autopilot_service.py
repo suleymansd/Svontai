@@ -377,14 +377,19 @@ class AutopilotService:
         return self._item("email", "missing", 60, "E-posta gönderimi kapalı; sistem içi bildirimler çalışır.", repairable=False)
 
     def _check_artifacts(self, tenant: Tenant) -> dict:
-        if settings.ARTIFACT_STORAGE_PROVIDER == "supabase":
-            ready = bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY and settings.SUPABASE_STORAGE_BUCKET)
+        if settings.ARTIFACT_STORAGE_PROVIDER in {"supabase", "railway_volume"}:
+            if settings.ARTIFACT_STORAGE_PROVIDER == "railway_volume":
+                ready = bool(settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH and settings.ARTIFACT_SIGNING_SECRET)
+                missing_message = "Railway kalıcı artifact volume eksik yapılandırılmış."
+            else:
+                ready = bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY and settings.SUPABASE_STORAGE_BUCKET)
+                missing_message = "Supabase artifact storage eksik yapılandırılmış."
             if ready:
                 healthy, message = ArtifactService(self.db).check_storage_health()
                 if healthy:
                     return self._item("artifacts", "connected", 95, message)
                 return self._item("artifacts", "missing", 40, message)
-            return self._item("artifacts", "missing", 50, "Supabase artifact storage eksik yapılandırılmış.")
+            return self._item("artifacts", "missing", 50, missing_message)
         return self._item("artifacts", "connected", 75, "Local artifact storage etkin.")
 
     def _check_voice(self, tenant: Tenant) -> dict:
