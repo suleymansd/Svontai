@@ -16,6 +16,7 @@ import httpx
 from app.core.config import settings
 from app.services.email_templates import (
     render_operational_report_email,
+    render_password_reset_email,
     render_verification_email,
 )
 
@@ -205,7 +206,18 @@ class EmailService:
             "Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayın.\n\n"
             "SvontAI"
         )
-        return EmailService.send_email(email, subject, text)
+        reset_url = (
+            f"{settings.FRONTEND_URL.strip().rstrip('/')}/forgot-password"
+            f"?email={quote(email.strip())}"
+        )
+        html = render_password_reset_email(
+            full_name=full_name,
+            email=email,
+            code=code,
+            expire_minutes=expire_minutes,
+            reset_url=reset_url,
+        )
+        return EmailService.send_email(email, subject, text, html_body=html)
 
     @staticmethod
     def send_operational_report_email(

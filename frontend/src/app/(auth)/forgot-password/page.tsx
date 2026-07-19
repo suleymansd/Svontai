@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, Loader2, Mail, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,15 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
+
+  useEffect(() => {
+    const emailFromLink = new URLSearchParams(window.location.search).get('email')?.trim()
+    if (emailFromLink) {
+      setEmail(emailFromLink)
+      setStep('confirm')
+      setInfoMessage('Şifre sıfırlama kodunuzu ve yeni şifrenizi girin.')
+    }
+  }, [])
 
   const requestCode = async (event: React.FormEvent) => {
     event.preventDefault()
