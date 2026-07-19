@@ -31,6 +31,7 @@ from app.services.analytics_service import AnalyticsService
 from app.services.push_notification_service import PushNotificationService
 from app.services.email_service import EmailService
 from app.services.google_calendar_service import GoogleCalendarService
+from app.services.database_backup_service import DatabaseBackupService
 from app.services.openwa_client import OpenWAError, openwa_client
 from zoneinfo import ZoneInfo
 
@@ -538,6 +539,32 @@ def _send_weekly_operational_reports() -> None:
     _send_operational_reports("weekly")
 
 
+def _run_database_backup() -> None:
+    if not settings.DATABASE_BACKUP_ENABLED:
+        return
+    db = SessionLocal()
+    try:
+        interval = max(3600, settings.DATABASE_BACKUP_INTERVAL_SECONDS)
+        with scheduled_job_lock(
+            db,
+            "encrypted_database_backup",
+            interval,
+            lock_seconds=min(interval, 4 * 3600),
+        ) as job:
+            if job is None:
+                return
+            result = DatabaseBackupService().run()
+            logger.info(
+                "database_backup uploaded key=%s bytes=%s restore_verified=%s expired_removed=%s",
+                result.object_key,
+                result.encrypted_size,
+                result.restore_verified,
+                result.expired_removed,
+            )
+    finally:
+        db.close()
+
+
 async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
@@ -551,6 +578,7 @@ async def main() -> None:
         asyncio.create_task(_run_every("google_calendar_appointment_sync", 120, _sync_google_calendar_appointments)),
         asyncio.create_task(_run_every("daily_operational_report", 3600, _send_daily_operational_reports)),
         asyncio.create_task(_run_every("weekly_operational_push", 3600, _send_weekly_operational_reports)),
+        asyncio.create_task(_run_every("encrypted_database_backup", 300, _run_database_backup)),
     ]
     try:
         await asyncio.gather(*tasks)

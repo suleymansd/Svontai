@@ -5,6 +5,7 @@ Tests for n8n integration features:
 - Production secret validation
 """
 
+import base64
 import pytest
 import uuid
 import asyncio
@@ -373,6 +374,33 @@ class TestProductionSecretValidation:
         ))
 
         assert configured.SERVICE_ROLE == "worker"
+
+    def test_production_accepts_complete_private_r2_backup_config(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            SERVICE_ROLE="worker",
+            DATABASE_BACKUP_ENABLED=True,
+            DATABASE_BACKUP_ENCRYPTION_KEY_B64=base64.b64encode(b"k" * 32).decode(),
+            DATABASE_BACKUP_R2_ENDPOINT_URL="https://account.r2.cloudflarestorage.com",
+            DATABASE_BACKUP_R2_ACCESS_KEY_ID="bucket-access-key",
+            DATABASE_BACKUP_R2_SECRET_ACCESS_KEY="bucket-secret-key",
+            DATABASE_BACKUP_R2_BUCKET="svontai-backups",
+        ))
+
+        assert configured.DATABASE_BACKUP_ENABLED is True
+
+    def test_production_rejects_incomplete_r2_backup_config(self):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError, match="R2 backup bucket credentials"):
+            Settings(**_prod_real_service_settings(
+                SERVICE_ROLE="worker",
+                DATABASE_BACKUP_ENABLED=True,
+                DATABASE_BACKUP_ENCRYPTION_KEY_B64=base64.b64encode(b"k" * 32).decode(),
+                DATABASE_BACKUP_R2_ENDPOINT_URL="https://account.r2.cloudflarestorage.com",
+            ))
 
     def test_gemini_key_satisfies_production_ai_requirement(self):
         from app.core.config import Settings

@@ -5,9 +5,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Healthcheck uses curl.
+# Healthcheck uses curl. The PostgreSQL client is required by the in-Railway
+# backup worker; the current slim base provides a client compatible with prod.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
