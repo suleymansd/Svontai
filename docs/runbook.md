@@ -104,8 +104,9 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 ## Database backup and restore
 
 - Railway native volume backups are preferred when the project is upgraded to Pro. Until then, `.github/workflows/database-backup.yml` creates a daily encrypted PostgreSQL dump and immediately tests a restore into an isolated PostgreSQL 16 service.
-- `PRODUCTION_DATABASE_URL` and `BACKUP_ENCRYPTION_KEY` must exist only in the protected `production-backup` GitHub Environment. Do not create repository-level copies.
-- Only the GPG-encrypted dump is uploaded. It is retained for 7 days; plaintext dump files are removed from the ephemeral runner after every run.
+- `PRODUCTION_DATABASE_URL`, `BACKUP_ENCRYPTION_KEY`, and the dedicated `GOOGLE_DRIVE_BACKUP_*` OAuth credentials must exist only in the protected `production-backup` GitHub Environment. Do not create repository-level copies.
+- The Google credential must grant only `https://www.googleapis.com/auth/drive.file`; never reuse a tenant token that also grants Gmail, Calendar, or Sheets access.
+- Only the GPG-encrypted dump is uploaded. GitHub retains it for 7 days and Google Drive mirrors it under `SvontAI Backups` for 30 days; plaintext dump files are removed from the ephemeral runner after every run.
 - The restore test must verify Alembic head `041` and critical tables. A failed dump, decrypt, restore, or schema check opens or updates the backup incident.
 - Run the workflow manually before launch and before a destructive migration or high-risk production change. Never restore over the active production database during a drill.
 - When Railway Pro is enabled, activate native daily, weekly, and monthly backups, complete an isolated restore drill, then retire the external workflow and delete both GitHub Environment secrets.

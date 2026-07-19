@@ -35,6 +35,9 @@ jobs:
     env:
       PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      GOOGLE_DRIVE_BACKUP_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_CLIENT_ID }}
+      GOOGLE_DRIVE_BACKUP_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_BACKUP_CLIENT_SECRET }}
+      GOOGLE_DRIVE_BACKUP_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_BACKUP_REFRESH_TOKEN }}
       RESTORE_DATABASE_URL: postgresql://postgres:restore-test@127.0.0.1:5432/restore_test
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +48,9 @@ jobs:
           set -euo pipefail
           test -n "$PRODUCTION_DATABASE_URL"
           test -n "$BACKUP_ENCRYPTION_KEY"
+          test -n "$GOOGLE_DRIVE_BACKUP_CLIENT_ID"
+          test -n "$GOOGLE_DRIVE_BACKUP_CLIENT_SECRET"
+          test -n "$GOOGLE_DRIVE_BACKUP_REFRESH_TOKEN"
           case "$PRODUCTION_DATABASE_URL" in
             postgresql://*|postgres://*) ;;
             *) echo "Invalid production database URL scheme" >&2; exit 1 ;;
@@ -110,6 +116,23 @@ jobs:
           path: /tmp/svontai.dump.gpg
           retention-days: 7
           if-no-files-found: error
+
+      - name: Mirror encrypted backup to Google Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_name="svontai-postgres-${GITHUB_RUN_ID}-$(date -u +%Y%m%dT%H%M%SZ).dump.gpg"
+          for delay in 0 10 30; do
+            sleep "$delay"
+            if python scripts/upload_backup_to_google_drive.py \
+              /tmp/svontai.dump.gpg \
+              --name "$backup_name" \
+              --folder "SvontAI Backups" \
+              --retention-days 30; then
+              exit 0
+            fi
+          done
+          exit 1
 
       - name: Secure cleanup
         if: always()
