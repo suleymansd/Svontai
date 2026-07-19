@@ -91,6 +91,7 @@ kullanılacaksa paylaşılan object storage için `supabase` seçilmelidir. Arti
 bağlantıları HMAC imzalı, kısa ömürlü ve cache kapalıdır.
 
 ## Production defaults
+- `SERVICE_ROLE=api` web servisi için, `SERVICE_ROLE=worker` dedicated worker için zorunludur.
 - `ENVIRONMENT=prod` rejects insecure default JWT, n8n and voice gateway secrets at startup.
 - `USE_N8N` defaults to `false`; set `N8N_BASE_URL` explicitly for Railway/n8n deployments.
 - `ALLOW_UNPAID_PLAN_UPGRADES` is forced off in production.
