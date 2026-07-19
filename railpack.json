@@ -7,5 +7,10 @@
   ],
   "packages": {
     "postgres": "17"
+  },
+  "deploy": {
+    "aptPackages": [
+      "libreadline8"
+    ]
   }
 }
