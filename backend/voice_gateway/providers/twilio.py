@@ -1,4 +1,5 @@
 from .base import InboundCallRequest, TelephonyAdapter
+from voice_gateway.twiml import say
 
 
 class TwilioAdapter(TelephonyAdapter):
@@ -13,7 +14,7 @@ class TwilioAdapter(TelephonyAdapter):
         # Twilio will open a WebSocket to ws_url (wss recommended in production).
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. SvontAI arama asistanına hoş geldiniz.</Say>
+  {say("Merhaba. SvontAI arama asistanına hoş geldiniz.")}
   <Connect>
     <Stream url="{ws_url}">
       <Parameter name="tenant_id" value="{tenant_id}" />

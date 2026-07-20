@@ -248,6 +248,7 @@ def test_voice_gateway_escapes_twiml_values():
 
 @pytest.mark.asyncio
 async def test_twilio_stream_fallback_uses_turkish_voice():
+    from voice_gateway.config import settings
     from voice_gateway.providers.base import InboundCallRequest
     from voice_gateway.providers.twilio import TwilioAdapter
 
@@ -263,4 +264,5 @@ async def test_twilio_stream_fallback_uses_turkish_voice():
         ws_url="wss://voice.example.com/ws/twilio/media",
     )
 
-    assert '<Say voice="Polly.Filiz" language="tr-TR">' in twiml
+    assert settings.TWILIO_TTS_VOICE == "Polly.Burcu-Neural"
+    assert '<Say voice="Polly.Burcu-Neural" language="tr-TR">' in twiml
