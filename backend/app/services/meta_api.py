@@ -765,6 +765,48 @@ class MetaAPIService:
                     details=data["error"],
                 )
             return data
+
+    async def send_media_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        to: str,
+        *,
+        media_type: str,
+        media_id: str,
+        caption: str | None = None,
+    ) -> Dict[str, Any]:
+        """Send an uploaded image or video by its Meta media id."""
+        if media_type not in {"image", "video"}:
+            raise MetaAPIError("Unsupported WhatsApp media type")
+        media_payload: dict[str, Any] = {"id": media_id}
+        if caption:
+            media_payload["caption"] = caption
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": media_type,
+            media_type: media_payload,
+        }
+        url = f"{self.graph_base}/{phone_number_id}/messages"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            data = response.json()
+            if "error" in data:
+                raise MetaAPIError(
+                    message=data["error"].get("message", "Failed to send media"),
+                    error_code=data["error"].get("code"),
+                    details=data["error"],
+                )
+            return data
     
     def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """

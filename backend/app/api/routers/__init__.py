@@ -45,6 +45,7 @@ from app.api.routers.setup_autopilot import router as setup_autopilot_router
 from app.api.routers.agency import router as agency_router
 from app.api.routers.debug import router as debug_router
 from app.api.routers.notifications import router as notifications_router
+from app.api.routers.media import router as media_router
 
 __all__ = [
     "auth_router",
@@ -93,4 +94,5 @@ __all__ = [
     "agency_router",
     "debug_router",
     "notifications_router",
+    "media_router",
 ]

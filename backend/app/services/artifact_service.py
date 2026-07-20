@@ -62,6 +62,7 @@ class _LocalStorageProvider:
         tool_slug: str,
         file_name: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> StoredArtifact:
         max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
         if len(data) > max_size:
@@ -148,6 +149,7 @@ class _SupabaseStorageProvider:
         tool_slug: str,
         file_name: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> StoredArtifact:
         if not self.is_configured():
             raise RuntimeError("Supabase storage is not configured")
@@ -159,7 +161,7 @@ class _SupabaseStorageProvider:
         headers = {
             **self._headers(),
             "x-upsert": "true",
-            "Content-Type": "application/octet-stream",
+            "Content-Type": content_type,
         }
         with httpx.Client(timeout=20) as client:
             response = client.post(upload_url, content=data, headers=headers)
@@ -184,6 +186,26 @@ class _SupabaseStorageProvider:
         if signed.startswith("http://") or signed.startswith("https://"):
             return signed
         return f"{self.base_url}{signed}"
+
+    def read_bytes(self, path: str) -> bytes:
+        if not self.is_configured():
+            raise RuntimeError("Supabase storage is not configured")
+        self.ensure_bucket()
+        url = f"{self.base_url}/storage/v1/object/authenticated/{self.bucket}/{quote(path)}"
+        with httpx.Client(timeout=30) as client:
+            response = client.get(url, headers=self._headers())
+            response.raise_for_status()
+            return response.content
+
+    def delete(self, path: str) -> None:
+        if not self.is_configured():
+            raise RuntimeError("Supabase storage is not configured")
+        self.ensure_bucket()
+        url = f"{self.base_url}/storage/v1/object/{self.bucket}/{quote(path)}"
+        with httpx.Client(timeout=20) as client:
+            response = client.delete(url, headers=self._headers())
+            if response.status_code not in (200, 204, 404):
+                response.raise_for_status()
 
 
 class _R2StorageProvider:
@@ -237,6 +259,7 @@ class _R2StorageProvider:
         tool_slug: str,
         file_name: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> StoredArtifact:
         max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
         if len(data) > max_size:
@@ -251,7 +274,7 @@ class _R2StorageProvider:
             Bucket=self.bucket,
             Key=object_key,
             Body=data,
-            ContentType="application/octet-stream",
+            ContentType=content_type,
             Metadata={"tenant-id": str(tenant_id), "tool-slug": self._safe_segment(tool_slug, "tool")},
         )
         return StoredArtifact(storage_provider="r2", path=object_key, url=None)
@@ -262,6 +285,13 @@ class _R2StorageProvider:
             Params={"Bucket": self.bucket, "Key": path},
             ExpiresIn=max(60, min(3600, int(expires_seconds))),
         )
+
+    def read_bytes(self, path: str) -> bytes:
+        response = self._s3().get_object(Bucket=self.bucket, Key=path)
+        return response["Body"].read()
+
+    def delete(self, path: str) -> None:
+        self._s3().delete_object(Bucket=self.bucket, Key=path)
 
 
 class ArtifactService:
@@ -348,6 +378,7 @@ class ArtifactService:
         tool_slug: str,
         file_name: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> StoredArtifact:
         provider = self._selected_storage_provider()
         if provider == "supabase":
@@ -357,6 +388,7 @@ class ArtifactService:
                 tool_slug=tool_slug,
                 file_name=file_name,
                 data=data,
+                content_type=content_type,
             )
         if provider == "r2":
             return self._r2_provider.store_bytes(
@@ -365,6 +397,7 @@ class ArtifactService:
                 tool_slug=tool_slug,
                 file_name=file_name,
                 data=data,
+                content_type=content_type,
             )
         return self._local_provider.store_bytes(
             tenant_id=tenant_id,
@@ -372,7 +405,66 @@ class ArtifactService:
             tool_slug=tool_slug,
             file_name=file_name,
             data=data,
+            content_type=content_type,
         )
+
+    def persist_bytes(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        request_id: str,
+        tool_slug: str,
+        artifact_type: str,
+        file_name: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+        meta: dict | None = None,
+    ) -> Artifact:
+        stored = self._store_file_bytes(
+            tenant_id=tenant_id,
+            request_id=request_id,
+            tool_slug=tool_slug,
+            file_name=file_name,
+            data=data,
+            content_type=content_type,
+        )
+        row = Artifact(
+            tenant_id=tenant_id,
+            request_id=request_id,
+            tool_slug=tool_slug,
+            type=artifact_type,
+            name=file_name,
+            storage_provider=stored.storage_provider,
+            path=stored.path,
+            url=stored.url,
+            meta_json={**(meta or {}), "size_bytes": len(data), "content_type": content_type},
+        )
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def read_artifact_bytes(self, artifact: Artifact) -> bytes:
+        max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
+        if artifact.storage_provider in {"local", "railway_volume"} and artifact.path:
+            data = self._local_provider.resolve_path(artifact.path).read_bytes()
+        elif artifact.storage_provider == "supabase" and artifact.path:
+            data = self._supabase_provider.read_bytes(artifact.path)
+        elif artifact.storage_provider == "r2" and artifact.path:
+            data = self._r2_provider.read_bytes(artifact.path)
+        else:
+            raise ValueError("Artifact content is not stored in a private provider")
+        if len(data) > max_size:
+            raise ValueError("Artifact exceeds the configured size limit")
+        return data
+
+    def delete_artifact_bytes(self, artifact: Artifact) -> None:
+        if artifact.storage_provider in {"local", "railway_volume"} and artifact.path:
+            self._local_provider.resolve_path(artifact.path).unlink(missing_ok=True)
+        elif artifact.storage_provider == "supabase" and artifact.path:
+            self._supabase_provider.delete(artifact.path)
+        elif artifact.storage_provider == "r2" and artifact.path:
+            self._r2_provider.delete(artifact.path)
 
     def persist_tool_artifacts(
         self,
@@ -407,6 +499,7 @@ class ArtifactService:
                     tool_slug=tool_slug,
                     file_name=artifact.name or f"{tool_slug}-{index + 1}.bin",
                     data=file_bytes,
+                    content_type=str(meta.get("content_type") or "application/octet-stream"),
                 )
                 storage_provider = stored.storage_provider
                 stored_path = stored.path

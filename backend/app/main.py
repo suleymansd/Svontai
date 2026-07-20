@@ -63,6 +63,7 @@ from app.api.routers import (
     billing_router,
     setup_autopilot_router,
     agency_router,
+    media_router,
 )
 
 # Configure logging
@@ -448,6 +449,7 @@ app.include_router(notifications_router)
 app.include_router(billing_router)
 app.include_router(setup_autopilot_router)
 app.include_router(agency_router)
+app.include_router(media_router)
 
 # Temporary debug endpoints (development only)
 if settings.ENVIRONMENT == "dev":

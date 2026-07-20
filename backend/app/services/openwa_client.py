@@ -218,6 +218,35 @@ class OpenWAClient:
         )
         return result if isinstance(result, dict) else {}
 
+    async def send_media(
+        self,
+        session_id: str,
+        to: str,
+        *,
+        media_type: str,
+        base64_data: str,
+        mimetype: str,
+        filename: str | None = None,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        if media_type not in {"image", "video"}:
+            raise OpenWAError("Desteklenmeyen OpenWA medya türü.")
+        payload: dict[str, Any] = {
+            "chatId": self.chat_id(to),
+            "base64": base64_data,
+            "mimetype": mimetype,
+        }
+        if filename:
+            payload["filename"] = filename
+        if caption:
+            payload["caption"] = caption
+        result = await self._request(
+            "POST",
+            f"/api/sessions/{session_id}/messages/send-{media_type}",
+            json=payload,
+        )
+        return result if isinstance(result, dict) else {}
+
     @staticmethod
     def chat_id(phone: str) -> str:
         if phone.endswith(("@c.us", "@s.whatsapp.net", "@g.us", "@lid")):

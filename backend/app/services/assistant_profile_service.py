@@ -123,7 +123,7 @@ class AssistantProfileService:
         settings = self._ensure_settings(bot)
         profile = self._normalized_profile(settings)
         capabilities = [
-            self._capability_response(key, definition, profile["capabilities"].get(key) or {})
+            self._capability_response(tenant.id, key, definition, profile["capabilities"].get(key) or {})
             for key, definition in CAPABILITY_DEFINITIONS.items()
         ]
         training = profile["training"]
@@ -137,13 +137,22 @@ class AssistantProfileService:
             "completion_percent": round(completed / 6 * 100),
         }
 
-    @staticmethod
-    def _capability_response(key: str, definition: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any]:
+    def _capability_response(
+        self,
+        tenant_id,
+        key: str,
+        definition: dict[str, Any],
+        stored: dict[str, Any],
+    ) -> dict[str, Any]:
         enabled = bool(stored.get("enabled", definition.get("default_enabled", False)))
         config = deepcopy(stored.get("config") or {})
         missing: list[str] = []
-        if key == "media_catalog" and not config.get("items"):
-            missing.append("En az bir güvenli medya veya katalog bağlantısı ekleyin")
+        if key == "media_catalog":
+            from app.services.assistant_media_service import AssistantMediaService
+
+            if AssistantMediaService(self.db).active_count(tenant_id) == 0:
+                missing.append("Medya Kütüphanesi'ne en az bir aktif dosya yükleyin")
+            config = {}
         ready = not missing
         return {
             "key": key,
@@ -189,19 +198,7 @@ class AssistantProfileService:
         if definition.get("locked") and not enabled:
             raise ValueError("The core knowledge capability cannot be disabled")
         if key == "media_catalog":
-            normalized_items = []
-            for item in (config.get("items") or [])[:30]:
-                if not isinstance(item, dict):
-                    continue
-                url = str(item.get("url") or "").strip()[:2000]
-                if not url.startswith(("https://", "http://")):
-                    continue
-                normalized_items.append({
-                    "label": str(item.get("label") or "Medya").strip()[:120],
-                    "url": url,
-                    "keywords": [str(value).strip()[:80] for value in (item.get("keywords") or [])[:10] if str(value).strip()],
-                })
-            config = {"items": normalized_items}
+            config = {}
         bot = self.ensure_primary(tenant)
         settings = self._ensure_settings(bot)
         profile = self._normalized_profile(settings)
@@ -225,7 +222,7 @@ class AssistantProfileService:
         profile = self._normalized_profile(settings)
         training = AssistantTraining(**profile["training"])
         enabled = [
-            self._capability_response(key, definition, profile["capabilities"].get(key) or {})
+            self._capability_response(bot.tenant_id, key, definition, profile["capabilities"].get(key) or {})
             for key, definition in CAPABILITY_DEFINITIONS.items()
         ]
         enabled = [item for item in enabled if item["enabled"] and item["ready"]]
@@ -244,15 +241,6 @@ class AssistantProfileService:
             lines.append("Satın alma niyeti varsa ihtiyacı doğal sorularla netleştir; aynı anda tek soru sor.")
         if self.capability_enabled(bot, "human_handoff"):
             lines.append("Müşteri insan istediğinde, şikayet ettiğinde veya güvenilir bilgi yoksa insan desteği öner.")
-        media = next((item for item in enabled if item["key"] == "media_catalog"), None)
-        if media:
-            lines.append("İlgili müşteri talebinde yalnızca aşağıdaki doğrulanmış bağlantıları paylaş:")
-            for item in media["config"].get("items", [])[:30]:
-                label = str(item.get("label") or "Medya")[:120]
-                url = str(item.get("url") or "").strip()
-                keywords = ", ".join(str(value) for value in (item.get("keywords") or [])[:10])
-                if url.startswith(("https://", "http://")):
-                    lines.append(f"- {label}: {url} | anahtar kelimeler: {keywords}")
         return "\n".join(lines)
 
     def build_runtime_context(self, tenant: Tenant, bot: Bot) -> str:
@@ -261,4 +249,10 @@ class AssistantProfileService:
             from app.services.appointment_availability_service import AppointmentAvailabilityService
 
             parts.append(AppointmentAvailabilityService(self.db).build_ai_context(tenant))
+        if self.capability_enabled(bot, "media_catalog"):
+            from app.services.assistant_media_service import AssistantMediaService
+
+            media_context = AssistantMediaService(self.db).build_ai_context(tenant.id)
+            if media_context:
+                parts.append(media_context)
         return "\n\n".join(parts)

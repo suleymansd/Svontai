@@ -252,6 +252,7 @@ def run() -> int:
                 ("voice jobs", "/voice-automation/jobs", _expect_list),
                 ("calls", "/calls", _expect_list),
                 ("bots", "/bots", _expect_list),
+                ("assistant media", "/media", _expect_list),
                 ("leads", "/leads", _expect_list),
                 ("appointments", "/appointments", _expect_list),
                 (

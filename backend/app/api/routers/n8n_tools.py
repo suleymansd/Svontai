@@ -33,6 +33,7 @@ from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.models.tenant import Tenant
 from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.assistant_profile_service import AssistantProfileService
+from app.services.assistant_media_service import AssistantMediaService
 from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
@@ -161,6 +162,14 @@ class AIReplyRequest(BaseModel):
     message: str
 
 
+class AIReplyMediaAction(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    asset_id: str = Field(..., alias="assetId")
+    media_type: Literal["image", "video", "catalog"] = Field(..., alias="mediaType")
+    caption: str | None = None
+
+
 class AIReplyResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -170,6 +179,7 @@ class AIReplyResponse(BaseModel):
     handoff_required: bool = Field(default=False, alias="handoffRequired")
     appointment_created: bool = Field(default=False, alias="appointmentCreated")
     appointment_id: str | None = Field(default=None, alias="appointmentId")
+    media_action: AIReplyMediaAction | None = Field(default=None, alias="mediaAction")
 
 
 class AIGenerateRequest(BaseModel):
@@ -262,6 +272,15 @@ async def generate_ai_reply(
             conversation=conversation,
             reply=reply,
         )
+    selected_media = None
+    if assistant_profile_service.capability_enabled(bot, "media_catalog"):
+        reply, selected_media = AssistantMediaService(db).extract_action(
+            tenant_id=tenant.id,
+            conversation=conversation,
+            reply=reply,
+        )
+    if selected_media is not None and not reply.strip():
+        reply = selected_media.caption or "İstediğiniz içeriği paylaşıyorum."
     if appointment is not None:
         await send_tenant_push_notification(
             tenant_id=tenant.id,
@@ -273,10 +292,18 @@ async def generate_ai_reply(
             extra={"appointment_id": str(appointment.id)},
         )
     return AIReplyResponse(
-        shouldReply=bool(reply.strip()),
+        shouldReply=bool(reply.strip() or selected_media),
         replyText=reply,
         appointmentCreated=appointment is not None,
         appointmentId=str(appointment.id) if appointment else None,
+        mediaAction=(
+            AIReplyMediaAction(
+                assetId=str(selected_media.asset.id),
+                mediaType=selected_media.asset.media_type,
+                caption=selected_media.caption,
+            )
+            if selected_media else None
+        ),
     )
 
 

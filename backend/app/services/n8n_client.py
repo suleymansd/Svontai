@@ -363,6 +363,7 @@ class N8NClient:
                     "whatsapp_send": f"{base_url}/api/v1/channels/whatsapp/send",
                     "whatsapp_send_template": f"{base_url}/api/v1/channels/whatsapp/send-template",
                     "whatsapp_send_document": f"{base_url}/api/v1/channels/whatsapp/send-document",
+                    "whatsapp_send_media": f"{base_url}/api/v1/channels/whatsapp/send-media",
                     "automation_status": f"{base_url}/api/v1/channels/automation/status",
                     "voice_call_summary": f"{base_url}/api/v1/voice/calls/summary",
                     "leads_upsert": f"{base_url}/api/v1/n8n/leads/upsert",

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
@@ -12,12 +12,10 @@ import {
   Headphones,
   Image as ImageIcon,
   Loader2,
-  Plus,
   Save,
   Settings2,
   ShieldCheck,
   Sparkles,
-  Trash2,
   Users,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -52,8 +50,6 @@ type Training = {
   business_summary: string
 }
 
-type MediaItem = { label: string; url: string; keywords: string[] }
-
 type Capability = {
   key: string
   name: string
@@ -62,7 +58,7 @@ type Capability = {
   ready: boolean
   status: 'active' | 'needs_setup' | 'disabled'
   missing_requirements: string[]
-  config: { items?: MediaItem[] }
+  config: Record<string, unknown>
   locked: boolean
 }
 
@@ -142,9 +138,7 @@ export default function BotsPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [trainingOpen, setTrainingOpen] = useState(false)
-  const [mediaOpen, setMediaOpen] = useState(false)
   const [training, setTraining] = useState<Training | null>(null)
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
 
   const { data: profile, isLoading } = useQuery<AssistantProfile>({
     queryKey: ['assistant-profile'],
@@ -154,15 +148,6 @@ export default function BotsPage() {
   useEffect(() => {
     if (profile) setTraining(profile.training)
   }, [profile])
-
-  const mediaCapability = useMemo(
-    () => profile?.capabilities.find((item) => item.key === 'media_catalog'),
-    [profile],
-  )
-
-  useEffect(() => {
-    if (mediaCapability) setMediaItems(mediaCapability.config.items || [])
-  }, [mediaCapability])
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['assistant-profile'] })
@@ -211,29 +196,7 @@ export default function BotsPage() {
   })
 
   const toggleCapability = (capability: Capability, enabled: boolean) => {
-    if (capability.key === 'media_catalog' && enabled && !capability.config.items?.length) {
-      setMediaOpen(true)
-      return
-    }
     capabilityMutation.mutate({ key: capability.key, enabled, config: capability.config || {} })
-  }
-
-  const saveMedia = () => {
-    const validItems = mediaItems
-      .map((item) => ({ ...item, label: item.label.trim(), url: item.url.trim() }))
-      .filter((item) => item.label && /^https?:\/\//.test(item.url))
-    if (!validItems.length) {
-      toast({
-        title: 'Geçerli bağlantı gerekli',
-        description: 'En az bir ad ve https:// ile başlayan bağlantı ekleyin.',
-        variant: 'destructive',
-      })
-      return
-    }
-    capabilityMutation.mutate(
-      { key: 'media_catalog', enabled: true, config: { items: validItems } },
-      { onSuccess: () => setMediaOpen(false) },
-    )
   }
 
   if (isLoading || !profile || !training) {
@@ -328,7 +291,7 @@ export default function BotsPage() {
                       <div className="space-y-2"><div className="flex items-start gap-2 text-xs text-amber-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{capability.missing_requirements[0]}</div></div>
                     ) : null}
                     {capability.key === 'media_catalog' && (
-                      <Button variant="outline" size="sm" onClick={() => setMediaOpen(true)}><ImageIcon className="mr-2 h-4 w-4" />Yapılandır</Button>
+                      <Button asChild variant="outline" size="sm"><Link href="/dashboard/media"><ImageIcon className="mr-2 h-4 w-4" />Medya Kütüphanesi</Link></Button>
                     )}
                   </CardContent>
                 </Card>
@@ -352,23 +315,6 @@ export default function BotsPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={mediaOpen} onOpenChange={setMediaOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-            <DialogHeader><DialogTitle>Görsel ve Katalog Kaynakları</DialogTitle><DialogDescription>Asistan yalnızca burada doğruladığınız bağlantıları müşteriye paylaşır.</DialogDescription></DialogHeader>
-            <div className="space-y-4 py-2">
-              {mediaItems.map((item, index) => (
-                <div key={index} className="grid gap-3 border-b border-border/70 pb-4 sm:grid-cols-[1fr_1.5fr_auto]">
-                  <div className="space-y-1"><Label>Ad</Label><Input value={item.label} placeholder="Yaz koleksiyonu" onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, label: event.target.value } : current))} /></div>
-                  <div className="space-y-1"><Label>Güvenli bağlantı</Label><Input value={item.url} placeholder="https://..." onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, url: event.target.value } : current))} /></div>
-                  <Button type="button" variant="ghost" size="icon" className="mt-6" onClick={() => setMediaItems(mediaItems.filter((_, itemIndex) => itemIndex !== index))} title="Kaynağı sil"><Trash2 className="h-4 w-4" /></Button>
-                  <div className="space-y-1 sm:col-span-2"><Label>Anahtar kelimeler</Label><Input value={item.keywords.join(', ')} placeholder="katalog, ürünler, modeller" onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, keywords: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) } : current))} /></div>
-                </div>
-              ))}
-              <Button type="button" variant="outline" onClick={() => setMediaItems([...mediaItems, { label: '', url: '', keywords: [] }])}><Plus className="mr-2 h-4 w-4" />Kaynak Ekle</Button>
-            </div>
-            <DialogFooter><Button variant="outline" onClick={() => setMediaOpen(false)}>İptal</Button><Button onClick={saveMedia} disabled={capabilityMutation.isPending}>{capabilityMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Kaydet ve Aktifleştir</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </ContentContainer>
   )

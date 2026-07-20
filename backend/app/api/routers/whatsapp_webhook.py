@@ -41,6 +41,7 @@ from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.assistant_profile_service import AssistantProfileService
+from app.services.assistant_media_service import AssistantMediaService
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
@@ -416,7 +417,14 @@ async def process_whatsapp_reply_in_background(
                 conversation=conversation,
                 reply=reply,
             )
-        if not reply.strip():
+        selected_media = None
+        if assistant_profile_service.capability_enabled(bot, "media_catalog"):
+            reply, selected_media = AssistantMediaService(db).extract_action(
+                tenant_id=tenant.id,
+                conversation=conversation,
+                reply=reply,
+            )
+        if not reply.strip() and selected_media is None:
             logger.warning(
                 "whatsapp.direct_reply_empty tenant_id=%s message_id=%s",
                 tenant_id,
@@ -424,23 +432,54 @@ async def process_whatsapp_reply_in_background(
             )
             return
 
-        send_result = await whatsapp_gateway_service.send_text(
-            account,
-            to=from_number,
-            text=reply,
-        )
-        db.add(Message(
-            conversation_id=conversation.id,
-            sender=MessageSender.BOT.value,
-            content=reply,
-            external_id=send_result.get("message_id"),
-            raw_payload={
-                "provider": provider,
-                "reply_to_message_id": message_id,
-                "correlation_id": correlation_id,
-                "delivery": send_result.get("raw"),
-            },
-        ))
+        send_result = {"message_id": None, "raw": None}
+        if reply.strip():
+            send_result = await whatsapp_gateway_service.send_text(
+                account,
+                to=from_number,
+                text=reply,
+            )
+            db.add(Message(
+                conversation_id=conversation.id,
+                sender=MessageSender.BOT.value,
+                content=reply,
+                external_id=send_result.get("message_id"),
+                raw_payload={
+                    "provider": provider,
+                    "reply_to_message_id": message_id,
+                    "correlation_id": correlation_id,
+                    "delivery": send_result.get("raw"),
+                },
+            ))
+        media_message_id = None
+        if selected_media is not None:
+            media_service = AssistantMediaService(db)
+            artifact = media_service.artifact_for(selected_media.asset)
+            media_result = await whatsapp_gateway_service.send_media(
+                account,
+                to=from_number,
+                media_type=selected_media.asset.media_type,
+                content_bytes=media_service.artifacts.read_artifact_bytes(artifact),
+                mime_type=selected_media.asset.mime_type,
+                filename=artifact.name,
+                caption=selected_media.caption,
+            )
+            media_message_id = media_result.get("message_id")
+            db.add(Message(
+                conversation_id=conversation.id,
+                sender=MessageSender.BOT.value,
+                content=f"[{selected_media.asset.media_type}:{selected_media.asset.title}]",
+                external_id=media_message_id,
+                raw_payload={
+                    "provider": provider,
+                    "media_asset_id": str(selected_media.asset.id),
+                    "media_type": selected_media.asset.media_type,
+                    "reply_to_message_id": message_id,
+                    "correlation_id": correlation_id,
+                },
+            ))
+            selected_media.asset.send_count = int(selected_media.asset.send_count or 0) + 1
+            selected_media.asset.last_sent_at = utc_now_naive()
         db.commit()
         if appointment is not None:
             await send_tenant_push_notification(
@@ -463,6 +502,7 @@ async def process_whatsapp_reply_in_background(
                 "conversation_id": str(conversation_id),
                 "incoming_message_id": message_id,
                 "outgoing_message_id": send_result.get("message_id"),
+                "media_message_id": media_message_id,
                 "fallback_from_n8n": bool(use_n8n),
             },
             correlation_id=correlation_id,

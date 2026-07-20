@@ -170,6 +170,36 @@ export const botApi = {
   delete: (id: string) => api.delete(`/bots/${id}`),
 }
 
+export type AssistantMediaAsset = {
+  id: string
+  title: string
+  description?: string | null
+  media_type: 'image' | 'video' | 'catalog'
+  mime_type: string
+  file_size_bytes: number
+  keywords: string[]
+  is_active: boolean
+  send_count: number
+  last_sent_at?: string | null
+  preview_url: string
+  created_at: string
+  updated_at: string
+}
+
+export const mediaApi = {
+  list: () => api.get<AssistantMediaAsset[]>('/media'),
+  upload: (data: FormData, onUploadProgress?: (progress: number) => void) =>
+    api.post<AssistantMediaAsset>('/media', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (event.total && onUploadProgress) onUploadProgress(Math.round((event.loaded / event.total) * 100))
+      },
+    }),
+  update: (id: string, data: Partial<Pick<AssistantMediaAsset, 'title' | 'description' | 'keywords' | 'is_active'>>) =>
+    api.patch<AssistantMediaAsset>(`/media/${id}`, data),
+  delete: (id: string) => api.delete(`/media/${id}`),
+}
+
 // Knowledge API
 export const knowledgeApi = {
   list: (botId: string) => api.get(`/bots/${botId}/knowledge`),
