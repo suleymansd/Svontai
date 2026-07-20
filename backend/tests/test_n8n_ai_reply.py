@@ -48,6 +48,12 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         "app.api.routers.n8n_tools.AppointmentAvailabilityService.build_ai_context",
         return_value="availability context",
     ), patch(
+        "app.api.routers.n8n_tools.AssistantProfileService.build_runtime_context",
+        return_value="assistant and availability context",
+    ), patch(
+        "app.api.routers.n8n_tools.AssistantProfileService.capability_enabled",
+        return_value=True,
+    ), patch(
         "app.api.routers.n8n_tools.AppointmentAvailabilityService.apply_ai_action",
         return_value=("Size nasıl yardımcı olabilirim?", None),
     ), patch.object(
@@ -65,7 +71,7 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         conversation=conversation,
         last_user_message="Merhaba",
         bot_settings=bot.settings,
-        runtime_context="availability context",
+        runtime_context="assistant and availability context",
     )
 
 

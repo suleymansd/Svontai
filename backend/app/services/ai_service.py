@@ -95,6 +95,21 @@ class AIService:
         handoff_msg = bot_settings.human_handoff_message if bot_settings else "Sizi bir müşteri temsilcimize bağlıyorum."
         prohibited = bot_settings.prohibited_topics if bot_settings else self.default_guardrails["prohibited_topics"]
         custom_prompt = bot_settings.system_prompt_override if bot_settings else None
+        extra_settings = bot_settings.extra_settings if bot_settings else {}
+        assistant_profile = (extra_settings or {}).get("assistant_profile") or {}
+        training = assistant_profile.get("training") or {}
+        response_length = training.get("response_length", "balanced")
+        length_instruction = {
+            "concise": "Yanıtı çoğunlukla 1-2 kısa cümlede tamamla.",
+            "balanced": "Gerektiği kadar açık konuş; çoğunlukla 2-4 kısa cümle kullan.",
+            "detailed": "Karmaşık sorularda ayrıntı ver ama tekrara ve gereksiz uzunluğa girme.",
+        }.get(response_length, "Gerektiği kadar açık ve kısa konuş.")
+        price_policy = training.get("price_policy", "known_only")
+        price_instruction = {
+            "known_only": "Fiyatı yalnızca doğrulanmış işletme bilgisinde varsa paylaş.",
+            "confirm_before_sending": "Fiyat paylaşmadan önce müşterinin hangi hizmeti istediğini netleştir.",
+            "never_share": "Fiyat paylaşma; güncel teklif için insan desteğine yönlendir.",
+        }.get(price_policy, "Fiyat uydurma.")
         
         # Base prompt
         if custom_prompt:
@@ -115,7 +130,7 @@ class AIService:
 1. SADECE aşağıdaki bilgi tabanına dayanarak cevap ver.
 2. Bilgi tabanında olmayan konularda "Maalesef bu konuda bilgim yok" de.
 3. Fiyat, tarih, adres gibi spesifik bilgileri TAHMİN ETME, sadece bilgi tabanındakileri söyle.
-4. Kısa ve net cevaplar ver (maksimum 2-3 cümle).
+4. {length_instruction}
 5. Her zaman nazik ve yardımsever ol.
 6. Dil: Türkçe (kullanıcı farklı dilde yazarsa o dilde cevap ver)
 7. İnsan gibi doğal konuş; çağrı merkezi metni, reklam sloganı veya robotik kalıp kullanma.
@@ -124,6 +139,7 @@ class AIService:
 10. Konuşma geçmişinde alınmış bir bilgiyi tekrar sorma; müşterinin son mesajına doğrudan cevap ver.
 11. Aynı cümleyi veya soruyu art arda tekrarlama. Tek seferde en fazla bir net soru sor.
 12. Kendinden "yapay zeka", "bot" veya "sistem" diye bahsetme; müşteri özellikle sorarsa dürüstçe dijital asistan olduğunu söyle.
+13. {price_instruction}
 
 """
         

@@ -1,27 +1,28 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
-  Plus,
-  Bot,
-  Edit,
-  Copy,
-  Check,
-  MoreHorizontal,
-  Sparkles,
-  MessageSquare,
-  Users,
-  TrendingUp,
-  ExternalLink,
+  AlertCircle,
   BookOpen,
-  Loader2
+  Bot,
+  CalendarDays,
+  CheckCircle2,
+  Headphones,
+  Image as ImageIcon,
+  Loader2,
+  Plus,
+  Save,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Users,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -32,343 +33,340 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { autopilotApi, botApi } from '@/lib/api'
-import { cn, formatDate, maskSecret } from '@/lib/utils'
 import { ContentContainer } from '@/components/shared/content-container'
-import { PageHeader } from '@/components/shared/page-header'
-import { KPIStat } from '@/components/shared/kpi-stat'
-import { EmptyState } from '@/components/shared/empty-state'
-import { ToolGuideAssistant } from '@/components/shared/tool-guide'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
-import { useToast } from '@/components/ui/use-toast'
+import { PageHeader } from '@/components/shared/page-header'
+import { autopilotApi, botApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
+import { useToast } from '@/components/ui/use-toast'
+
+type Training = {
+  goal: 'support' | 'sales' | 'appointments' | 'mixed'
+  tone: 'formal' | 'friendly' | 'professional' | 'casual'
+  response_length: 'concise' | 'balanced' | 'detailed'
+  price_policy: 'known_only' | 'confirm_before_sending' | 'never_share'
+  handoff_mode: 'automatic' | 'suggest' | 'manual'
+  business_summary: string
+}
+
+type MediaItem = { label: string; url: string; keywords: string[] }
+
+type Capability = {
+  key: string
+  name: string
+  description: string
+  enabled: boolean
+  ready: boolean
+  status: 'active' | 'needs_setup' | 'disabled'
+  missing_requirements: string[]
+  config: { items?: MediaItem[] }
+  locked: boolean
+}
+
+type AssistantProfile = {
+  assistant: {
+    id: string
+    name: string
+    description?: string
+    is_active: boolean
+    primary_color: string
+  }
+  training: Training
+  capabilities: Capability[]
+  completion_percent: number
+}
+
+const capabilityIcons: Record<string, typeof BookOpen> = {
+  knowledge_support: BookOpen,
+  lead_qualification: Users,
+  appointment_management: CalendarDays,
+  human_handoff: Headphones,
+  media_catalog: ImageIcon,
+}
+
+const trainingOptions = {
+  goal: [
+    ['mixed', 'Tümü'], ['support', 'Destek'], ['sales', 'Satış'], ['appointments', 'Randevu'],
+  ],
+  tone: [
+    ['professional', 'Profesyonel'], ['friendly', 'Samimi'], ['formal', 'Resmi'], ['casual', 'Rahat'],
+  ],
+  response_length: [
+    ['concise', 'Kısa'], ['balanced', 'Dengeli'], ['detailed', 'Detaylı'],
+  ],
+  price_policy: [
+    ['known_only', 'Bilinen fiyatı paylaş'],
+    ['confirm_before_sending', 'Önce ihtiyacı netleştir'],
+    ['never_share', 'Teklife yönlendir'],
+  ],
+  handoff_mode: [
+    ['automatic', 'Gerektiğinde otomatik'], ['suggest', 'Önce müşteriye sor'], ['manual', 'Sadece benim komutumla'],
+  ],
+} as const
+
+function ChoiceGroup({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: readonly (readonly [string, string])[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex flex-wrap gap-2">
+        {options.map(([optionValue, optionLabel]) => (
+          <Button
+            key={optionValue}
+            type="button"
+            size="sm"
+            variant={value === optionValue ? 'default' : 'outline'}
+            onClick={() => onChange(optionValue)}
+          >
+            {optionLabel}
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function BotsPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
-  const [formErrors, setFormErrors] = useState<{ name?: string }>({})
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    welcome_message: 'Merhaba! 👋 Size nasıl yardımcı olabilirim?',
+  const [trainingOpen, setTrainingOpen] = useState(false)
+  const [mediaOpen, setMediaOpen] = useState(false)
+  const [training, setTraining] = useState<Training | null>(null)
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
+
+  const { data: profile, isLoading } = useQuery<AssistantProfile>({
+    queryKey: ['assistant-profile'],
+    queryFn: () => botApi.getAssistantProfile().then((response) => response.data),
   })
 
-  const guideSteps = [
-    {
-      id: 'bot-ready',
-      title: 'Asistanınız hazır',
-      tooltip: 'SvontAI işletme bilgilerinize göre ana asistanınızı otomatik hazırlar.',
-      pointer: { x: 78, y: 18 },
-      highlight: { x: 68, y: 14, w: 22, h: 12 },
-    },
-    {
-      id: 'bot-card',
-      title: 'Bot kartı',
-      tooltip: 'Bot detaylarına girip entegrasyonları yönetin.',
-      pointer: { x: 30, y: 52 },
-      highlight: { x: 10, y: 40, w: 35, h: 28 },
-    },
-    {
-      id: 'whatsapp',
-      title: 'WhatsApp bağlantısı',
-      tooltip: 'Kurulum adımlarını tamamlayarak kanalı aktif edin.',
-      pointer: { x: 62, y: 64 },
-      highlight: { x: 55, y: 58, w: 30, h: 18 },
-    },
-  ]
+  useEffect(() => {
+    if (profile) setTraining(profile.training)
+  }, [profile])
 
-  const { data: bots, isLoading } = useQuery({
-    queryKey: ['bots'],
-    queryFn: () => botApi.list().then(res => res.data),
-  })
+  const mediaCapability = useMemo(
+    () => profile?.capabilities.find((item) => item.key === 'media_catalog'),
+    [profile],
+  )
 
-  const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => botApi.create(data),
+  useEffect(() => {
+    if (mediaCapability) setMediaItems(mediaCapability.config.items || [])
+  }, [mediaCapability])
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['assistant-profile'] })
+    queryClient.invalidateQueries({ queryKey: ['bots'] })
+  }
+
+  const trainingMutation = useMutation({
+    mutationFn: (data: Training) => botApi.updateAssistantTraining(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bots'] })
-      setIsCreateOpen(false)
-      setFormErrors({})
-      setFormData({
-        name: '',
-        description: '',
-        welcome_message: 'Merhaba! 👋 Size nasıl yardımcı olabilirim?',
-      })
-      toast({
-        title: 'Bot oluşturuldu',
-        description: 'Yeni bot başarıyla eklendi.',
-      })
+      refresh()
+      setTrainingOpen(false)
+      toast({ title: 'Ana asistan eğitildi', description: 'Seçimleriniz tüm uzman yeteneklere uygulandı.' })
     },
-    onError: (error: any) => {
-      toast({
-        title: 'Hata',
-        description: getApiErrorMessage(error, 'Bot oluşturulamadı.'),
-        variant: 'destructive',
-      })
+    onError: (error) => toast({
+      title: 'Ayarlar kaydedilemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
+  })
+
+  const capabilityMutation = useMutation({
+    mutationFn: ({ key, enabled, config }: { key: string; enabled: boolean; config: Record<string, unknown> }) =>
+      botApi.updateAssistantCapability(key, { enabled, config }),
+    onSuccess: () => {
+      refresh()
+      toast({ title: 'Yetenek güncellendi', description: 'Ana asistan yeni ayarla çalışmaya hazır.' })
     },
+    onError: (error) => toast({
+      title: 'Yetenek güncellenemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
   const autopilotMutation = useMutation({
     mutationFn: () => autopilotApi.run(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bots'] })
-      queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
-      toast({
-        title: 'Asistan güncellendi',
-        description: 'İşletme bilgileriniz bot ve bilgi tabanına otomatik işlendi.',
-      })
+      refresh()
+      toast({ title: 'Bilgiler yenilendi', description: 'İşletme profiliniz ana asistana yeniden işlendi.' })
     },
-    onError: (error: any) => {
-      toast({
-        title: 'Hazırlama tamamlanamadı',
-        description: getApiErrorMessage(error, 'Asistan hazırlanamadı.'),
-        variant: 'destructive',
-      })
-    },
+    onError: (error) => toast({
+      title: 'Yenileme tamamlanamadı',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
-  const copyPublicKey = async (key: string) => {
-    await navigator.clipboard.writeText(key)
-    setCopiedKey(key)
-    setTimeout(() => setCopiedKey(null), 2000)
-  }
-
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmedName = formData.name.trim()
-    if (!trimmedName) {
-      setFormErrors({ name: 'Bot adı zorunludur.' })
+  const toggleCapability = (capability: Capability, enabled: boolean) => {
+    if (capability.key === 'media_catalog' && enabled && !capability.config.items?.length) {
+      setMediaOpen(true)
       return
     }
-    setFormErrors({})
-    createMutation.mutate(formData)
+    capabilityMutation.mutate({ key: capability.key, enabled, config: capability.config || {} })
   }
 
-  const activeBots = bots?.filter((bot: any) => bot.is_active).length || 0
+  const saveMedia = () => {
+    const validItems = mediaItems
+      .map((item) => ({ ...item, label: item.label.trim(), url: item.url.trim() }))
+      .filter((item) => item.label && /^https?:\/\//.test(item.url))
+    if (!validItems.length) {
+      toast({
+        title: 'Geçerli bağlantı gerekli',
+        description: 'En az bir ad ve https:// ile başlayan bağlantı ekleyin.',
+        variant: 'destructive',
+      })
+      return
+    }
+    capabilityMutation.mutate(
+      { key: 'media_catalog', enabled: true, config: { items: validItems } },
+      { onSuccess: () => setMediaOpen(false) },
+    )
+  }
+
+  if (isLoading || !profile || !training) {
+    return (
+      <ContentContainer>
+        <div className="space-y-6">
+          <Skeleton className="h-12 w-72" />
+          <Skeleton className="h-64 w-full" />
+          <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
+        </div>
+      </ContentContainer>
+    )
+  }
 
   return (
     <ContentContainer>
-      <div className="relative space-y-8">
+      <div className="space-y-8">
         <PageHeader
-          title="Botlarım"
-          description="İşletme bilgilerinizle otomatik hazırlanan asistanınızı buradan özelleştirebilirsiniz."
-          icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />}
+          title="AI Asistanım"
+          description="Tek ana asistanınız, işletme bilginizi ve uzman yetenekleri birlikte kullanır."
+          icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-cyan-500" />}
           actions={(
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
-                {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Yapay Zeka ile Güncelle
-              </Button>
-              {bots?.length ? (
-                <Button variant="outline" onClick={() => setIsCreateOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Ek Asistan
-                </Button>
-              ) : null}
-            </div>
+            <Button variant="outline" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
+              {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              İşletme Bilgilerini Yenile
+            </Button>
           )}
         />
 
-        <ToolGuideAssistant contextLabel="Bot Rehberi" steps={guideSteps} storageKey="svontai_tool_guide_bots" />
-
-        {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <KPIStat label="Toplam Bot" value={bots?.length || 0} icon={<Bot className="h-5 w-5" />} />
-          <KPIStat label="Aktif Bot" value={activeBots} icon={<TrendingUp className="h-5 w-5" />} />
-          <KPIStat label="Toplam Mesaj" value={bots?.length === 0 ? '-' : '0'} icon={<MessageSquare className="h-5 w-5" />} />
-        </div>
-
-        {/* Bots Grid */}
-        {isLoading ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-4 mb-4">
-                    <Skeleton className="w-14 h-14 rounded-2xl" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-5 w-32" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-4 w-full mb-2" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : bots?.length === 0 ? (
-          <EmptyState
-            icon={<Sparkles className="h-8 w-8 text-primary" />}
-            title="Asistanınız hazırlanıyor"
-            description="İşletme profiliniz kullanılarak botunuz, konuşma tonu ve bilgi tabanınız otomatik oluşturulacak."
-            action={(
-              <Button size="lg" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
-                {autopilotMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
-                Otomatik Hazırla
-              </Button>
-            )}
-          />
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {bots?.map((bot: any, index: number) => (
-              <Card
-                key={bot.id}
-                className="group border border-border/70 hover:shadow-glow-primary hover:-translate-y-1 transition-all duration-300 animate-fade-in-up gradient-border-animated"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <CardContent className="p-6">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 animate-breathe"
-                        style={{ backgroundColor: bot.primary_color + '20' }}
-                      >
-                        <Bot className="w-7 h-7" style={{ color: bot.primary_color }} />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">
-                          {bot.name}
-                        </h3>
-                        <Badge variant={bot.is_active ? 'success' : 'secondary'}>
-                          {bot.is_active ? '● Aktif' : '○ Pasif'}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Description */}
-                  {bot.description && (
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                      {bot.description}
-                    </p>
-                  )}
-
-                  {/* Widget Key */}
-                  <div className="p-3 rounded-xl glass-card mb-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-muted-foreground">Widget Key</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2"
-                        onClick={() => copyPublicKey(bot.public_key)}
-                      >
-                        {copiedKey === bot.public_key ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </Button>
-                    </div>
-                    <code className="text-xs text-muted-foreground font-mono truncate block">
-                      {maskSecret(bot.public_key, 8, 6)}
-                    </code>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <Link href={`/dashboard/bots/${bot.id}`} className="flex-1">
-                      <Button variant="outline" className="w-full" size="sm">
-                        <Edit className="w-4 h-4 mr-2" />
-                        Düzenle
-                      </Button>
-                    </Link>
-                    <Link href={`/dashboard/bots/${bot.id}/knowledge`} className="flex-1">
-                      <Button variant="outline" className="w-full" size="sm">
-                        <BookOpen className="w-4 h-4 mr-2" />
-                        Eğit
-                      </Button>
-                    </Link>
-                  </div>
-
-                  {/* Created Date */}
-                  <p className="text-xs text-muted-foreground text-center mt-4">
-                    Oluşturulma: {formatDate(bot.created_at)}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Create Dialog */}
-        <Dialog
-          open={isCreateOpen}
-          onOpenChange={(open) => {
-            setIsCreateOpen(open)
-            if (!open) setFormErrors({})
-          }}
-        >
-          <DialogContent className="sm:max-w-xl border border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl">
-            <DialogHeader>
-              <div className="mb-2 flex items-center gap-3">
-                <Icon3DBadge icon={Bot} from="from-primary" to="to-violet-500" />
-                <div>
-                  <DialogTitle className="text-2xl">Yeni Bot Oluştur</DialogTitle>
-                  <DialogDescription>
-                    Müşterilerinize otomatik yanıt verecek yeni bir AI asistanı oluşturun.
-                  </DialogDescription>
-                </div>
+        <section className="grid gap-6 border-y border-border/70 py-6 lg:grid-cols-[1.4fr_0.6fr]">
+          <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Bot className="h-7 w-7 text-primary" />
               </div>
-            </DialogHeader>
-            <form onSubmit={handleCreate}>
-              <div className="space-y-5 py-2">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Bot Adı <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="name"
-                    placeholder="Örn: Müşteri Destek Botu"
-                    className={cn(
-                      'h-11 border-border/70 bg-muted/20',
-                      formErrors.name && 'border-destructive focus-visible:ring-destructive'
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-semibold">{profile.assistant.name}</h2>
+                  <Badge variant="success">Ana Asistan</Badge>
+                  <Badge variant={profile.assistant.is_active ? 'success' : 'secondary'}>
+                    {profile.assistant.is_active ? 'Çalışıyor' : 'Pasif'}
+                  </Badge>
+                </div>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  {profile.assistant.description || 'İşletme mesajlarını tek merkezden yöneten ana asistan.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button onClick={() => setTrainingOpen(true)}><Settings2 className="mr-2 h-4 w-4" />Davranışı Ayarla</Button>
+              <Button asChild variant="outline"><Link href={`/dashboard/bots/${profile.assistant.id}/knowledge`}><BookOpen className="mr-2 h-4 w-4" />Bilgiler</Link></Button>
+            </div>
+          </div>
+          <div className="border-l-0 border-border/70 lg:border-l lg:pl-6">
+            <div className="flex items-center justify-between text-sm"><span className="font-medium">Eğitim durumu</span><span>%{profile.completion_percent}</span></div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${profile.completion_percent}%` }} />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">Prompt yazmanız gerekmez; seçimleriniz otomatik çalışma talimatına çevrilir.</p>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Uzman Yetenekler</h2>
+            <p className="text-sm text-muted-foreground">Yetenekler ayrı ayrı çalışır, müşteriye yalnızca Ana Asistan yanıt verir.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {profile.capabilities.map((capability) => {
+              const Icon = capabilityIcons[capability.key] || ShieldCheck
+              return (
+                <Card key={capability.key} className="border-border/70">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted"><Icon className="h-5 w-5" /></div>
+                        <div className="min-w-0"><CardTitle className="text-base">{capability.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">{capability.status === 'active' ? 'Hazır ve aktif' : capability.status === 'needs_setup' ? 'Kurulum gerekiyor' : 'Kapalı'}</p></div>
+                      </div>
+                      <Switch
+                        checked={capability.enabled}
+                        disabled={capability.locked || capabilityMutation.isPending}
+                        onCheckedChange={(enabled) => toggleCapability(capability, enabled)}
+                        aria-label={`${capability.name} durumunu değiştir`}
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="min-h-10 text-sm text-muted-foreground">{capability.description}</p>
+                    {capability.status === 'active' ? (
+                      <div className="flex items-center gap-2 text-xs text-emerald-700"><CheckCircle2 className="h-4 w-4" />Ana asistana bağlı</div>
+                    ) : capability.status === 'needs_setup' ? (
+                      <div className="space-y-2"><div className="flex items-start gap-2 text-xs text-amber-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{capability.missing_requirements[0]}</div></div>
+                    ) : null}
+                    {capability.key === 'media_catalog' && (
+                      <Button variant="outline" size="sm" onClick={() => setMediaOpen(true)}><ImageIcon className="mr-2 h-4 w-4" />Yapılandır</Button>
                     )}
-                    value={formData.name}
-                    onChange={(e) => {
-                      setFormData({ ...formData, name: e.target.value })
-                      if (formErrors.name) setFormErrors({})
-                    }}
-                  />
-                  {formErrors.name && (
-                    <p className="text-xs text-destructive">{formErrors.name}</p>
-                  )}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </section>
+
+        <Dialog open={trainingOpen} onOpenChange={setTrainingOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader><DialogTitle>Ana Asistanı Eğit</DialogTitle><DialogDescription>İşletmenize uygun seçenekleri seçin. Sistem teknik talimatları kendisi oluşturur.</DialogDescription></DialogHeader>
+            <div className="space-y-6 py-2">
+              <ChoiceGroup label="Asistanın ana amacı" value={training.goal} options={trainingOptions.goal} onChange={(value) => setTraining({ ...training, goal: value as Training['goal'] })} />
+              <ChoiceGroup label="Konuşma tonu" value={training.tone} options={trainingOptions.tone} onChange={(value) => setTraining({ ...training, tone: value as Training['tone'] })} />
+              <ChoiceGroup label="Yanıt uzunluğu" value={training.response_length} options={trainingOptions.response_length} onChange={(value) => setTraining({ ...training, response_length: value as Training['response_length'] })} />
+              <ChoiceGroup label="Fiyat yaklaşımı" value={training.price_policy} options={trainingOptions.price_policy} onChange={(value) => setTraining({ ...training, price_policy: value as Training['price_policy'] })} />
+              <ChoiceGroup label="İnsan desteğine devir" value={training.handoff_mode} options={trainingOptions.handoff_mode} onChange={(value) => setTraining({ ...training, handoff_mode: value as Training['handoff_mode'] })} />
+              <div className="space-y-2"><Label htmlFor="business-summary">İşletmeyi bir cümleyle anlatın</Label><Textarea id="business-summary" value={training.business_summary} onChange={(event) => setTraining({ ...training, business_summary: event.target.value })} maxLength={3000} className="min-h-24" placeholder="Örn: Hafta içi 09.00-18.00 arasında bireysel diyet danışmanlığı sunuyoruz." /></div>
+            </div>
+            <DialogFooter><Button variant="outline" onClick={() => setTrainingOpen(false)}>İptal</Button><Button onClick={() => trainingMutation.mutate(training)} disabled={trainingMutation.isPending}>{trainingMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Kaydet ve Eğit</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={mediaOpen} onOpenChange={setMediaOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader><DialogTitle>Görsel ve Katalog Kaynakları</DialogTitle><DialogDescription>Asistan yalnızca burada doğruladığınız bağlantıları müşteriye paylaşır.</DialogDescription></DialogHeader>
+            <div className="space-y-4 py-2">
+              {mediaItems.map((item, index) => (
+                <div key={index} className="grid gap-3 border-b border-border/70 pb-4 sm:grid-cols-[1fr_1.5fr_auto]">
+                  <div className="space-y-1"><Label>Ad</Label><Input value={item.label} placeholder="Yaz koleksiyonu" onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, label: event.target.value } : current))} /></div>
+                  <div className="space-y-1"><Label>Güvenli bağlantı</Label><Input value={item.url} placeholder="https://..." onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, url: event.target.value } : current))} /></div>
+                  <Button type="button" variant="ghost" size="icon" className="mt-6" onClick={() => setMediaItems(mediaItems.filter((_, itemIndex) => itemIndex !== index))} title="Kaynağı sil"><Trash2 className="h-4 w-4" /></Button>
+                  <div className="space-y-1 sm:col-span-2"><Label>Anahtar kelimeler</Label><Input value={item.keywords.join(', ')} placeholder="katalog, ürünler, modeller" onChange={(event) => setMediaItems(mediaItems.map((current, itemIndex) => itemIndex === index ? { ...current, keywords: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) } : current))} /></div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Açıklama</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Bu bot ne işe yarıyor? (Opsiyonel)"
-                    className="min-h-[88px] border-border/70 bg-muted/20"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="welcome_message">Karşılama Mesajı</Label>
-                  <Textarea
-                    id="welcome_message"
-                    placeholder="Müşterilerinizi nasıl karşılayacaksınız?"
-                    className="min-h-[88px] border-border/70 bg-muted/20"
-                    value={formData.welcome_message}
-                    onChange={(e) => setFormData({ ...formData, welcome_message: e.target.value })}
-                  />
-                </div>
-              </div>
-              <DialogFooter className="mt-6 gap-2 border-t border-border/70 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                  İptal
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending || !formData.name.trim()}
-                >
-                  {createMutation.isPending ? 'Oluşturuluyor...' : 'Bot Oluştur'}
-                </Button>
-              </DialogFooter>
-            </form>
+              ))}
+              <Button type="button" variant="outline" onClick={() => setMediaItems([...mediaItems, { label: '', url: '', keywords: [] }])}><Plus className="mr-2 h-4 w-4" />Kaynak Ekle</Button>
+            </div>
+            <DialogFooter><Button variant="outline" onClick={() => setMediaOpen(false)}>İptal</Button><Button onClick={saveMedia} disabled={capabilityMutation.isPending}>{capabilityMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Kaydet ve Aktifleştir</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

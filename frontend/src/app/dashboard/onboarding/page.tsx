@@ -454,7 +454,7 @@ export default function OnboardingPage() {
                   </Button>
                 )}
                 <Button asChild variant="outline">
-                  <Link href="/dashboard/bots">Botu Özelleştir</Link>
+                  <Link href="/dashboard/bots">Asistanı Özelleştir</Link>
                 </Button>
               </div>
             </CardContent>

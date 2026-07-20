@@ -138,6 +138,17 @@ export const tenantApi = {
 // Bot API
 export const botApi = {
   list: () => api.get('/bots'),
+  getAssistantProfile: () => api.get('/bots/assistant-profile'),
+  updateAssistantTraining: (data: {
+    goal: 'support' | 'sales' | 'appointments' | 'mixed'
+    tone: 'formal' | 'friendly' | 'professional' | 'casual'
+    response_length: 'concise' | 'balanced' | 'detailed'
+    price_policy: 'known_only' | 'confirm_before_sending' | 'never_share'
+    handoff_mode: 'automatic' | 'suggest' | 'manual'
+    business_summary: string
+  }) => api.put('/bots/assistant-profile/training', data),
+  updateAssistantCapability: (key: string, data: { enabled: boolean; config?: Record<string, unknown> }) =>
+    api.patch(`/bots/assistant-profile/capabilities/${key}`, data),
   get: (id: string) => api.get(`/bots/${id}`),
   create: (data: {
     name: string

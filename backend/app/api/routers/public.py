@@ -32,6 +32,7 @@ from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_profile_service import AssistantProfileService
 from app.services.email_service import EmailService
 from app.services.system_event_service import SystemEventService
 from app.core.config import settings
@@ -308,15 +309,19 @@ async def send_chat_message(
     # Generate AI response
     tenant = db.query(Tenant).filter(Tenant.id == bot.tenant_id).first()
     appointment_service = AppointmentAvailabilityService(db)
+    assistant_profile_service = AssistantProfileService(db)
     ai_response = await ai_service.generate_reply(
         bot=bot,
         knowledge_items=knowledge_items,
         conversation=conversation,
         last_user_message=request.message,
         bot_settings=bot.settings,
-        runtime_context=appointment_service.build_ai_context(tenant) if tenant else None,
+        runtime_context=(
+            assistant_profile_service.build_runtime_context(tenant, bot)
+            if tenant else None
+        ),
     )
-    if tenant:
+    if tenant and assistant_profile_service.capability_enabled(bot, "appointment_management"):
         ai_response, _ = appointment_service.apply_ai_action(
             tenant=tenant,
             conversation=conversation,

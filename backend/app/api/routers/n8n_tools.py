@@ -32,6 +32,7 @@ from app.models.incident import Incident
 from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.models.tenant import Tenant
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_profile_service import AssistantProfileService
 from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
@@ -244,6 +245,7 @@ async def generate_ai_reply(
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     appointment_service = AppointmentAvailabilityService(db)
+    assistant_profile_service = AssistantProfileService(db)
     knowledge_items = db.query(BotKnowledgeItem).filter(BotKnowledgeItem.bot_id == bot_id).all()
     reply = await ai_service.generate_reply(
         bot=bot,
@@ -251,13 +253,15 @@ async def generate_ai_reply(
         conversation=conversation,
         last_user_message=body.message,
         bot_settings=bot.settings,
-        runtime_context=appointment_service.build_ai_context(tenant),
+        runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
     )
-    reply, appointment = appointment_service.apply_ai_action(
-        tenant=tenant,
-        conversation=conversation,
-        reply=reply,
-    )
+    appointment = None
+    if assistant_profile_service.capability_enabled(bot, "appointment_management"):
+        reply, appointment = appointment_service.apply_ai_action(
+            tenant=tenant,
+            conversation=conversation,
+            reply=reply,
+        )
     if appointment is not None:
         await send_tenant_push_notification(
             tenant_id=tenant.id,

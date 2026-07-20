@@ -14,8 +14,21 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.bot_settings import BotSettings
-from app.schemas.bot import BotCreate, BotResponse, BotUpdate
+from app.schemas.bot import (
+    AssistantCapabilityUpdate,
+    AssistantProfileResponse,
+    AssistantTrainingUpdate,
+    BotCreate,
+    BotResponse,
+    BotUpdate,
+)
 from app.services.audit_log_service import AuditLogService
+from app.services.assistant_profile_service import AssistantProfileService
+from app.core.rate_limit import (
+    assistant_rate_limiter,
+    rate_limit_key,
+    require_rate_limit,
+)
 
 router = APIRouter(prefix="/bots", tags=["Bots"])
 
@@ -76,7 +89,9 @@ async def create_bot(
         welcome_message=bot_data.welcome_message,
         language=bot_data.language,
         primary_color=bot_data.primary_color,
-        widget_position=bot_data.widget_position.value
+        widget_position=bot_data.widget_position.value,
+        assistant_type="specialist",
+        specialist_key="custom",
     )
     
     db.add(bot)
@@ -95,6 +110,81 @@ async def create_bot(
     )
     
     return bot
+
+
+@router.get("/assistant-profile", response_model=AssistantProfileResponse)
+async def get_assistant_profile(
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+) -> dict:
+    """Return the tenant's single primary assistant and guided configuration."""
+    return AssistantProfileService(db).get_profile(current_tenant)
+
+
+@router.put("/assistant-profile/training", response_model=AssistantProfileResponse)
+async def update_assistant_training(
+    payload: AssistantTrainingUpdate,
+    request: Request,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"])),
+) -> dict:
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant-training", current_tenant.id, current_user.id),
+        "Çok fazla asistan güncelleme isteği. Lütfen daha sonra tekrar deneyin.",
+    )
+    result = AssistantProfileService(db).update_training(current_tenant, payload)
+    AuditLogService(db).log(
+        action="assistant.training.update",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="bot",
+        resource_id=str(result["assistant"].id),
+        payload=payload.model_dump(exclude={"business_summary"}),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return result
+
+
+@router.patch("/assistant-profile/capabilities/{capability_key}", response_model=AssistantProfileResponse)
+async def update_assistant_capability(
+    capability_key: str,
+    payload: AssistantCapabilityUpdate,
+    request: Request,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"])),
+) -> dict:
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant-capability", current_tenant.id, current_user.id),
+        "Çok fazla yetenek güncelleme isteği. Lütfen daha sonra tekrar deneyin.",
+    )
+    try:
+        result = AssistantProfileService(db).update_capability(
+            current_tenant,
+            capability_key,
+            enabled=payload.enabled,
+            config=payload.config,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    AuditLogService(db).log(
+        action="assistant.capability.update",
+        tenant_id=str(current_tenant.id),
+        user_id=str(current_user.id),
+        resource_type="assistant_capability",
+        resource_id=capability_key,
+        payload={"enabled": payload.enabled},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return result
 
 
 @router.get("/{bot_id}", response_model=BotResponse)
@@ -219,6 +309,12 @@ async def delete_bot(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bot bulunamadı"
+        )
+
+    if bot.assistant_type == "primary":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ana asistan silinemez. İsterseniz geçici olarak pasife alabilirsiniz.",
         )
     
     db.delete(bot)
