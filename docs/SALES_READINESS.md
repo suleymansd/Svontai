@@ -16,6 +16,7 @@ issues that require customer action.
 - Self-service and concierge onboarding with idempotent autopilot setup.
 - Customer-safe navigation for status, bots, conversations, calls, leads, appointments and support.
 - OpenWA inbound/outbound messaging, AI replies, lead/appointment extraction and signed webhooks.
+- Schedule-aware natural AI replies, tenant working hours, service durations, conflict-safe availability and customer-confirmed appointment booking.
 - n8n tenant-aware workflows with external task runners and worker-owned scheduled jobs.
 - Manual plan request workflow; no unapproved or fake production upgrade.
 - Redis-backed rate limiting, Sentry backend/frontend capture and readiness checks.
@@ -35,7 +36,7 @@ issues that require customer action.
 
 1. Deploy the release and confirm API `/health/ready`, Worker, OpenWA, n8n and n8n-runners are all healthy.
 2. Scan a real WhatsApp QR and complete one no-charge inbound message test from another phone.
-3. Confirm the reply, conversation, lead or appointment event, notification and daily report for that tenant.
+3. Save the tenant working plan, then confirm the reply, real slot selection, appointment event, notification and daily report.
 4. Create a dedicated smoke customer and add its email/password to GitHub uptime secrets.
 5. Attach the final custom domain and sender domain; repeat public smoke on those URLs.
 6. Publish final privacy, terms, KVKK disclosure, OpenWA consent and commercial contract reviewed for the actual seller.

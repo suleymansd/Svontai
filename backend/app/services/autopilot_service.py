@@ -435,7 +435,7 @@ class AutopilotService:
         return f"{tenant.name} Asistanı"
 
     def _welcome_message(self, tenant: Tenant) -> str:
-        return f"Merhaba, {tenant.name} ile iletişime geçtiğiniz için teşekkür ederiz. Size nasıl yardımcı olabilirim?"
+        return "Nasıl yardımcı olabilirim?"
 
     def _normalized_tone(self, value: object) -> str:
         tone = str(value or ResponseTone.PROFESSIONAL.value).strip().lower()

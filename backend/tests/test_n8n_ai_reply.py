@@ -28,11 +28,13 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         is_ai_paused=False,
         status=ConversationStatus.AI_ACTIVE.value,
     )
+    tenant = MagicMock()
     knowledge = [MagicMock()]
     db = MagicMock()
     db.query.side_effect = [
         _query_returning(first=bot),
         _query_returning(first=conversation),
+        _query_returning(first=tenant),
         _query_returning(all_items=knowledge),
     ]
 
@@ -42,7 +44,13 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         conversationId=str(conversation_id),
         message="Merhaba",
     )
-    with patch("app.api.routers.n8n_tools._verify_tenant", new=AsyncMock()), patch.object(
+    with patch("app.api.routers.n8n_tools._verify_tenant", new=AsyncMock()), patch(
+        "app.api.routers.n8n_tools.AppointmentAvailabilityService.build_ai_context",
+        return_value="availability context",
+    ), patch(
+        "app.api.routers.n8n_tools.AppointmentAvailabilityService.apply_ai_action",
+        return_value=("Size nasıl yardımcı olabilirim?", None),
+    ), patch.object(
         ai_service,
         "generate_reply",
         new=AsyncMock(return_value="Size nasıl yardımcı olabilirim?"),
@@ -57,6 +65,7 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         conversation=conversation,
         last_user_message="Merhaba",
         bot_settings=bot.settings,
+        runtime_context="availability context",
     )
 
 

@@ -30,6 +30,8 @@ from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
 from app.models.incident import Incident
 from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
+from app.models.tenant import Tenant
+from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.ai_service import ai_service
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
@@ -165,6 +167,8 @@ class AIReplyResponse(BaseModel):
     should_reply: bool = Field(..., alias="shouldReply")
     reply_text: str = Field(default="", alias="replyText")
     handoff_required: bool = Field(default=False, alias="handoffRequired")
+    appointment_created: bool = Field(default=False, alias="appointmentCreated")
+    appointment_id: str | None = Field(default=None, alias="appointmentId")
 
 
 class AIGenerateRequest(BaseModel):
@@ -236,6 +240,10 @@ async def generate_ai_reply(
     if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
         return AIReplyResponse(shouldReply=False, handoffRequired=True)
 
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    appointment_service = AppointmentAvailabilityService(db)
     knowledge_items = db.query(BotKnowledgeItem).filter(BotKnowledgeItem.bot_id == bot_id).all()
     reply = await ai_service.generate_reply(
         bot=bot,
@@ -243,8 +251,29 @@ async def generate_ai_reply(
         conversation=conversation,
         last_user_message=body.message,
         bot_settings=bot.settings,
+        runtime_context=appointment_service.build_ai_context(tenant),
     )
-    return AIReplyResponse(shouldReply=bool(reply.strip()), replyText=reply)
+    reply, appointment = appointment_service.apply_ai_action(
+        tenant=tenant,
+        conversation=conversation,
+        reply=reply,
+    )
+    if appointment is not None:
+        await send_tenant_push_notification(
+            tenant_id=tenant.id,
+            event_type="appointment",
+            title="Yeni randevu oluşturuldu",
+            body=f"{appointment.customer_name} için {appointment.subject} randevusu oluşturuldu.",
+            url="/dashboard/appointments",
+            tag="svontai-ai-appointment",
+            extra={"appointment_id": str(appointment.id)},
+        )
+    return AIReplyResponse(
+        shouldReply=bool(reply.strip()),
+        replyText=reply,
+        appointmentCreated=appointment is not None,
+        appointmentId=str(appointment.id) if appointment else None,
+    )
 
 
 @router.post("/ai/generate", response_model=AIGenerateResponse)

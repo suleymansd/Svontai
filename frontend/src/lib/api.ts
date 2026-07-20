@@ -469,24 +469,73 @@ export const operatorApi = {
 // Appointments API
 export const appointmentsApi = {
   list: (params?: { status?: string }) => api.get('/appointments', { params }),
+  getSettings: () => api.get('/appointments/settings'),
+  updateSettings: (data: AppointmentSettings) => api.patch('/appointments/settings', data),
+  getAvailability: (params?: { start_date?: string; days?: number; service_id?: string }) =>
+    api.get('/appointments/availability', { params }),
   create: (data: {
     customer_name: string
     customer_email?: string
+    customer_phone?: string
     subject: string
     starts_at: string
+    duration_minutes?: number
     notes?: string
     reminder_before_minutes?: number
   }) => api.post('/appointments', data),
   update: (id: string, data: Partial<{
     customer_name: string
     customer_email: string
+    customer_phone: string
     subject: string
     starts_at: string
+    duration_minutes: number
     notes: string
     status: 'scheduled' | 'completed' | 'cancelled'
     reminder_before_minutes: number
   }>) => api.patch(`/appointments/${id}`, data),
   sendReminders: () => api.post('/appointments/send-reminders'),
+}
+
+export interface AppointmentService {
+  id: string
+  name: string
+  duration_minutes: number
+  active: boolean
+}
+
+export interface BusinessHoursDay {
+  enabled: boolean
+  start: string
+  end: string
+}
+
+export interface AppointmentSettings {
+  configured: boolean
+  timezone: string
+  minimum_notice_hours: number
+  booking_window_days: number
+  slot_interval_minutes: number
+  booking_location: string
+  booking_notes: string
+  services: AppointmentService[]
+  weekly_hours: Record<string, BusinessHoursDay>
+  closed_dates: string[]
+}
+
+export interface AppointmentAvailability {
+  timezone: string
+  reliable: boolean
+  calendar_connected: boolean
+  warnings: string[]
+  slots: Array<{
+    start_at: string
+    end_at: string
+    local_label: string
+    service_id: string
+    service_name: string
+    duration_minutes: number
+  }>
 }
 
 // Notes API
