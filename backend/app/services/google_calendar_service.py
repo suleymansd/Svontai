@@ -10,7 +10,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from uuid import UUID
 
 import httpx
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings

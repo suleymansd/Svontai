@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
+import boto3
 import httpx
+from botocore.config import Config as BotoConfig
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -184,12 +186,91 @@ class _SupabaseStorageProvider:
         return f"{self.base_url}{signed}"
 
 
+class _R2StorageProvider:
+    def __init__(self) -> None:
+        self.endpoint_url = (settings.ARTIFACT_R2_ENDPOINT_URL or "").rstrip("/")
+        self.access_key = settings.ARTIFACT_R2_ACCESS_KEY_ID or ""
+        self.secret_key = settings.ARTIFACT_R2_SECRET_ACCESS_KEY or ""
+        self.bucket = settings.ARTIFACT_R2_BUCKET or ""
+        self.prefix = (settings.ARTIFACT_R2_PREFIX or "artifacts").strip("/")
+        self._client = None
+
+    def is_configured(self) -> bool:
+        return bool(
+            self.endpoint_url.startswith("https://")
+            and self.access_key
+            and self.secret_key
+            and self.bucket
+        )
+
+    def _s3(self):
+        if not self.is_configured():
+            raise RuntimeError("R2 artifact storage is not configured")
+        if self._client is None:
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=self.endpoint_url,
+                aws_access_key_id=self.access_key,
+                aws_secret_access_key=self.secret_key,
+                region_name="auto",
+                config=BotoConfig(
+                    connect_timeout=5,
+                    read_timeout=10,
+                    retries={"max_attempts": 2, "mode": "standard"},
+                ),
+            )
+        return self._client
+
+    @staticmethod
+    def _safe_segment(value: str, fallback: str) -> str:
+        normalized = re.sub(r"[^a-zA-Z0-9._-]+", "_", (value or "").strip())[:180]
+        return normalized.strip("._") or fallback
+
+    def ensure_bucket(self) -> None:
+        self._s3().head_bucket(Bucket=self.bucket)
+
+    def store_bytes(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        request_id: str,
+        tool_slug: str,
+        file_name: str,
+        data: bytes,
+    ) -> StoredArtifact:
+        max_size = max(1, int(settings.ARTIFACT_MAX_FILE_SIZE_BYTES))
+        if len(data) > max_size:
+            raise ValueError(f"Artifact exceeds the {max_size} byte size limit")
+
+        safe_request_id = self._safe_segment(request_id, uuid.uuid4().hex)
+        fallback = f"{self._safe_segment(tool_slug, 'artifact')}-{uuid.uuid4().hex[:8]}.bin"
+        safe_name = self._safe_segment(file_name, fallback)
+        key_parts = [part for part in (self.prefix, str(tenant_id), safe_request_id, safe_name) if part]
+        object_key = "/".join(key_parts)
+        self._s3().put_object(
+            Bucket=self.bucket,
+            Key=object_key,
+            Body=data,
+            ContentType="application/octet-stream",
+            Metadata={"tenant-id": str(tenant_id), "tool-slug": self._safe_segment(tool_slug, "tool")},
+        )
+        return StoredArtifact(storage_provider="r2", path=object_key, url=None)
+
+    def create_signed_url(self, path: str, expires_seconds: int) -> str:
+        return self._s3().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": path},
+            ExpiresIn=max(60, min(3600, int(expires_seconds))),
+        )
+
+
 class ArtifactService:
     def __init__(self, db: Session):
         self.db = db
         local_name = "railway_volume" if settings.ARTIFACT_STORAGE_PROVIDER == "railway_volume" else "local"
         self._local_provider = _LocalStorageProvider(local_name)
         self._supabase_provider = _SupabaseStorageProvider()
+        self._r2_provider = _R2StorageProvider()
 
     @staticmethod
     def _artifact_signing_secret() -> str:
@@ -240,6 +321,13 @@ class ArtifactService:
             except Exception as exc:
                 logger.warning("Supabase storage health check failed: %s", exc)
                 return False, "Supabase artifact storage erişimi doğrulanamadı."
+        if provider == "r2":
+            try:
+                self._r2_provider.ensure_bucket()
+                return True, "R2 artifact storage bağlantısı doğrulandı."
+            except Exception as exc:
+                logger.warning("R2 artifact storage health check failed: %s", exc)
+                return False, "R2 artifact storage erişimi doğrulanamadı."
         if provider == "railway_volume":
             try:
                 probe = self._local_provider.base_path / ".healthcheck"
@@ -264,6 +352,14 @@ class ArtifactService:
         provider = self._selected_storage_provider()
         if provider == "supabase":
             return self._supabase_provider.store_bytes(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                tool_slug=tool_slug,
+                file_name=file_name,
+                data=data,
+            )
+        if provider == "r2":
+            return self._r2_provider.store_bytes(
                 tenant_id=tenant_id,
                 request_id=request_id,
                 tool_slug=tool_slug,
@@ -402,6 +498,14 @@ class ArtifactService:
             except Exception as exc:
                 logger.warning("Supabase signed url generation failed: %s", exc)
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase signed URL failed")
+
+        if artifact.storage_provider == "r2" and artifact.path:
+            try:
+                signed = self._r2_provider.create_signed_url(artifact.path, remaining_seconds)
+                return RedirectResponse(url=signed, status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers=private_headers)
+            except Exception as exc:
+                logger.warning("R2 artifact signed url generation failed: %s", exc)
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Artifact download URL failed")
 
         if artifact.url:
             parsed = urlparse(artifact.url)

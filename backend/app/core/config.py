@@ -246,7 +246,7 @@ class Settings(BaseSettings):
     # ===========================================
     # Artifact Storage (Tool outputs)
     # ===========================================
-    ARTIFACT_STORAGE_PROVIDER: Literal["local", "railway_volume", "supabase"] = "local"
+    ARTIFACT_STORAGE_PROVIDER: Literal["local", "railway_volume", "supabase", "r2"] = "local"
     ARTIFACT_STORAGE_LOCAL_BASE_PATH: str = "storage/artifacts"
     ARTIFACT_MAX_FILE_SIZE_BYTES: int = 25 * 1024 * 1024
     ARTIFACT_SIGNED_URL_EXPIRES_SECONDS: int = 300
@@ -257,6 +257,13 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_STORAGE_BUCKET: str = "svontai-artifacts"
+
+    # Private S3-compatible object storage (Cloudflare R2 in production).
+    ARTIFACT_R2_ENDPOINT_URL: str = ""
+    ARTIFACT_R2_ACCESS_KEY_ID: str = ""
+    ARTIFACT_R2_SECRET_ACCESS_KEY: str = ""
+    ARTIFACT_R2_BUCKET: str = ""
+    ARTIFACT_R2_PREFIX: str = "artifacts"
 
     @model_validator(mode='after')
     def normalize_database_url(self) -> 'Settings':
@@ -404,6 +411,15 @@ class Settings(BaseSettings):
                     or not self.ARTIFACT_SIGNING_SECRET.strip()
                 ):
                     missing_real_time_config.append("Supabase artifact storage envs")
+            elif self.ARTIFACT_STORAGE_PROVIDER == "r2":
+                if (
+                    not self.ARTIFACT_R2_ENDPOINT_URL.startswith("https://")
+                    or not self.ARTIFACT_R2_ACCESS_KEY_ID.strip()
+                    or not self.ARTIFACT_R2_SECRET_ACCESS_KEY.strip()
+                    or not self.ARTIFACT_R2_BUCKET.strip()
+                    or not self.ARTIFACT_SIGNING_SECRET.strip()
+                ):
+                    missing_real_time_config.append("private R2 artifact storage envs")
             elif self.ARTIFACT_STORAGE_PROVIDER == "railway_volume":
                 artifact_path = Path(self.ARTIFACT_STORAGE_LOCAL_BASE_PATH).expanduser()
                 mount_path = Path(self.RAILWAY_VOLUME_MOUNT_PATH).expanduser() if self.RAILWAY_VOLUME_MOUNT_PATH else None
@@ -414,7 +430,7 @@ class Settings(BaseSettings):
                 elif artifact_path != mount_path and mount_path not in artifact_path.parents:
                     missing_real_time_config.append("artifact path must be inside RAILWAY_VOLUME_MOUNT_PATH")
             else:
-                missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=railway_volume or supabase")
+                missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=r2, railway_volume or supabase")
         if self.RATE_LIMIT_BACKEND != "redis" or not self.REDIS_URL.strip():
             missing_real_time_config.append("RATE_LIMIT_BACKEND=redis/REDIS_URL")
         if not self.SENTRY_DSN.strip():

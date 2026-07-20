@@ -65,19 +65,6 @@ from app.api.routers import (
     agency_router,
 )
 
-# TEMP runtime guard for production troubleshooting:
-# confirms missing model modules and critical columns fail fast with clear log.
-try:
-    from app.models.tenant_tool import TenantTool  # noqa: F401
-    from app.models.tool import Tool  # noqa: F401
-    print("TenantTool import OK")
-    print("Tool columns:", list(Tool.__table__.columns.keys()))
-    if "slug" not in Tool.__table__.columns.keys():
-        raise RuntimeError("Tool.slug column missing in model definition")
-except Exception as e:  # pragma: no cover
-    print("Tool/TenantTool import FAILED:", e)
-    raise
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO if (settings.ENVIRONMENT == "dev" or settings.TOOL_RUNNER_DEBUG) else logging.WARNING,
@@ -187,41 +174,6 @@ def _ensure_messages_schema_compatibility() -> None:
                 db.execute(text(statement))
             db.commit()
             logger.warning("Applied message schema compatibility patch: %s", ", ".join(statements))
-    finally:
-        db.close()
-
-
-def _log_tools_id_column_type() -> None:
-    """
-    Startup guard: log `tools.id` database column type for schema mismatch diagnostics.
-    """
-    from app.db.session import SessionLocal
-
-    db = SessionLocal()
-    try:
-        bind = db.get_bind()
-        dialect = bind.dialect.name
-        if dialect != "postgresql":
-            logger.warning("Tools.id type guard skipped (dialect=%s)", dialect)
-            return
-
-        row = db.execute(
-            text(
-                """
-                SELECT data_type, udt_name
-                FROM information_schema.columns
-                WHERE table_schema = current_schema()
-                  AND table_name = 'tools'
-                  AND column_name = 'id'
-                LIMIT 1
-                """
-            )
-        ).first()
-
-        if row:
-            logger.warning("Tools.id column type guard: data_type=%s udt_name=%s", row[0], row[1])
-        else:
-            logger.warning("Tools.id column type guard: tools.id not found")
     finally:
         db.close()
 
@@ -336,16 +288,21 @@ async def lifespan(app: FastAPI):
     from app.services.rbac_service import RbacService
     from app.services.tool_seed_service import seed_initial_tools
     
-    try:
+    initializers = (
+        ("plans", lambda db: SubscriptionService(db).get_or_create_free_plan()),
+        ("RBAC", lambda db: RbacService(db).ensure_defaults()),
+        ("tool catalog", seed_initial_tools),
+    )
+    for initializer_name, initializer in initializers:
         db = SessionLocal()
-        service = SubscriptionService(db)
-        service.get_or_create_free_plan()
-        RbacService(db).ensure_defaults()
-        seed_initial_tools(db)
-        db.close()
-        logger.info("Default plans, RBAC and tool catalog initialized")
-    except Exception as e:
-        logger.warning(f"Could not initialize plans: {e}")
+        try:
+            initializer(db)
+            logger.info("Default %s initialized", initializer_name)
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Could not initialize %s: %s", initializer_name, exc)
+        finally:
+            db.close()
 
     if settings.ENVIRONMENT == "dev":
         try:
@@ -362,11 +319,6 @@ async def lifespan(app: FastAPI):
             _ensure_messages_schema_compatibility()
         except Exception as exc:
             logger.warning("Could not apply messages schema compatibility patch: %s", exc)
-
-    try:
-        _log_tools_id_column_type()
-    except Exception as exc:
-        logger.warning("Could not run tools.id column type guard: %s", exc)
 
     try:
         _bootstrap_first_admin()
@@ -402,7 +354,7 @@ app = FastAPI(
 
 @app.middleware("http")
 async def global_rate_limit_middleware(request: Request, call_next):
-    if request.url.path not in {"/", "/health"} and not global_ip_rate_limiter.allow(rate_limit_key(request, "global")):
+    if request.url.path not in {"/", "/health", "/health/live", "/health/ready"} and not global_ip_rate_limiter.allow(rate_limit_key(request, "global")):
         return JSONResponse(
             status_code=429,
             content={"detail": "Çok fazla istek. Lütfen birkaç dakika sonra tekrar deneyin."},
@@ -515,11 +467,25 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for monitoring."""
-    return {
-        "status": "ok",
-        "environment": settings.ENVIRONMENT
-    }
+    """Backward-compatible readiness endpoint for monitoring."""
+    return await health_ready()
+
+
+@app.get("/health/live")
+async def health_live():
+    """Process liveness check that has no external dependencies."""
+    return {"status": "alive", "environment": settings.ENVIRONMENT}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness check for the database and distributed rate limiter."""
+    from app.core.health import readiness_status
+
+    ready, payload = await readiness_status()
+    if not ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ Security utilities for JWT tokens and password hashing.
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 import hashlib
 import bcrypt
 

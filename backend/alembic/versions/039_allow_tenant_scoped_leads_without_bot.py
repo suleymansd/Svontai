@@ -20,12 +20,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "leads",
-        "bot_id",
-        existing_type=sa.Uuid(),
-        nullable=True,
-    )
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("leads") as batch_op:
+            batch_op.alter_column(
+                "bot_id",
+                existing_type=sa.Uuid(),
+                nullable=True,
+            )
+    else:
+        op.alter_column(
+            "leads",
+            "bot_id",
+            existing_type=sa.Uuid(),
+            nullable=True,
+        )
 
 
 def downgrade() -> None:
@@ -42,9 +50,17 @@ def downgrade() -> None:
         WHERE lead.bot_id IS NULL
         """
     )
-    op.alter_column(
-        "leads",
-        "bot_id",
-        existing_type=sa.Uuid(),
-        nullable=False,
-    )
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("leads") as batch_op:
+            batch_op.alter_column(
+                "bot_id",
+                existing_type=sa.Uuid(),
+                nullable=False,
+            )
+    else:
+        op.alter_column(
+            "leads",
+            "bot_id",
+            existing_type=sa.Uuid(),
+            nullable=False,
+        )

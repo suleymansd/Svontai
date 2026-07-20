@@ -8,11 +8,23 @@ function backendOrigin(): string {
   }
 }
 
+function sentryOrigin(): string | null {
+  const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
+  if (!dsn) return null
+  try {
+    return new URL(dsn).origin
+  } catch {
+    return null
+  }
+}
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const development = process.env.NODE_ENV !== 'production'
   const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'"]
   const connectSources = ["'self'", backendOrigin()]
+  const monitoringOrigin = sentryOrigin()
+  if (monitoringOrigin) connectSources.push(monitoringOrigin)
   if (development) {
     scriptSources.push("'unsafe-eval'")
     connectSources.push('http:', 'https:', 'ws:', 'wss:')

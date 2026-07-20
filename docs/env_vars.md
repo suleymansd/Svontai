@@ -83,6 +83,11 @@
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STORAGE_BUCKET`
+- `ARTIFACT_R2_ENDPOINT_URL`
+- `ARTIFACT_R2_ACCESS_KEY_ID`
+- `ARTIFACT_R2_SECRET_ACCESS_KEY`
+- `ARTIFACT_R2_BUCKET`
+- `ARTIFACT_R2_PREFIX`
 - `DATABASE_BACKUP_ENABLED`
 - `DATABASE_BACKUP_INTERVAL_SECONDS`
 - `DATABASE_BACKUP_RETENTION_DAYS`
@@ -94,11 +99,12 @@
 - `DATABASE_BACKUP_R2_BUCKET`
 - `DATABASE_BACKUP_R2_PREFIX`
 
-`ARTIFACT_STORAGE_PROVIDER=local` yalnızca geliştirme içindir. Railway production'da
-`railway_volume` seçildiğinde `ARTIFACT_STORAGE_LOCAL_BASE_PATH`, Railway tarafından
-sağlanan `RAILWAY_VOLUME_MOUNT_PATH` içinde olmalıdır. Birden fazla backend replica
-kullanılacaksa paylaşılan object storage için `supabase` seçilmelidir. Artifact indirme
-bağlantıları HMAC imzalı, kısa ömürlü ve cache kapalıdır.
+`ARTIFACT_STORAGE_PROVIDER=local` yalnızca geliştirme içindir. Production için önerilen
+değer `r2`'dır. R2 bucket private kalmalı, token yalnızca ilgili bucket üzerinde Object
+Read & Write yetkisine sahip olmalı ve `ARTIFACT_R2_PREFIX=artifacts` kullanılmalıdır.
+`railway_volume` mevcut tek-replica kayıtlarla geriye dönük uyumluluk için desteklenir;
+birden fazla API replica için paylaşılan object storage zorunludur. Artifact indirme
+bağlantıları iki aşamalı HMAC + provider imzasıyla kısa ömürlüdür ve cache kapalıdır.
 
 Production database backups run inside the Railway worker and upload only
 AES-256-GCM ciphertext to a private Cloudflare R2 bucket. Keep `r2.dev` public
@@ -189,11 +195,12 @@ have expired or been re-encrypted.
 
 ## Production smoke
 - Run `python scripts/prod_smoke.py` after Railway/Vercel deploys.
-- Run `python scripts/integration_readiness.py --profile prod` before launch to verify enabled providers, billing mode, Twilio, n8n and frontend env presence without printing secret values or calling live provider APIs.
+- Run `python scripts/integration_readiness.py --profile prod --role api` inside the Railway API service.
+- Run `python scripts/integration_readiness.py --profile prod --role frontend` with Vercel public env values.
 - For local files, use `python scripts/integration_readiness.py --env-file backend/.env --profile dev`.
 - Required for public checks: `BACKEND_URL` and/or `FRONTEND_URL`.
 - When both values are provided, the smoke test calls `FRONTEND_URL/api/frontend-config` and fails if the frontend is not configured to use the same backend URL.
-- Optional protected checks: `SMARTWA_SMOKE_ACCESS_TOKEN` and `SMARTWA_SMOKE_TENANT_ID`.
+- Protected checks prefer `SMARTWA_SMOKE_EMAIL` and `SMARTWA_SMOKE_PASSWORD`, which obtain a fresh access token on every run. `SMARTWA_SMOKE_TENANT_ID` is optional when the account has one tenant. The old `SMARTWA_SMOKE_ACCESS_TOKEN` remains a short-lived local fallback.
 - Run `python scripts/user_journey_smoke.py` against staging/prod-like backend for a no-charge end-user journey smoke.
 - `scripts/user_journey_smoke.py` creates a disposable user/tenant, completes onboarding, runs autopilot setup, and creates a dry-run voice test call intent/job. It does not send WhatsApp messages, charge Stripe or place real calls.
 - Run `python scripts/admin_smoke.py` with `SMARTWA_ADMIN_ACCESS_TOKEN` or `SMARTWA_ADMIN_EMAIL`/`SMARTWA_ADMIN_PASSWORD` to verify concierge launch operations.

@@ -350,7 +350,7 @@ class TestProductionSecretValidation:
         from pydantic import ValidationError
         from app.core.config import Settings
 
-        with pytest.raises(ValidationError, match="railway_volume or supabase"):
+        with pytest.raises(ValidationError, match="r2, railway_volume or supabase"):
             Settings(**_prod_real_service_settings(ARTIFACT_STORAGE_PROVIDER="local"))
 
         with pytest.raises(ValidationError, match="inside RAILWAY_VOLUME_MOUNT_PATH"):
@@ -358,6 +358,35 @@ class TestProductionSecretValidation:
                 ARTIFACT_STORAGE_PROVIDER="railway_volume",
                 ARTIFACT_STORAGE_LOCAL_BASE_PATH="/tmp/artifacts",
                 RAILWAY_VOLUME_MOUNT_PATH="/app/backend/storage",
+            ))
+
+    def test_private_r2_satisfies_production_artifact_storage_requirement(self):
+        from app.core.config import Settings
+
+        configured = Settings(**_prod_real_service_settings(
+            ARTIFACT_STORAGE_PROVIDER="r2",
+            ARTIFACT_R2_ENDPOINT_URL="https://account.r2.cloudflarestorage.com",
+            ARTIFACT_R2_ACCESS_KEY_ID="artifact-access-key",
+            ARTIFACT_R2_SECRET_ACCESS_KEY="artifact-secret-key",
+            ARTIFACT_R2_BUCKET="svontai-production-backups",
+            ARTIFACT_R2_PREFIX="artifacts",
+            SUPABASE_URL="",
+            SUPABASE_SERVICE_ROLE_KEY="",
+        ))
+
+        assert configured.ARTIFACT_STORAGE_PROVIDER == "r2"
+
+    def test_production_rejects_incomplete_r2_artifact_storage(self):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError, match="private R2 artifact storage envs"):
+            Settings(**_prod_real_service_settings(
+                ARTIFACT_STORAGE_PROVIDER="r2",
+                ARTIFACT_R2_ENDPOINT_URL="http://insecure.example",
+                ARTIFACT_R2_ACCESS_KEY_ID="",
+                ARTIFACT_R2_SECRET_ACCESS_KEY="",
+                ARTIFACT_R2_BUCKET="",
             ))
 
     def test_production_worker_delegates_artifact_storage_to_api(self):

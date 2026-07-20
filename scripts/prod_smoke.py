@@ -4,7 +4,8 @@
 Environment:
   BACKEND_URL or SMARTWA_BACKEND_URL: Railway API base URL
   FRONTEND_URL or SMARTWA_FRONTEND_URL: Vercel frontend base URL
-  SMARTWA_SMOKE_ACCESS_TOKEN: optional bearer token for protected checks
+  SMARTWA_SMOKE_ACCESS_TOKEN: optional short-lived bearer token for protected checks
+  SMARTWA_SMOKE_EMAIL/SMARTWA_SMOKE_PASSWORD: preferred credentials for a fresh smoke login
   SMARTWA_SMOKE_TENANT_ID: optional tenant context for protected checks
 """
 
@@ -53,14 +54,25 @@ def _canonical_url(value: str) -> str:
     return urllib.parse.urlunparse((scheme, netloc, path, "", "", ""))
 
 
-def _request(url: str, token: str | None = None, tenant_id: str | None = None) -> tuple[int, str, dict[str, Any] | None]:
+def _request(
+    url: str,
+    token: str | None = None,
+    tenant_id: str | None = None,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> tuple[int, str, Any]:
     headers = {"User-Agent": "SmartWA-prod-smoke/1.0"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if tenant_id:
         headers["X-Tenant-ID"] = tenant_id
 
-    request = urllib.request.Request(url, headers=headers)
+    body = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             body = response.read(200_000).decode("utf-8", errors="replace")
@@ -71,7 +83,29 @@ def _request(url: str, token: str | None = None, tenant_id: str | None = None) -
             return response.status, body, parsed
     except urllib.error.HTTPError as exc:
         body = exc.read(20_000).decode("utf-8", errors="replace")
-        return exc.code, body, None
+        try:
+            parsed = json.loads(body or "{}")
+        except json.JSONDecodeError:
+            parsed = None
+        return exc.code, body, parsed
+
+
+def _login_for_smoke(backend_url: str, email: str, password: str) -> tuple[str, str | None]:
+    status, body, parsed = _request(
+        f"{backend_url}/auth/login",
+        method="POST",
+        payload={"email": email, "password": password, "portal": "tenant"},
+    )
+    if status != 200 or not isinstance(parsed, dict) or not isinstance(parsed.get("access_token"), str):
+        raise RuntimeError(f"smoke login failed: status={status}, body={body[:200]!r}")
+
+    token = parsed["access_token"]
+    status, body, me = _request(f"{backend_url}/api/me", token=token)
+    if status != 200 or not isinstance(me, dict):
+        raise RuntimeError(f"smoke tenant lookup failed: status={status}, body={body[:200]!r}")
+    tenant = me.get("tenant")
+    tenant_id = str(tenant.get("id")) if isinstance(tenant, dict) and tenant.get("id") else None
+    return token, tenant_id
 
 
 def _check_public(name: str, url: str, expected_statuses: set[int] | None = None, text: str | None = None) -> Result:
@@ -183,6 +217,8 @@ def run() -> int:
     frontend_url = _base_url("SMARTWA_FRONTEND_URL", "FRONTEND_URL")
     token = (os.getenv("SMARTWA_SMOKE_ACCESS_TOKEN") or "").strip() or None
     tenant_id = (os.getenv("SMARTWA_SMOKE_TENANT_ID") or "").strip() or None
+    smoke_email = (os.getenv("SMARTWA_SMOKE_EMAIL") or "").strip()
+    smoke_password = (os.getenv("SMARTWA_SMOKE_PASSWORD") or "").strip()
 
     if not backend_url and not frontend_url:
         print("Set BACKEND_URL/SMARTWA_BACKEND_URL and/or FRONTEND_URL/SMARTWA_FRONTEND_URL.", file=sys.stderr)
@@ -192,9 +228,18 @@ def run() -> int:
     started = time.time()
 
     if backend_url:
-        results.append(_check_json("backend /health", f"{backend_url}/health"))
+        results.append(_check_json("backend /health/ready", f"{backend_url}/health/ready"))
         results.append(_check_json("backend /", f"{backend_url}/"))
+        if not token and smoke_email and smoke_password:
+            try:
+                token, discovered_tenant_id = _login_for_smoke(backend_url, smoke_email, smoke_password)
+                tenant_id = tenant_id or discovered_tenant_id
+                results.append(Result("protected smoke login", True, "fresh access token issued"))
+            except Exception as exc:
+                results.append(Result("protected smoke login", False, str(exc)))
         if token:
+            if not tenant_id:
+                results.append(Result("protected tenant context", False, "no tenant found for smoke account"))
             protected_checks: list[tuple[str, str, Callable[[Any], str | None]]] = [
                 ("me context", "/api/me", _expect_dict_keys("user")),
                 ("onboarding setup status", "/onboarding/setup/status", _expect_dict_keys("current_step", "steps")),
@@ -221,7 +266,13 @@ def run() -> int:
                     )
                 )
         else:
-            results.append(Result("protected API checks", True, "skipped: SMARTWA_SMOKE_ACCESS_TOKEN not set"))
+            results.append(
+                Result(
+                    "protected API checks",
+                    True,
+                    "skipped: set SMARTWA_SMOKE_EMAIL/PASSWORD (preferred) or SMARTWA_SMOKE_ACCESS_TOKEN",
+                )
+            )
 
     if frontend_url:
         results.append(_check_public("frontend /", f"{frontend_url}/", text="SvontAI"))

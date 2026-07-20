@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""No-secret readiness checks for SmartWA live integrations.
+"""No-secret readiness checks for SvontAI live integrations.
 
 This script only checks whether required environment variables are present.
 It never prints secret values and it never calls paid/live provider APIs.
@@ -58,6 +58,8 @@ CHECKS = {
     ],
 }
 
+ROLES = {"api", "worker", "frontend", "all"}
+
 
 INSECURE_DEFAULTS = {
     "JWT_SECRET_KEY": {"your-super-secret-jwt-key-change-this-in-production"},
@@ -103,9 +105,15 @@ def _missing(keys: list[str], loaded: dict[str, str]) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check SmartWA live integration environment readiness.")
+    parser = argparse.ArgumentParser(description="Check SvontAI live integration environment readiness.")
     parser.add_argument("--env-file", default="", help="Optional .env file to read without printing values.")
     parser.add_argument("--profile", choices=["dev", "prod"], default=os.environ.get("ENVIRONMENT", "dev"))
+    parser.add_argument(
+        "--role",
+        choices=sorted(ROLES),
+        default=os.environ.get("SERVICE_ROLE", "all"),
+        help="Deployment role. Prevents backend checks from requiring frontend-only variables.",
+    )
     args = parser.parse_args()
 
     loaded = _load_env_file(Path(args.env_file)) if args.env_file else {}
@@ -113,40 +121,49 @@ def main() -> int:
     failures = 0
     openwa_enabled = _enabled("OPENWA_ENABLED", loaded)
     billing_mode = _env_value("BILLING_MODE", loaded).strip().lower() or "manual"
+    role = args.role if args.role in ROLES else "all"
+    checks_backend = role in {"api", "worker", "all"}
+    checks_frontend = role in {"frontend", "all"}
 
-    ai_provider = _env_value("AI_PROVIDER", loaded).strip().lower() or "openai"
-    ai_key = "GEMINI_API_KEY" if ai_provider == "gemini" else "OPENAI_API_KEY"
-    ai_model_present = _present("AI_MODEL", loaded) or _present(
-        "GEMINI_MODEL" if ai_provider == "gemini" else "OPENAI_MODEL",
-        loaded,
-    )
-    ai_missing = []
-    if ai_provider not in {"openai", "gemini"}:
-        ai_missing.append("AI_PROVIDER=openai|gemini")
-    if not _present(ai_key, loaded):
-        ai_missing.append(ai_key)
-    if not ai_model_present:
-        ai_missing.append("AI_MODEL")
-    if ai_missing:
-        failures += 1
-        _print_check("ai", "FAIL", f"missing or invalid {', '.join(ai_missing)}")
+    if checks_backend:
+        ai_provider = _env_value("AI_PROVIDER", loaded).strip().lower() or "openai"
+        ai_key = "GEMINI_API_KEY" if ai_provider == "gemini" else "OPENAI_API_KEY"
+        ai_model_present = _present("AI_MODEL", loaded) or _present(
+            "GEMINI_MODEL" if ai_provider == "gemini" else "OPENAI_MODEL",
+            loaded,
+        )
+        ai_missing = []
+        if ai_provider not in {"openai", "gemini"}:
+            ai_missing.append("AI_PROVIDER=openai|gemini")
+        if not _present(ai_key, loaded):
+            ai_missing.append(ai_key)
+        if not ai_model_present:
+            ai_missing.append("AI_MODEL")
+        if ai_missing:
+            failures += 1
+            _print_check("ai", "FAIL", f"missing or invalid {', '.join(ai_missing)}")
+        else:
+            _print_check("ai", "OK", f"{ai_provider} variables are present")
     else:
-        _print_check("ai", "OK", f"{ai_provider} variables are present")
+        _print_check("ai", "SKIP", "not used by the frontend deployment")
 
     for name, keys in CHECKS.items():
-        active = strict
+        active = strict and checks_backend
         if name == "meta_whatsapp":
-            active = (strict and not openwa_enabled) or any(_present(key, loaded) for key in keys)
+            active = checks_backend and (
+                (strict and not openwa_enabled)
+                or _present("META_CONFIG_ID", loaded)
+            )
         elif name == "stripe":
-            active = billing_mode == "stripe" and (strict or _enabled("PAYMENTS_ENABLED", loaded))
+            active = checks_backend and billing_mode == "stripe" and (strict or _enabled("PAYMENTS_ENABLED", loaded))
         elif name == "voice_twilio":
-            active = strict or _env_value("VOICE_OUTBOUND_MODE", loaded).strip().lower() == "live"
+            active = checks_backend and _env_value("VOICE_OUTBOUND_MODE", loaded).strip().lower() == "live"
         elif name == "n8n":
-            active = strict or _enabled("USE_N8N", loaded)
+            active = checks_backend and (strict or _enabled("USE_N8N", loaded))
         elif name == "openwa_qr":
-            active = openwa_enabled
+            active = checks_backend and openwa_enabled
         elif name == "frontend":
-            active = strict or any(_present(key, loaded) for key in keys)
+            active = checks_frontend
 
         missing = _missing(keys, loaded)
         if not active and missing:
@@ -158,29 +175,32 @@ def main() -> int:
         else:
             _print_check(name, "OK", "required variables are present")
 
-    if billing_mode == "manual":
+    if checks_backend and billing_mode == "manual":
         if _enabled("PAYMENTS_ENABLED", loaded):
             failures += 1
             _print_check("billing", "FAIL", "PAYMENTS_ENABLED must be false in manual mode")
         else:
             _print_check("billing", "OK", "manual plan activation is enabled; Stripe is not required")
-    elif billing_mode != "stripe":
+    elif checks_backend and billing_mode != "stripe":
         failures += 1
         _print_check("billing", "FAIL", "BILLING_MODE must be manual or stripe")
 
-    insecure = []
-    for key, defaults in INSECURE_DEFAULTS.items():
-        value = _env_value(key, loaded).strip()
-        if value in defaults:
-            insecure.append(key)
-    if insecure:
-        if strict:
-            failures += 1
-            _print_check("secrets", "FAIL", f"insecure/default values: {', '.join(insecure)}")
+    if checks_backend:
+        insecure = []
+        for key, defaults in INSECURE_DEFAULTS.items():
+            value = _env_value(key, loaded).strip()
+            if value in defaults:
+                insecure.append(key)
+        if insecure:
+            if strict:
+                failures += 1
+                _print_check("secrets", "FAIL", f"insecure/default values: {', '.join(insecure)}")
+            else:
+                _print_check("secrets", "WARN", f"insecure/default values: {', '.join(insecure)}")
         else:
-            _print_check("secrets", "WARN", f"insecure/default values: {', '.join(insecure)}")
+            _print_check("secrets", "OK", "no known insecure defaults detected")
     else:
-        _print_check("secrets", "OK", "no known insecure defaults detected")
+        _print_check("secrets", "SKIP", "server secrets are not part of the frontend deployment")
 
     if failures:
         print(f"Readiness failed with {failures} issue(s).")

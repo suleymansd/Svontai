@@ -15,11 +15,20 @@ jobs:
     env:
       BACKEND_URL: https://svontai-production.up.railway.app
       FRONTEND_URL: https://svontai.vercel.app
+      SMARTWA_SMOKE_EMAIL: ${{ secrets.SMARTWA_SMOKE_EMAIL }}
+      SMARTWA_SMOKE_PASSWORD: ${{ secrets.SMARTWA_SMOKE_PASSWORD }}
+      SMARTWA_SMOKE_TENANT_ID: ${{ secrets.SMARTWA_SMOKE_TENANT_ID }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check public services
         run: |
-          curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/health" >/dev/null
+          curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/health/ready" >/dev/null
           curl --fail --silent --show-error --max-time 20 "$FRONTEND_URL/api/frontend-config" >/dev/null
+
+      - name: Run customer API smoke
+        if: ${{ env.SMARTWA_SMOKE_EMAIL != '' && env.SMARTWA_SMOKE_PASSWORD != '' }}
+        run: python scripts/prod_smoke.py
 
       - name: Open or update incident
         if: failure()

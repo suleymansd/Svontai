@@ -57,12 +57,12 @@ def upgrade() -> None:
         sa.Column('role_id', sa.UUID(), sa.ForeignKey('roles.id', ondelete='RESTRICT'), nullable=False),
         sa.Column('status', sa.String(20), nullable=False, server_default='active'),
         sa.Column('created_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now())
+        sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint('tenant_id', 'user_id', name='uq_tenant_membership'),
     )
     op.create_index('ix_tenant_memberships_tenant_id', 'tenant_memberships', ['tenant_id'])
     op.create_index('ix_tenant_memberships_user_id', 'tenant_memberships', ['user_id'])
     op.create_index('ix_tenant_memberships_role_id', 'tenant_memberships', ['role_id'])
-    op.create_unique_constraint('uq_tenant_membership', 'tenant_memberships', ['tenant_id', 'user_id'])
 
     # User sessions
     op.create_table(
@@ -89,11 +89,11 @@ def upgrade() -> None:
         sa.Column('enabled', sa.Boolean, nullable=False, server_default='1'),
         sa.Column('payload_json', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now())
+        sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint('tenant_id', 'key', name='uq_feature_flags_tenant_key'),
     )
     op.create_index('ix_feature_flags_tenant_id', 'feature_flags', ['tenant_id'])
     op.create_index('ix_feature_flags_key', 'feature_flags', ['key'])
-    op.create_unique_constraint('uq_feature_flags_tenant_key', 'feature_flags', ['tenant_id', 'key'])
 
     # Seed permissions and roles
     permissions = [
@@ -216,14 +216,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index('ix_feature_flags_key', table_name='feature_flags')
     op.drop_index('ix_feature_flags_tenant_id', table_name='feature_flags')
-    op.drop_constraint('uq_feature_flags_tenant_key', 'feature_flags', type_='unique')
     op.drop_table('feature_flags')
 
     op.drop_index('ix_user_sessions_refresh_token_hash', table_name='user_sessions')
     op.drop_index('ix_user_sessions_user_id', table_name='user_sessions')
     op.drop_table('user_sessions')
 
-    op.drop_constraint('uq_tenant_membership', 'tenant_memberships', type_='unique')
     op.drop_index('ix_tenant_memberships_role_id', table_name='tenant_memberships')
     op.drop_index('ix_tenant_memberships_user_id', table_name='tenant_memberships')
     op.drop_index('ix_tenant_memberships_tenant_id', table_name='tenant_memberships')

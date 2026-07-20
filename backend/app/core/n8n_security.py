@@ -224,7 +224,7 @@ def create_n8n_jwt_token(tenant_id: str, expires_minutes: int = 5) -> str:
     Returns:
         JWT token string
     """
-    from jose import jwt
+    import jwt
     
     payload = {
         "tenant_id": str(tenant_id),
@@ -250,7 +250,8 @@ def verify_n8n_jwt_token(token: str) -> Tuple[bool, Optional[dict], str]:
     Returns:
         Tuple of (is_valid, payload, error_message)
     """
-    from jose import jwt, JWTError
+    import jwt
+    from jwt import InvalidTokenError as JWTError
     
     try:
         payload = jwt.decode(

@@ -3,9 +3,9 @@ export default function PrivacyPage() {
     <main className="min-h-screen p-8 max-w-4xl mx-auto space-y-8">
       <header className="space-y-2">
         <h1 className="text-3xl font-bold">Gizlilik ve KVKK Bilgilendirmesi</h1>
-        <p className="text-sm text-muted-foreground">Son güncelleme: 25 Haziran 2026</p>
+        <p className="text-sm text-muted-foreground">Son güncelleme: 20 Temmuz 2026</p>
         <p className="text-muted-foreground">
-          Bu metin SmartWA platformunun hangi verileri hangi amaçlarla işlediğini açıklar. Müşterilerinizle ilgili verilerde işletmeniz veri sorumlusu, SmartWA ise hizmet sağlayıcı/alt işleyen rolünde hareket eder.
+          Bu metin SvontAI platformunun hangi verileri hangi amaçlarla işlediğini açıklar. Müşterilerinizle ilgili verilerde işletmeniz veri sorumlusu, SvontAI ise hizmet sağlayıcı/alt işleyen rolünde hareket eder.
         </p>
       </header>
 
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">7. Müşteri Sorumluluğu</h2>
         <p className="text-muted-foreground">
-          İşletmeniz, kendi müşterilerine yapılacak aydınlatma, izin, iletişim tercihleri, WhatsApp/arama politikaları ve sektörel mevzuat uyumu konularından sorumludur. SmartWA bu süreçleri yönetmenize yardımcı olan teknik araçları sağlar; hukuki uyumluluk garantisi vermez.
+          İşletmeniz, kendi müşterilerine yapılacak aydınlatma, izin, iletişim tercihleri, WhatsApp politikaları ve sektörel mevzuat uyumu konularından sorumludur. SvontAI bu süreçleri yönetmenize yardımcı olan teknik araçları sağlar; hukuki uyumluluk garantisi vermez.
         </p>
       </section>
 
