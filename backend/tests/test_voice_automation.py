@@ -229,10 +229,21 @@ def test_signed_voice_intent_uses_tenant_ai_and_is_idempotent(client, monkeypatc
 
 
 def test_voice_gateway_escapes_twiml_values():
-    from voice_gateway.main import _xml_attr, _xml_text
+    from voice_gateway.main import _voice_intent_action_url, _xml_attr, _xml_text
 
     assert _xml_attr('/voice?tenant=1&turn=2') == '/voice?tenant=1&amp;turn=2'
     assert _xml_text('Fiyat < 100 & uygun') == 'Fiyat &lt; 100 &amp; uygun'
+
+    action_url = _voice_intent_action_url(
+        tenant_id="tenant-1",
+        call_sid="CA-test",
+        from_number=" +12404106113 ",
+        to_number="+905452196863",
+        turn=2,
+    )
+    assert " " not in action_url
+    assert "from=%2B12404106113" in action_url
+    assert "to=%2B905452196863" in action_url
 
 
 @pytest.mark.asyncio

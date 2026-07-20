@@ -2,6 +2,7 @@ import base64
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote, urlencode
 from xml.sax.saxutils import escape
 
 import httpx
@@ -28,6 +29,27 @@ def _xml_attr(value: str) -> str:
 
 def _normalize_base_url(value: str) -> str:
     return value.rstrip("/")
+
+
+def _voice_intent_action_url(
+    *,
+    tenant_id: str,
+    call_sid: str,
+    from_number: str,
+    to_number: str,
+    turn: int,
+) -> str:
+    query = urlencode(
+        {
+            "tenantId": str(tenant_id).strip(),
+            "callSid": str(call_sid).strip(),
+            "from": str(from_number).strip(),
+            "to": str(to_number).strip(),
+            "turn": turn,
+        },
+        quote_via=quote,
+    )
+    return f"/twilio/voice/intent?{query}"
 
 
 async def _svontai_get_resolve_tenant(to_number: str) -> dict:
@@ -128,7 +150,13 @@ async def twilio_inbound_voice(request: Request) -> Response:
 
     # Default: gather loop mode (production-friendly)
     if (settings.TWILIO_VOICE_MODE or "gather").strip().lower() == "gather":
-        action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn=1"
+        action_url = _voice_intent_action_url(
+            tenant_id=str(tenant_id),
+            call_sid=call_sid,
+            from_number=from_number,
+            to_number=to_number,
+            turn=1,
+        )
         status_cb = f"/twilio/voice/status?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}"
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -199,7 +227,13 @@ async def twilio_outbound_voice(request: Request) -> Response:
         }
     )
 
-    action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn=1"
+    action_url = _voice_intent_action_url(
+        tenant_id=tenant_id,
+        call_sid=call_sid,
+        from_number=from_number,
+        to_number=to_number,
+        turn=1,
+    )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz" language="tr-TR">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
@@ -231,7 +265,13 @@ async def twilio_voice_intent(request: Request) -> Response:
     if not speech:
         # reprompt
         next_turn = turn + 1
-        action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn={next_turn}"
+        action_url = _voice_intent_action_url(
+            tenant_id=tenant_id,
+            call_sid=call_sid,
+            from_number=from_number,
+            to_number=to_number,
+            turn=next_turn,
+        )
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz" language="tr-TR">Sizi duyamadım. Tekrar eder misiniz?</Say>
@@ -275,7 +315,13 @@ async def twilio_voice_intent(request: Request) -> Response:
         return Response(content=twiml, media_type="application/xml")
 
     next_turn = turn + 1
-    action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn={next_turn}"
+    action_url = _voice_intent_action_url(
+        tenant_id=tenant_id,
+        call_sid=call_sid,
+        from_number=from_number,
+        to_number=to_number,
+        turn=next_turn,
+    )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz" language="tr-TR">{_xml_text(response_text)}</Say>
