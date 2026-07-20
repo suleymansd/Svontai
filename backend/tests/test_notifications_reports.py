@@ -112,6 +112,7 @@ def test_operational_report_uses_real_tenant_data(client):
 
     db = SessionLocal()
     try:
+        report_now = utc_now_naive()
         bot = Bot(
             tenant_id=tenant_uuid,
             name="Report Bot",
@@ -162,9 +163,23 @@ def test_operational_report_uses_real_tenant_data(client):
                 channel="whatsapp",
                 from_number="905551112233",
                 to_number="905552223344",
+                message_id="report-message-failed",
+                message_content="Merhaba",
+                n8n_workflow_id="svontai-whatsapp-v2",
+                status=AutomationRunStatus.FAILED.value,
+                error_message="Webhook was not registered",
+                created_at=report_now - timedelta(minutes=2),
+            ),
+            AutomationRun(
+                tenant_id=str(tenant_uuid),
+                channel="whatsapp",
+                from_number="905551112233",
+                to_number="905552223344",
                 message_id="report-message-1",
                 message_content="Merhaba",
+                n8n_workflow_id="svontai-whatsapp-v2",
                 status=AutomationRunStatus.SUCCESS.value,
+                created_at=report_now - timedelta(minutes=1),
             ),
         ])
         db.commit()
@@ -183,4 +198,8 @@ def test_operational_report_uses_real_tenant_data(client):
     assert report["metrics"]["leads"] == 1
     assert report["metrics"]["appointments"] == 1
     assert report["metrics"]["successful_automations"] == 1
+    assert report["metrics"]["failed_automations"] == 1
+    assert report["metrics"]["unresolved_automation_failures"] == 0
+    assert report["metrics"]["recovered_automation_failures"] == 1
+    assert report["health"]["healthy"] is True
     assert "PERFORMANS ÖZETİ" in report["text"]

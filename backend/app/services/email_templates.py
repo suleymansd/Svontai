@@ -167,13 +167,29 @@ def render_operational_report_email(*, report: dict, dashboard_url: str) -> str:
     incoming = int(metrics.get("incoming_messages") or 0)
     replies = int(metrics.get("ai_replies") or 0)
     failed = int(metrics.get("failed_automations") or 0)
-    healthy = failed == 0 and (incoming == 0 or replies > 0)
+    unresolved = int(metrics.get("unresolved_automation_failures", failed) or 0)
+    recovered = int(metrics.get("recovered_automation_failures") or 0)
+    health = report.get("health") if isinstance(report.get("health"), dict) else {}
+    attention_reasons = health.get("attention_reasons") or []
+    healthy = bool(
+        health.get("healthy")
+        if "healthy" in health
+        else unresolved == 0 and (incoming == 0 or replies > 0)
+    )
     period_label = "Haftalık operasyon raporu" if report.get("period") == "week" else "Günlük operasyon raporu"
     status_title = "Sistem sağlıklı çalışıyor" if healthy else "Kontrol edilmesi gereken durum var"
     status_text = (
-        "SvontAI müşteri iletişimini ve otomasyonları izlemeye devam ediyor."
+        (
+            f"{recovered} geçmiş otomasyon hatası sonraki başarılı çalışmayla düzeldi; "
+            "şu anda açık hata bulunmuyor."
+            if recovered
+            else "SvontAI müşteri iletişimini ve otomasyonları izlemeye devam ediyor."
+        )
         if healthy
-        else "Yanıt veya otomasyon metriklerinde dikkat gerektiren bir durum algılandı."
+        else (
+            " ".join(str(reason) for reason in attention_reasons)
+            or "Yanıt veya otomasyon metriklerinde dikkat gerektiren bir durum algılandı."
+        )
     )
     status_color = "#027a48" if healthy else "#b54708"
     status_background = "#ecfdf3" if healthy else "#fffaeb"
@@ -216,8 +232,16 @@ def render_operational_report_email(*, report: dict, dashboard_url: str) -> str:
                 <td align="right" style="font-size:14px;line-height:20px;font-weight:700;color:#027a48;">{_safe(metrics.get('successful_automations', 0))}</td>
               </tr>
               <tr>
-                <td style="padding-top:8px;font-size:13px;line-height:20px;color:#475467;">Hatalı otomasyon</td>
-                <td align="right" style="padding-top:8px;font-size:14px;line-height:20px;font-weight:700;color:{'#b42318' if failed else '#344054'};">{_safe(failed)}</td>
+                <td style="padding-top:8px;font-size:13px;line-height:20px;color:#475467;">Başarısız deneme</td>
+                <td align="right" style="padding-top:8px;font-size:14px;line-height:20px;font-weight:700;color:{'#b54708' if failed else '#344054'};">{_safe(failed)}</td>
+              </tr>
+              <tr>
+                <td style="padding-top:8px;font-size:13px;line-height:20px;color:#475467;">Açık otomasyon sorunu</td>
+                <td align="right" style="padding-top:8px;font-size:14px;line-height:20px;font-weight:700;color:{'#b42318' if unresolved else '#027a48'};">{_safe(unresolved)}</td>
+              </tr>
+              <tr>
+                <td style="padding-top:8px;font-size:13px;line-height:20px;color:#475467;">Düzeltilmiş geçmiş hata</td>
+                <td align="right" style="padding-top:8px;font-size:14px;line-height:20px;font-weight:700;color:#027a48;">{_safe(recovered)}</td>
               </tr>
             </table>
           </td>

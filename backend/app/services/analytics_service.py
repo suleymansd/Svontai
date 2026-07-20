@@ -314,26 +314,76 @@ class AnalyticsService:
             Appointment.tenant_id == tenant.id,
             Appointment.created_at >= start_utc,
         ).scalar() or 0
-        successful_runs = self.db.query(func.count(AutomationRun.id)).filter(
-            AutomationRun.tenant_id == str(tenant.id),
-            AutomationRun.created_at >= start_utc,
-            AutomationRun.status == AutomationRunStatus.SUCCESS.value,
-        ).scalar() or 0
-        failed_runs = self.db.query(func.count(AutomationRun.id)).filter(
+        automation_runs = self.db.query(
+            AutomationRun.status,
+            AutomationRun.n8n_workflow_id,
+            AutomationRun.channel,
+            AutomationRun.created_at,
+        ).filter(
             AutomationRun.tenant_id == str(tenant.id),
             AutomationRun.created_at >= start_utc,
             AutomationRun.status.in_([
+                AutomationRunStatus.SUCCESS.value,
                 AutomationRunStatus.FAILED.value,
                 AutomationRunStatus.TIMEOUT.value,
             ]),
-        ).scalar() or 0
+        ).all()
+        successful_runs = sum(
+            1 for run in automation_runs
+            if run.status == AutomationRunStatus.SUCCESS.value
+        )
+        failed_automation_runs = [
+            run for run in automation_runs
+            if run.status in {
+                AutomationRunStatus.FAILED.value,
+                AutomationRunStatus.TIMEOUT.value,
+            }
+        ]
+        failed_runs = len(failed_automation_runs)
+        latest_success_by_workflow: dict[tuple[str, str], datetime] = {}
+        for run in automation_runs:
+            if run.status != AutomationRunStatus.SUCCESS.value:
+                continue
+            workflow_key = (run.n8n_workflow_id or "default", run.channel)
+            latest_success = latest_success_by_workflow.get(workflow_key)
+            if latest_success is None or run.created_at > latest_success:
+                latest_success_by_workflow[workflow_key] = run.created_at
+
+        unresolved_failed_runs = sum(
+            1
+            for run in failed_automation_runs
+            if (
+                latest_success_by_workflow.get(
+                    (run.n8n_workflow_id or "default", run.channel)
+                ) is None
+                or run.created_at
+                > latest_success_by_workflow[
+                    (run.n8n_workflow_id or "default", run.channel)
+                ]
+            )
+        )
+        recovered_failed_runs = failed_runs - unresolved_failed_runs
 
         response_rate = round((ai_replies / incoming_messages) * 100, 1) if incoming_messages else 0.0
-        status_text = (
-            "SvontAI aktif ve müşteri mesajlarını yanıtlıyor."
-            if incoming_messages == 0 or ai_replies > 0
-            else "Müşteri mesajı alındı fakat otomatik yanıt görünmüyor; sistem durumunu kontrol edin."
-        )
+        attention_reasons: list[str] = []
+        if incoming_messages > 0 and ai_replies == 0:
+            attention_reasons.append(
+                "Müşteri mesajı alındı fakat otomatik yanıt görünmüyor."
+            )
+        if unresolved_failed_runs > 0:
+            attention_reasons.append(
+                f"Son başarılı çalışmadan sonra {unresolved_failed_runs} otomasyon hatası var."
+            )
+        if attention_reasons:
+            status_text = " ".join(attention_reasons)
+        elif recovered_failed_runs > 0:
+            status_text = (
+                "SvontAI aktif çalışıyor. "
+                f"{recovered_failed_runs} geçmiş otomasyon hatası daha sonraki başarılı "
+                "çalışmayla düzeldi."
+            )
+        else:
+            status_text = "SvontAI aktif ve müşteri mesajlarını yanıtlıyor."
         generated_at = now_local.strftime("%d.%m.%Y %H:%M")
         title = f"{tenant.name} - SvontAI {period_label} Raporu"
         summary = (
@@ -355,7 +405,9 @@ class AnalyticsService:
             f"- Yeni müşteri/lead: {leads}",
             f"- Randevu: {appointments}",
             f"- Başarılı otomasyon: {successful_runs}",
-            f"- Hatalı otomasyon: {failed_runs}",
+            f"- Başarısız otomasyon denemesi: {failed_runs}",
+            f"- Açık otomasyon hatası: {unresolved_failed_runs}",
+            f"- Sonraki başarıyla düzelen hata: {recovered_failed_runs}",
             "",
             "KISA ÖZET",
             summary,
@@ -367,6 +419,10 @@ class AnalyticsService:
             "text": report_text,
             "generated_at": now_local.isoformat(),
             "timezone": timezone_name,
+            "health": {
+                "healthy": not attention_reasons,
+                "attention_reasons": attention_reasons,
+            },
             "metrics": {
                 "incoming_messages": incoming_messages,
                 "ai_replies": ai_replies,
@@ -376,6 +432,8 @@ class AnalyticsService:
                 "appointments": appointments,
                 "successful_automations": successful_runs,
                 "failed_automations": failed_runs,
+                "unresolved_automation_failures": unresolved_failed_runs,
+                "recovered_automation_failures": recovered_failed_runs,
             },
         }
 
