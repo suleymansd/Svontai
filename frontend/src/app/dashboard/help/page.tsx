@@ -67,7 +67,7 @@ export default function DashboardHelpPage() {
 
         <SectionCard title="Hızlı Erişim" description="En sık kullanılan sayfalara kısa yol">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <Link href="/dashboard/bots"><Button variant="outline" className="w-full justify-start gap-2"><Bot className="h-4 w-4" /> Botlarım</Button></Link>
+            <Link href="/dashboard/bots"><Button variant="outline" className="w-full justify-start gap-2"><Bot className="h-4 w-4" /> AI Asistanım</Button></Link>
             <Link href="/dashboard/tools"><Button variant="outline" className="w-full justify-start gap-2"><Settings className="h-4 w-4" /> Tool Kataloğu</Button></Link>
             <Link href="/dashboard/leads"><Button variant="outline" className="w-full justify-start gap-2"><Users className="h-4 w-4" /> Leadler</Button></Link>
             <Link href="/dashboard/conversations"><Button variant="outline" className="w-full justify-start gap-2"><MessagesSquare className="h-4 w-4" /> Konuşmalar</Button></Link>

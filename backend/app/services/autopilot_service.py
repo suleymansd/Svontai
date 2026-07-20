@@ -75,7 +75,12 @@ class AutopilotService:
             actions.append({"key": "automation_configured", "label": "Otonom workflow ayarları oluşturuldu"})
 
         business_profile = self._business_profile(tenant)
-        bot = self.db.query(Bot).filter(Bot.tenant_id == tenant.id).order_by(Bot.created_at.asc()).first()
+        bot = self.db.query(Bot).filter(
+            Bot.tenant_id == tenant.id,
+            Bot.assistant_type == "primary",
+        ).first()
+        if bot is None:
+            bot = self.db.query(Bot).filter(Bot.tenant_id == tenant.id).order_by(Bot.created_at.asc()).first()
         bot_is_managed = False
         if bot is None:
             bot = Bot(
@@ -87,6 +92,7 @@ class AutopilotService:
                 primary_color="#2563EB",
                 widget_position="right",
                 is_active=True,
+                assistant_type="primary",
             )
             self.db.add(bot)
             self.db.commit()
@@ -94,6 +100,10 @@ class AutopilotService:
             bot_is_managed = True
             actions.append({"key": "default_bot_created", "label": "Varsayılan autopilot bot oluşturuldu"})
         else:
+            if bot.assistant_type != "primary":
+                bot.assistant_type = "primary"
+                bot.specialist_key = None
+                self.db.commit()
             existing_settings = self.db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
             bot_is_managed = bool(
                 bot.name == DEFAULT_BOT_NAME

@@ -233,6 +233,64 @@ def run() -> int:
                 raise SmokeError(f"{name}: expected {expected_type.__name__}, got {type(parsed).__name__}")
             _record(steps, name, "ok")
 
+        status, raw, parsed = _request(
+            "GET",
+            "/bots/assistant-profile",
+            base_url=base_url,
+            token=token,
+            tenant_id=tenant_id,
+        )
+        _expect(status, {200}, raw, "assistant profile")
+        if not isinstance(parsed, dict) or parsed.get("assistant", {}).get("assistant_type") != "primary":
+            raise SmokeError(f"primary assistant is missing: {parsed!r}")
+        _record(steps, "primary assistant", "ready")
+
+        status, raw, parsed = _request(
+            "PUT",
+            "/bots/assistant-profile/training",
+            base_url=base_url,
+            token=token,
+            tenant_id=tenant_id,
+            payload={
+                "goal": "appointments",
+                "tone": "professional",
+                "response_length": "concise",
+                "price_policy": "known_only",
+                "handoff_mode": "automatic",
+                "business_summary": "Smoke hizmet işletmesi randevu taleplerini yönetir.",
+            },
+        )
+        _expect(status, {200}, raw, "assistant guided training")
+        if not isinstance(parsed, dict) or parsed.get("completion_percent") != 100:
+            raise SmokeError(f"assistant training did not complete: {parsed!r}")
+        _record(steps, "assistant guided training", "completed")
+
+        status, raw, parsed = _request(
+            "PATCH",
+            "/bots/assistant-profile/capabilities/media_catalog",
+            base_url=base_url,
+            token=token,
+            tenant_id=tenant_id,
+            payload={
+                "enabled": True,
+                "config": {
+                    "items": [{
+                        "label": "Smoke katalog",
+                        "url": "https://example.com/catalog.pdf",
+                        "keywords": ["katalog", "ürünler"],
+                    }],
+                },
+            },
+        )
+        _expect(status, {200}, raw, "assistant media capability")
+        media_capability = next(
+            (item for item in parsed.get("capabilities", []) if item.get("key") == "media_catalog"),
+            None,
+        ) if isinstance(parsed, dict) else None
+        if not media_capability or media_capability.get("status") != "active":
+            raise SmokeError(f"media capability is not active: {parsed!r}")
+        _record(steps, "assistant media capability", "active")
+
         status, raw, parsed = _request("GET", "/voice-automation/settings", base_url=base_url, token=token, tenant_id=tenant_id)
         _expect(status, {200}, raw, "voice settings")
         if not isinstance(parsed, dict):

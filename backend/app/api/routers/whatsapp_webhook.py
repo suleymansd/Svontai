@@ -40,6 +40,7 @@ from app.models.knowledge import BotKnowledgeItem
 from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_profile_service import AssistantProfileService
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
@@ -398,6 +399,7 @@ async def process_whatsapp_reply_in_background(
             logger.error("whatsapp.direct_reply_tenant_missing tenant_id=%s", tenant_id)
             return
         appointment_service = AppointmentAvailabilityService(db)
+        assistant_profile_service = AssistantProfileService(db)
         db.refresh(conversation, ["messages"])
         reply = await ai_service.generate_reply(
             bot=bot,
@@ -405,13 +407,15 @@ async def process_whatsapp_reply_in_background(
             conversation=conversation,
             last_user_message=message_content,
             bot_settings=bot.settings,
-            runtime_context=appointment_service.build_ai_context(tenant),
+            runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
         )
-        reply, appointment = appointment_service.apply_ai_action(
-            tenant=tenant,
-            conversation=conversation,
-            reply=reply,
-        )
+        appointment = None
+        if assistant_profile_service.capability_enabled(bot, "appointment_management"):
+            reply, appointment = appointment_service.apply_ai_action(
+                tenant=tenant,
+                conversation=conversation,
+                reply=reply,
+            )
         if not reply.strip():
             logger.warning(
                 "whatsapp.direct_reply_empty tenant_id=%s message_id=%s",
@@ -923,10 +927,24 @@ async def handle_incoming_message(
 
         bot_row = (
             db.query(Bot.id)
-            .filter(Bot.tenant_id == tenant_uuid, Bot.is_active.is_(True))
+            .filter(
+                Bot.tenant_id == tenant_uuid,
+                Bot.assistant_type == "primary",
+                Bot.is_active.is_(True),
+            )
             .order_by(Bot.created_at.asc())
             .first()
         )
+        if not bot_row:
+            # Deployment-safe fallback for a tenant whose migration/autopilot
+            # has not promoted its legacy bot yet. Migration 043 guarantees
+            # the primary identity for normal production traffic.
+            bot_row = (
+                db.query(Bot.id)
+                .filter(Bot.tenant_id == tenant_uuid, Bot.is_active.is_(True))
+                .order_by(Bot.created_at.asc())
+                .first()
+            )
         if not bot_row:
             logger.warning("whatsapp.no_active_bot tenant_id=%s message_id=%s", tenant_id_str, message_id)
             return

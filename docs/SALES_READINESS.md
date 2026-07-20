@@ -6,7 +6,8 @@ Last reviewed: 20 July 2026
 
 The first commercial release is concierge-first with optional self-service onboarding.
 Customers provide minimum business information, connect WhatsApp by QR, and use the
-simplified customer panel. SvontAI creates the initial bot, checks integrations, runs
+simplified customer panel. SvontAI creates one protected Main Assistant, configures its expert
+capabilities, checks integrations, runs
 automations, records leads and appointments, retries recoverable failures, and reports
 issues that require customer action.
 
@@ -14,6 +15,8 @@ issues that require customer action.
 
 - Tenant-isolated registration, email verification, login, HttpOnly refresh cookie and RBAC.
 - Self-service and concierge onboarding with idempotent autopilot setup.
+- One protected Main Assistant per tenant with guided training; knowledge, lead qualification,
+  appointment, human handoff and verified catalog sharing operate as capabilities behind it.
 - Customer-safe navigation for status, bots, conversations, calls, leads, appointments and support.
 - OpenWA inbound/outbound messaging, AI replies, lead/appointment extraction and signed webhooks.
 - Schedule-aware natural AI replies, tenant working hours, service durations, conflict-safe availability and customer-confirmed appointment booking.

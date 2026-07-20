@@ -8,7 +8,7 @@ from datetime import datetime
 from app.core.time import utc_now_naive
 from enum import Enum
 
-from sqlalchemy import String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import String, DateTime, ForeignKey, Boolean, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -29,6 +29,15 @@ class Bot(Base):
     """Bot model representing an AI assistant."""
     
     __tablename__ = "bots"
+    __table_args__ = (
+        Index(
+            "uq_bots_primary_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("assistant_type = 'primary'"),
+            sqlite_where=text("assistant_type = 'primary'"),
+        ),
+    )
     
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -78,6 +87,17 @@ class Bot(Base):
         default=True,
         nullable=False
     )
+    assistant_type: Mapped[str] = mapped_column(
+        String(20),
+        default="specialist",
+        nullable=False,
+        index=True,
+    )
+    specialist_key: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=utc_now_naive,
@@ -124,4 +144,3 @@ class Bot(Base):
     
     def __repr__(self) -> str:
         return f"<Bot {self.name}>"
-

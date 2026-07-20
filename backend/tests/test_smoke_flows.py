@@ -88,6 +88,49 @@ def test_smoke_register_verify_login_and_core_resources(client):
     assert automatically_prepared_bots.status_code == 200, automatically_prepared_bots.text
     assert len(automatically_prepared_bots.json()) == 1
     assert automatically_prepared_bots.json()[0]["name"] == "Acme Inc Asistanı"
+    assert automatically_prepared_bots.json()[0]["assistant_type"] == "primary"
+
+    assistant_profile = client.get(
+        "/bots/assistant-profile",
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert assistant_profile.status_code == 200, assistant_profile.text
+    assert assistant_profile.json()["assistant"]["assistant_type"] == "primary"
+    assert assistant_profile.json()["completion_percent"] < 100
+
+    trained_profile = client.put(
+        "/bots/assistant-profile/training",
+        json={
+            "goal": "appointments",
+            "tone": "professional",
+            "response_length": "concise",
+            "price_policy": "known_only",
+            "handoff_mode": "automatic",
+            "business_summary": "Acme randevu ile çalışan profesyonel bir hizmet işletmesidir.",
+        },
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert trained_profile.status_code == 200, trained_profile.text
+    assert trained_profile.json()["completion_percent"] == 100
+
+    appointment_capability = client.patch(
+        "/bots/assistant-profile/capabilities/appointment_management",
+        json={"enabled": False, "config": {}},
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert appointment_capability.status_code == 200, appointment_capability.text
+    appointment_item = next(
+        item for item in appointment_capability.json()["capabilities"]
+        if item["key"] == "appointment_management"
+    )
+    assert appointment_item["enabled"] is False
+
+    primary_id = assistant_profile.json()["assistant"]["id"]
+    primary_delete = client.delete(
+        f"/bots/{primary_id}",
+        headers=_auth_headers(access_token, tenant_id),
+    )
+    assert primary_delete.status_code == 409, primary_delete.text
 
     run_onboarding = client.post("/onboarding/setup/run-autopilot", headers=_auth_headers(access_token, tenant_id))
     assert run_onboarding.status_code == 200, run_onboarding.text
@@ -122,6 +165,8 @@ def test_smoke_register_verify_login_and_core_resources(client):
         headers=_auth_headers(access_token, tenant_id),
     )
     assert bot_resp.status_code == 201, bot_resp.text
+    assert bot_resp.json()["assistant_type"] == "specialist"
+    assert bot_resp.json()["specialist_key"] == "custom"
     bot_id = bot_resp.json()["id"]
 
     knowledge_resp = client.post(
