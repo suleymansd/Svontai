@@ -13,7 +13,7 @@ class TwilioAdapter(TelephonyAdapter):
         # Twilio will open a WebSocket to ws_url (wss recommended in production).
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">Merhaba. SvontAI arama asistanına hoş geldiniz.</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. SvontAI arama asistanına hoş geldiniz.</Say>
   <Connect>
     <Stream url="{ws_url}">
       <Parameter name="tenant_id" value="{tenant_id}" />
@@ -23,4 +23,3 @@ class TwilioAdapter(TelephonyAdapter):
     </Stream>
   </Connect>
 </Response>"""
-

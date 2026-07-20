@@ -132,9 +132,9 @@ async def twilio_inbound_voice(request: Request) -> Response:
         status_cb = f"/twilio/voice/status?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}"
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">Merhaba. Size nasıl yardımcı olabilirim?</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. Size nasıl yardımcı olabilirim?</Say>
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
-  <Say voice="Polly.Filiz">Yanıt alamadım. Tekrar dener misiniz?</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Yanıt alamadım. Tekrar dener misiniz?</Say>
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
@@ -202,9 +202,9 @@ async def twilio_outbound_voice(request: Request) -> Response:
     action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn=1"
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
-  <Say voice="Polly.Filiz">Yanıt alamadım. Daha sonra tekrar deneyebiliriz.</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Yanıt alamadım. Daha sonra tekrar deneyebiliriz.</Say>
   <Hangup />
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
@@ -234,7 +234,7 @@ async def twilio_voice_intent(request: Request) -> Response:
         action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn={next_turn}"
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">Sizi duyamadım. Tekrar eder misiniz?</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">Sizi duyamadım. Tekrar eder misiniz?</Say>
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
@@ -269,7 +269,7 @@ async def twilio_voice_intent(request: Request) -> Response:
     if end_call:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">{_xml_text(response_text)}</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">{_xml_text(response_text)}</Say>
   <Hangup />
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
@@ -278,7 +278,7 @@ async def twilio_voice_intent(request: Request) -> Response:
     action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn={next_turn}"
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">{_xml_text(response_text)}</Say>
+  <Say voice="Polly.Filiz" language="tr-TR">{_xml_text(response_text)}</Say>
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
