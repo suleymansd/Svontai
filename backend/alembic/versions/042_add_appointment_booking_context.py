@@ -20,24 +20,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("appointments", sa.Column("customer_phone", sa.String(length=40), nullable=True))
-    op.add_column("appointments", sa.Column("conversation_id", sa.UUID(), nullable=True))
-    op.add_column(
-        "appointments",
-        sa.Column("duration_minutes", sa.Integer(), nullable=False, server_default="60"),
-    )
-    op.add_column(
-        "appointments",
-        sa.Column("source", sa.String(length=30), nullable=False, server_default="manual"),
-    )
-    op.create_foreign_key(
-        "fk_appointments_conversation_id",
-        "appointments",
-        "conversations",
-        ["conversation_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("appointments") as batch_op:
+        batch_op.add_column(sa.Column("customer_phone", sa.String(length=40), nullable=True))
+        batch_op.add_column(sa.Column("conversation_id", sa.UUID(), nullable=True))
+        batch_op.add_column(
+            sa.Column("duration_minutes", sa.Integer(), nullable=False, server_default="60")
+        )
+        batch_op.add_column(
+            sa.Column("source", sa.String(length=30), nullable=False, server_default="manual")
+        )
+        batch_op.create_foreign_key(
+            "fk_appointments_conversation_id",
+            "conversations",
+            ["conversation_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.create_index("ix_appointments_customer_phone", "appointments", ["customer_phone"], unique=False)
     op.create_index("ix_appointments_conversation_id", "appointments", ["conversation_id"], unique=False)
     op.create_index("ix_appointments_source", "appointments", ["source"], unique=False)
@@ -55,8 +53,9 @@ def downgrade() -> None:
     op.drop_index("ix_appointments_source", table_name="appointments")
     op.drop_index("ix_appointments_conversation_id", table_name="appointments")
     op.drop_index("ix_appointments_customer_phone", table_name="appointments")
-    op.drop_constraint("fk_appointments_conversation_id", "appointments", type_="foreignkey")
-    op.drop_column("appointments", "source")
-    op.drop_column("appointments", "duration_minutes")
-    op.drop_column("appointments", "conversation_id")
-    op.drop_column("appointments", "customer_phone")
+    with op.batch_alter_table("appointments") as batch_op:
+        batch_op.drop_constraint("fk_appointments_conversation_id", type_="foreignkey")
+        batch_op.drop_column("source")
+        batch_op.drop_column("duration_minutes")
+        batch_op.drop_column("conversation_id")
+        batch_op.drop_column("customer_phone")
