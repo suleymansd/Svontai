@@ -418,6 +418,56 @@ C: {item.answer}
         )
         return (response.choices[0].message.content or "").strip()
 
+    async def generate_voice_reply(
+        self,
+        *,
+        bot: Bot,
+        knowledge_items: list[BotKnowledgeItem],
+        user_text: str,
+        transcript: list[tuple[str, str]],
+        bot_settings: Optional[BotSettings] = None,
+        runtime_context: str | None = None,
+    ) -> str:
+        """Generate a short, tenant-aware reply suitable for text-to-speech."""
+        system_prompt = self._build_system_prompt(
+            bot,
+            knowledge_items,
+            bot_settings,
+            runtime_context=runtime_context,
+        )
+        system_prompt += """
+
+### SESLİ GÖRÜŞME KURALLARI
+- Bu yanıt telefonda seslendirilecek; yalnızca doğal konuşma metni üret.
+- Markdown, madde işareti, bağlantı, emoji veya teknik etiket kullanma.
+- Çoğunlukla 1-2 kısa cümle kur ve aynı anda en fazla bir soru sor.
+- Her turda yeniden selamlama yapma.
+- Bilmediğin fiyat, uygunluk veya işletme bilgisini uydurma.
+"""
+        messages = [{"role": "system", "content": system_prompt}]
+        for speaker, text in transcript[-10:]:
+            normalized = str(text or "").strip()
+            if not normalized or normalized == user_text:
+                continue
+            messages.append({
+                "role": "assistant" if speaker == "agent" else "user",
+                "content": normalized[:2000],
+            })
+        messages.append({"role": "user", "content": user_text})
+        try:
+            response = await self._get_client().chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=180,
+                temperature=0.5,
+            )
+            reply = (response.choices[0].message.content or "").strip()
+            reply = re.sub(r"[*_`#]+", "", reply).strip()
+            return reply or "Sizi dinliyorum. Biraz daha ayrıntı paylaşır mısınız?"
+        except Exception:
+            logger.exception("%s voice response generation failed", self.provider)
+            return "Şu anda yanıt oluşturamıyorum. Lütfen daha sonra tekrar deneyin."
+
 
 # Singleton instance
 ai_service = AIService()
