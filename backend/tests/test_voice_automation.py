@@ -1,6 +1,8 @@
 import re
 from unittest.mock import AsyncMock
 
+import pytest
+
 
 def _extract_6_digit_code(message: str) -> str:
     match = re.search(r"(\d{6})", message or "")
@@ -231,3 +233,23 @@ def test_voice_gateway_escapes_twiml_values():
 
     assert _xml_attr('/voice?tenant=1&turn=2') == '/voice?tenant=1&amp;turn=2'
     assert _xml_text('Fiyat < 100 & uygun') == 'Fiyat &lt; 100 &amp; uygun'
+
+
+@pytest.mark.asyncio
+async def test_twilio_stream_fallback_uses_turkish_voice():
+    from voice_gateway.providers.base import InboundCallRequest
+    from voice_gateway.providers.twilio import TwilioAdapter
+
+    twiml = await TwilioAdapter().build_connect_stream_response(
+        tenant_id="tenant-1",
+        request=InboundCallRequest(
+            provider="twilio",
+            to_number="+15005550006",
+            from_number="+905559998877",
+            provider_call_id="CA-test",
+            raw={},
+        ),
+        ws_url="wss://voice.example.com/ws/twilio/media",
+    )
+
+    assert '<Say voice="Polly.Filiz" language="tr-TR">' in twiml
