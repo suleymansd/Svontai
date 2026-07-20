@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_now_naive
 from app.models.appointment import Appointment
+from app.models.call import Call, CallDirection
 from app.models.conversation import Conversation
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.tenant import Tenant
@@ -254,7 +255,8 @@ class AppointmentAvailabilityService:
         self,
         *,
         tenant: Tenant,
-        conversation: Conversation,
+        conversation: Conversation | None = None,
+        call: Call | None = None,
         reply: str,
     ) -> tuple[str, Appointment | None]:
         match = ACTION_RE.search(reply or "")
@@ -278,23 +280,30 @@ class AppointmentAvailabilityService:
             selected = None
         if selected is None:
             return clean_reply, None
+        if (conversation is None) == (call is None):
+            raise ValueError("Exactly one appointment source context is required")
 
         # Serialize bookings per tenant so two concurrent confirmations cannot
         # claim the same local slot before either transaction commits.
         self.db.query(Tenant).filter(Tenant.id == tenant.id).with_for_update().one()
 
-        active_for_conversation = self.db.query(Appointment).filter(
+        context_filter = (
+            Appointment.conversation_id == conversation.id
+            if conversation is not None
+            else Appointment.call_id == call.id
+        )
+        active_for_context = self.db.query(Appointment).filter(
             Appointment.tenant_id == tenant.id,
-            Appointment.conversation_id == conversation.id,
+            context_filter,
             Appointment.status.in_(["scheduled", "confirmed"]),
             Appointment.starts_at >= utc_now_naive(),
         ).first()
-        if active_for_conversation is not None and active_for_conversation.starts_at != selected:
+        if active_for_context is not None and active_for_context.starts_at != selected:
             return "Bu görüşme için zaten aktif bir randevunuz var. Değişiklik için mevcut randevunuzu belirtin.", None
 
         existing = self.db.query(Appointment).filter(
             Appointment.tenant_id == tenant.id,
-            Appointment.conversation_id == conversation.id,
+            context_filter,
             Appointment.starts_at == selected,
             Appointment.status != "cancelled",
         ).first()
@@ -322,19 +331,30 @@ class AppointmentAvailabilityService:
                 message += f" Güncel seçenekler: {labels}."
             return message, None
 
-        customer_name = conversation.customer_name or "WhatsApp müşterisi"
-        customer_phone = conversation.customer_phone if conversation.source == "whatsapp" else None
+        if conversation is not None:
+            customer_name = conversation.customer_name or "WhatsApp müşterisi"
+            customer_phone = conversation.customer_phone if conversation.source == "whatsapp" else None
+            source = "ai_conversation"
+            source_note = "Müşteri konuşma içinde saati açıkça onayladı."
+        else:
+            assert call is not None
+            customer_name = call.lead.name if call.lead and call.lead.name else "Telefon müşterisi"
+            raw_phone = call.to_number if call.direction == CallDirection.OUTBOUND.value else call.from_number
+            customer_phone = re.sub(r"^tel:", "", raw_phone or "", flags=re.IGNORECASE).strip() or None
+            source = "ai_voice"
+            source_note = "Müşteri sesli görüşmede saati açıkça onayladı."
         appointment = Appointment(
             tenant_id=tenant.id,
             created_by=None,
             customer_name=customer_name,
             customer_phone=customer_phone,
-            conversation_id=conversation.id,
+            conversation_id=conversation.id if conversation is not None else None,
+            call_id=call.id if call is not None else None,
             subject=valid_slot["service_name"],
             starts_at=selected,
             duration_minutes=valid_slot["duration_minutes"],
-            notes="Müşteri konuşma içinde saati açıkça onayladı.",
-            source="ai_conversation",
+            notes=source_note,
+            source=source,
             status="scheduled",
         )
         self.db.add(appointment)
@@ -348,7 +368,8 @@ class AppointmentAvailabilityService:
             message="Müşteri onayıyla otomatik randevu oluşturuldu.",
             meta_json={
                 "appointment_id": str(appointment.id),
-                "conversation_id": str(conversation.id),
+                "conversation_id": str(conversation.id) if conversation is not None else None,
+                "call_id": str(call.id) if call is not None else None,
                 "service_id": service_id,
                 "starts_at": selected.isoformat(),
             },
