@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote, urlencode
-from xml.sax.saxutils import escape
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
@@ -13,18 +12,13 @@ from voice_gateway.config import settings
 from voice_gateway.security import sign_payload
 from voice_gateway.providers.base import InboundCallRequest
 from voice_gateway.providers.twilio import TwilioAdapter
+from voice_gateway.twiml import say as _twilio_say
+from voice_gateway.twiml import xml_attr as _xml_attr
+from voice_gateway.twiml import xml_text as _xml_text
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SvontAI Voice Gateway", version="0.1.0")
-
-
-def _xml_text(value: str) -> str:
-    return escape(value or "")
-
-
-def _xml_attr(value: str) -> str:
-    return escape(value or "", {'"': "&quot;"})
 
 
 def _normalize_base_url(value: str) -> str:
@@ -160,9 +154,9 @@ async def twilio_inbound_voice(request: Request) -> Response:
         status_cb = f"/twilio/voice/status?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}"
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. Size nasıl yardımcı olabilirim?</Say>
+  {_twilio_say("Merhaba. Size nasıl yardımcı olabilirim?")}
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
-  <Say voice="Polly.Filiz" language="tr-TR">Yanıt alamadım. Tekrar dener misiniz?</Say>
+  {_twilio_say("Yanıt alamadım. Tekrar dener misiniz?")}
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
@@ -236,9 +230,9 @@ async def twilio_outbound_voice(request: Request) -> Response:
     )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
+  {_twilio_say("Merhaba. SvontAI asistanı arıyor. Size yardımcı olmak için buradayım.")}
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
-  <Say voice="Polly.Filiz" language="tr-TR">Yanıt alamadım. Daha sonra tekrar deneyebiliriz.</Say>
+  {_twilio_say("Yanıt alamadım. Daha sonra tekrar deneyebiliriz.")}
   <Hangup />
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
@@ -274,7 +268,7 @@ async def twilio_voice_intent(request: Request) -> Response:
         )
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">Sizi duyamadım. Tekrar eder misiniz?</Say>
+  {_twilio_say("Sizi duyamadım. Tekrar eder misiniz?")}
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
@@ -309,7 +303,7 @@ async def twilio_voice_intent(request: Request) -> Response:
     if end_call:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">{_xml_text(response_text)}</Say>
+  {_twilio_say(response_text)}
   <Hangup />
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
@@ -324,7 +318,7 @@ async def twilio_voice_intent(request: Request) -> Response:
     )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz" language="tr-TR">{_xml_text(response_text)}</Say>
+  {_twilio_say(response_text)}
   <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""

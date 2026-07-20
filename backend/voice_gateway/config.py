@@ -27,6 +27,8 @@ class VoiceGatewaySettings(BaseSettings):
     # - gather: IVR-style STT via Twilio <Gather input="speech"> (production friendly, low complexity)
     # - stream: Media Streams websocket (skeleton exists; realtime STT/TTS will be added later)
     TWILIO_VOICE_MODE: str = "gather"
+    TWILIO_TTS_VOICE: str = "Polly.Burcu-Neural"
+    TWILIO_TTS_LANGUAGE: str = "tr-TR"
 
 
 settings = VoiceGatewaySettings()

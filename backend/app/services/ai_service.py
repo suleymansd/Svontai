@@ -442,6 +442,9 @@ C: {item.answer}
 - Markdown, madde işareti, bağlantı, emoji veya teknik etiket kullanma.
 - Çoğunlukla 1-2 kısa cümle kur ve aynı anda en fazla bir soru sor.
 - Her turda yeniden selamlama yapma.
+- Yazım dilini Türkçe ses sentezine uygun tut; doğal duraklamalar için nokta ve virgül kullan.
+- İngilizce veya teknik kısaltmaları telaffuz edilecek biçimde açık yaz; sembol, eğik çizgi ve parantez kullanma.
+- Telefon numarası, tarih, saat, para ve ölçüleri konuşma dilinde kolay okunacak biçimde yaz.
 - Bilmediğin fiyat, uygunluk veya işletme bilgisini uydurma.
 """
         messages = [{"role": "system", "content": system_prompt}]
