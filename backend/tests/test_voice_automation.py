@@ -1,4 +1,5 @@
 import re
+from unittest.mock import AsyncMock
 
 
 def _extract_6_digit_code(message: str) -> str:
@@ -182,3 +183,51 @@ def test_voice_live_twilio_job_uses_real_provider_contract(client, monkeypatch):
     assert len(calls) == 1
     assert calls[0]["provider"] == "twilio"
     assert calls[0]["provider_call_id"] == "CA1234567890"
+
+
+def test_signed_voice_intent_uses_tenant_ai_and_is_idempotent(client, monkeypatch):
+    from app.core.config import settings
+    from app.core.n8n_security import generate_signature
+    from app.api.routers import voice_intent as voice_intent_module
+
+    _access_token, tenant_id = _create_tenant_session(client, email="voice-ai@example.com")
+    generate = AsyncMock(return_value="Elbette, hangi hizmet için bilgi almak istersiniz?")
+    monkeypatch.setattr(voice_intent_module.ai_service, "generate_voice_reply", generate)
+    payload = {
+        "tenantId": tenant_id,
+        "eventType": "voice_call_intent",
+        "eventId": "twilio:CA-test:turn:1",
+        "from": "tel:+905559998877",
+        "to": "tel:+15005550006",
+        "text": "Hizmetleriniz hakkında bilgi almak istiyorum",
+        "call": {
+            "provider": "twilio",
+            "provider_call_id": "CA-test",
+            "direction": "outbound",
+            "status": "in_progress",
+        },
+        "metadata": {"turn": 1},
+    }
+    signature, timestamp = generate_signature(payload, settings.VOICE_GATEWAY_TO_SVONTAI_SECRET)
+    headers = {
+        "X-Voice-Signature": signature,
+        "X-Voice-Timestamp": str(timestamp),
+    }
+
+    first = client.post("/api/v1/voice/intent", json=payload, headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["responseText"] == "Elbette, hangi hizmet için bilgi almak istersiniz?"
+    assert first.json()["endCall"] is False
+    assert first.json()["runId"]
+
+    duplicate = client.post("/api/v1/voice/intent", json=payload, headers=headers)
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["responseText"] == first.json()["responseText"]
+    assert generate.await_count == 1
+
+
+def test_voice_gateway_escapes_twiml_values():
+    from voice_gateway.main import _xml_attr, _xml_text
+
+    assert _xml_attr('/voice?tenant=1&turn=2') == '/voice?tenant=1&amp;turn=2'
+    assert _xml_text('Fiyat < 100 & uygun') == 'Fiyat &lt; 100 &amp; uygun'

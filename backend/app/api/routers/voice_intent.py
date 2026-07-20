@@ -3,7 +3,7 @@ Voice intent endpoint (synchronous).
 
 Twilio <Gather> needs a fast response (TwiML). For that reason, this endpoint:
 - verifies Voice Gateway signature
-- triggers n8n call workflow synchronously
+- generates a tenant-aware response with the configured AI provider
 - returns responseText/endCall so Voice Gateway can render TwiML
 """
 
@@ -19,6 +19,8 @@ from app.core.voice_security import verify_voice_gateway_request_dependency
 from app.db.session import get_db
 from app.models.call import Call, CallTranscript
 from app.models.tenant import Tenant
+from app.services.ai_service import ai_service
+from app.services.assistant_profile_service import AssistantProfileService
 from app.services.n8n_client import N8NClient
 
 logger = logging.getLogger(__name__)
@@ -63,14 +65,6 @@ async def voice_intent(
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
-    n8n = N8NClient(db)
-    if not n8n.should_use_n8n(body.tenant_id):
-        return VoiceIntentResponse(ok=True, runId=None, responseText="Bu tenant için otomasyon kapalı.", endCall=True)
-
-    workflow_id = n8n.get_workflow_id(body.tenant_id, channel="call")
-    if not workflow_id:
-        return VoiceIntentResponse(ok=True, runId=None, responseText="Voice workflow yapılandırılmamış.", endCall=True)
-
     timestamp = body.timestamp or datetime.now(timezone.utc).isoformat()
     call_payload = body.call or {}
     provider = str(call_payload.get("provider") or "unknown").strip()[:50]
@@ -85,14 +79,15 @@ async def voice_intent(
             Call.provider_call_id == provider_call_id,
         ).first()
 
-    run, is_new = n8n.create_automation_run(
+    run_service = N8NClient(db)
+    run, is_new = run_service.create_automation_run(
         tenant_id=body.tenant_id,
         channel="call",
         from_number=body.from_id,
         to_number=body.to_id,
         message_id=body.event_id,
         message_content=body.text,
-        workflow_id=workflow_id,
+        workflow_id="direct-voice-ai",
         correlation_id=body.correlation_id,
     )
 
@@ -126,27 +121,36 @@ async def voice_intent(
         end_call = bool(response_data.get("endCall") or response_data.get("end_call") or False)
         return VoiceIntentResponse(ok=True, runId=str(run.id), responseText=response_text, endCall=end_call, raw=response_data)
 
-    payload = n8n.build_event_payload(
-        tenant_id=body.tenant_id,
-        run_id=str(run.id),
-        event_type=body.event_type,
-        channel="call",
-        external_event_id=body.event_id,
-        from_id=body.from_id,
-        to_id=body.to_id,
-        text=body.text,
-        timestamp=timestamp,
-        correlation_id=body.correlation_id,
-        contact_name=None,
-        raw_payload={"call": body.call or {}, "metadata": body.metadata or {}},
-        metadata={"call": body.call or {}, **(body.metadata or {})},
-    )
-
     try:
-        response_data = await n8n.trigger_with_retry(workflow_id, payload, body.tenant_id, run) or {}
+        profile_service = AssistantProfileService(db)
+        bot = profile_service.ensure_primary(tenant)
+        segments: list[tuple[str, str]] = []
+        if call_row is not None:
+            rows = db.query(CallTranscript).filter(
+                CallTranscript.call_id == call_row.id,
+                CallTranscript.tenant_id == body.tenant_id,
+            ).order_by(CallTranscript.segment_index.desc()).limit(12).all()
+            segments = [(row.speaker, row.text) for row in reversed(rows)]
+        response_text = await ai_service.generate_voice_reply(
+            bot=bot,
+            knowledge_items=list(bot.knowledge_items or []),
+            user_text=body.text,
+            transcript=segments,
+            bot_settings=bot.settings,
+            runtime_context=profile_service.build_runtime_context(tenant, bot),
+        )
+        end_call = any(
+            phrase in body.text.casefold()
+            for phrase in ("görüşürüz", "hoşça kal", "kapatabiliriz", "teşekkürler bu kadar")
+        )
+        response_data = {"responseText": response_text, "endCall": end_call, "provider": ai_service.provider}
+        run.mark_success(response_data)
+        db.commit()
     except Exception as exc:
-        logger.warning("voice intent n8n trigger failed: %s", exc, exc_info=True)
+        logger.warning("voice intent AI generation failed: %s", exc, exc_info=True)
         response_data = {"responseText": "Şu anda yardımcı olamıyorum. Lütfen daha sonra tekrar deneyin.", "endCall": True}
+        run.mark_failed(str(exc), response_data)
+        db.commit()
 
     response_text = str(response_data.get("responseText") or response_data.get("response_text") or "").strip()
     if not response_text:

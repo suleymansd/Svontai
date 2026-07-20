@@ -2,6 +2,7 @@ import base64
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from xml.sax.saxutils import escape
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
@@ -15,6 +16,14 @@ from voice_gateway.providers.twilio import TwilioAdapter
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SvontAI Voice Gateway", version="0.1.0")
+
+
+def _xml_text(value: str) -> str:
+    return escape(value or "")
+
+
+def _xml_attr(value: str) -> str:
+    return escape(value or "", {'"': "&quot;"})
 
 
 def _normalize_base_url(value: str) -> str:
@@ -124,9 +133,9 @@ async def twilio_inbound_voice(request: Request) -> Response:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz">Merhaba. Size nasıl yardımcı olabilirim?</Say>
-  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Say voice="Polly.Filiz">Yanıt alamadım. Tekrar dener misiniz?</Say>
-  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
         # Twilio status callback config is done in console; we keep endpoint for it.
@@ -194,7 +203,7 @@ async def twilio_outbound_voice(request: Request) -> Response:
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz">Merhaba. SmartWA asistanı arıyor. Size yardımcı olmak için buradayım.</Say>
-  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Say voice="Polly.Filiz">Yanıt alamadım. Daha sonra tekrar deneyebiliriz.</Say>
   <Hangup />
 </Response>"""
@@ -226,7 +235,7 @@ async def twilio_voice_intent(request: Request) -> Response:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Filiz">Sizi duyamadım. Tekrar eder misiniz?</Say>
-  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
@@ -260,7 +269,7 @@ async def twilio_voice_intent(request: Request) -> Response:
     if end_call:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">{response_text}</Say>
+  <Say voice="Polly.Filiz">{_xml_text(response_text)}</Say>
   <Hangup />
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
@@ -269,8 +278,8 @@ async def twilio_voice_intent(request: Request) -> Response:
     action_url = f"/twilio/voice/intent?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}&turn={next_turn}"
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Filiz">{response_text}</Say>
-  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{action_url}" method="POST" />
+  <Say voice="Polly.Filiz">{_xml_text(response_text)}</Say>
+  <Gather input="speech" language="tr-TR" speechTimeout="auto" action="{_xml_attr(action_url)}" method="POST" />
   <Hangup />
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
