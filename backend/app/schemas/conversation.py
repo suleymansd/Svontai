@@ -33,6 +33,11 @@ class ConversationResponse(ConversationBase):
     
     id: UUID
     bot_id: UUID
+    status: str
+    customer_name: str | None
+    customer_phone: str
+    last_message: str | None
+    last_message_at: datetime | None
     extra_data: dict
     created_at: datetime
     updated_at: datetime
@@ -46,4 +51,3 @@ class ConversationWithMessages(ConversationResponse):
 # Avoid circular import
 from app.schemas.message import MessageResponse
 ConversationWithMessages.model_rebuild()
-

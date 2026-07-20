@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -129,6 +130,17 @@ class OpenWAClient:
 
     async def get_qr(self, session_id: str) -> dict[str, Any]:
         result = await self._request("GET", f"/api/sessions/{session_id}/qr")
+        return result if isinstance(result, dict) else {}
+
+    async def get_contact(self, session_id: str, contact_id: str) -> dict[str, Any]:
+        """Return the best contact details cached by the tenant's WhatsApp session."""
+        safe_contact_id = quote(contact_id.strip(), safe="")
+        if not safe_contact_id:
+            return {}
+        result = await self._request(
+            "GET",
+            f"/api/sessions/{session_id}/contacts/{safe_contact_id}",
+        )
         return result if isinstance(result, dict) else {}
 
     async def ensure_webhook(self, session_id: str, url: str) -> dict[str, Any]:

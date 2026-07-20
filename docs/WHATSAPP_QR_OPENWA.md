@@ -8,7 +8,7 @@ SmartWA, OpenWA'yı ayrı bir WhatsApp gateway servisi olarak kullanır. Müşte
 2. Kaynak olarak Docker image seçin:
 
 ```text
-ghcr.io/rmyndharis/openwa:0.8.17
+ghcr.io/rmyndharis/openwa:0.10.0
 ```
 
 3. `/app/data` mount path'i için kalıcı volume ekleyin.
@@ -68,6 +68,7 @@ Backend deploy sırasında `alembic upgrade head` çalışmalı ve migration hea
 4. Oturum `ready` olduğunda SmartWA hesabı aktif işaretler.
 5. Gelen mesajlar SmartWA konuşma, AI, n8n, lead, randevu ve ticket akışına girer.
 6. Giden mesajlar tenant'ın kendi OpenWA session ID'si üzerinden gönderilir.
+7. Gönderen adı önce WhatsApp oturumunun rehber kaydından, sonra doğrulanmış işletme veya WhatsApp profil adından çözülür; ad bulunamazsa telefon numarası gösterilir.
 
 ## Güvenlik ve Operasyon
 
