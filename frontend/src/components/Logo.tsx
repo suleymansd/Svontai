@@ -34,8 +34,8 @@ export function Logo({
         <Image
           src="/logo.png"
           alt="SvontAi Logo"
-          width={icon}
-          height={icon}
+          fill
+          sizes={`${icon}px`}
           className="object-contain"
           priority
         />
@@ -64,8 +64,8 @@ export function LogoIcon({ size = 40, className }: { size?: number; className?: 
       <Image
         src="/logo.png"
         alt="SvontAi Logo"
-        width={size}
-        height={size}
+        fill
+        sizes={`${size}px`}
         className="object-contain"
         priority
       />

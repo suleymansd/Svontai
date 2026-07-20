@@ -3,16 +3,16 @@ export default function TermsPage() {
     <main className="min-h-screen p-8 max-w-4xl mx-auto space-y-8">
       <header className="space-y-2">
         <h1 className="text-3xl font-bold">Kullanım Koşulları</h1>
-        <p className="text-sm text-muted-foreground">Son güncelleme: 16 Temmuz 2026</p>
+        <p className="text-sm text-muted-foreground">Son güncelleme: 20 Temmuz 2026</p>
         <p className="text-muted-foreground">
-          Bu koşullar SmartWA’nın self-serve ve concierge kurulum, WhatsApp AI, arama otomasyonu, randevu, lead, destek ve ajans/kurumsal yönetim özelliklerini kapsar.
+          Bu koşullar SvontAI&apos;nin self-serve ve concierge kurulum, WhatsApp AI, randevu, lead, destek ve ajans/kurumsal yönetim özelliklerini kapsar.
         </p>
       </header>
 
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">1. Hizmet Kapsamı</h2>
         <p className="text-muted-foreground">
-          SmartWA; işletmeler için WhatsApp odaklı AI asistan, bot yönetimi, mesaj/lead/randevu takibi, AI arama otomasyonu, entegrasyon sağlık kontrolü, concierge kurulum ve admin operasyon araçları sunar. Özellikler plan, entitlement ve entegrasyon durumuna göre değişebilir.
+          SvontAI; işletmeler için WhatsApp odaklı AI asistan, bot yönetimi, mesaj/lead/randevu takibi, entegrasyon sağlık kontrolü, concierge kurulum ve operasyon araçları sunar. Canlı telefon araması henüz sunulmaz; paneldeki arama alanı yalnızca test modunda çalışır. Özellikler plan, kullanım hakkı ve entegrasyon durumuna göre değişebilir.
         </p>
       </section>
 
@@ -50,7 +50,7 @@ export default function TermsPage() {
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">6. Ödeme, Plan ve Limitler</h2>
         <p className="text-muted-foreground">
-          Ücretli planlar ödeme sağlayıcısı üzerinden işlenir. Plan limitleri, kullanım hakları ve özellik erişimleri backend entitlement sistemiyle uygulanır. Ödeme başarısızlığı veya plan iptali durumunda bazı özellikler sınırlandırılabilir.
+          Lansman döneminde plan başvuruları görüşme yoluyla alınır; ücret, dönem ve hizmet kapsamı ayrıca yazılı olarak mutabık kalındıktan sonra plan yönetici tarafından etkinleştirilir. Platform içinde kartla ödeme alınmaz. Plan limitleri ve özellik erişimleri kullanım hakkı sistemiyle uygulanır. Süresi dolan veya iptal edilen planlarda bazı özellikler sınırlandırılabilir.
         </p>
       </section>
 

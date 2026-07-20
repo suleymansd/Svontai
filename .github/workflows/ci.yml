@@ -25,6 +25,12 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
+      - run: python -m pip_audit -r requirements.txt
+      - run: python -m pip_audit -r ../requirements.txt
+      - name: Verify Railway and backend dependencies stay aligned
+        run: diff -u requirements.txt ../requirements.txt
+      - name: Verify fresh database migrations
+        run: DATABASE_URL=sqlite:////tmp/svontai-ci-migrations.db alembic upgrade head
       - run: python -m pytest -q
 
   frontend:

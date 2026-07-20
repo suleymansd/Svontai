@@ -9,7 +9,7 @@ import { ShieldCheck, Lock, KeyRound, FileCheck, Database, AlertOctagon, Gauge, 
 
 export const metadata: Metadata = {
   title: 'Security',
-  description: 'SmartWA güvenlik yaklaşımı: tenant izolasyonu, RBAC, audit log, rate limit, webhook imza kontrolü ve incident yönetimi.',
+  description: 'SvontAI güvenlik yaklaşımı: tenant izolasyonu, RBAC, audit log, rate limit, webhook imza kontrolü ve incident yönetimi.',
 }
 
 const securityItems = [
@@ -62,7 +62,7 @@ export default function SecurityPage() {
         <Reveal className="space-y-5">
           <Badge variant="outline">Güvenlik</Badge>
           <h1 className="text-4xl font-semibold">Güvenli otonomi yaklaşımı</h1>
-          <p className="text-muted-foreground">SmartWA; müşteri operasyonlarını otomatik yürütürken riskli aksiyonlarda onay, güçlü tenant ayrımı, rate limit ve izlenebilir audit kayıtlarıyla çalışacak şekilde tasarlandı.</p>
+          <p className="text-muted-foreground">SvontAI; müşteri operasyonlarını otomatik yürütürken riskli aksiyonlarda onay, güçlü tenant ayrımı, rate limit ve izlenebilir audit kayıtlarıyla çalışacak şekilde tasarlandı.</p>
         </Reveal>
 
         <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">

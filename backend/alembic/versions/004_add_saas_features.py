@@ -163,20 +163,112 @@ def upgrade() -> None:
     op.add_column('leads', sa.Column('deleted_at', sa.DateTime, nullable=True))
     op.add_column('leads', sa.Column('updated_at', sa.DateTime, nullable=True, server_default=sa.func.now()))
     
-    # Insert default plans
-    op.execute("""
-        INSERT INTO plans (id, name, display_name, description, plan_type, price_monthly, price_yearly, message_limit, bot_limit, knowledge_items_limit, feature_flags, trial_days, sort_order)
-        VALUES 
-        ('%(free_id)s', 'free', 'Ücretsiz', 'Başlamak için ideal', 'free', 0, 0, 100, 1, 20, '{"whatsapp_integration": false, "analytics": false, "custom_branding": false, "priority_support": false, "api_access": false, "export_data": false, "operator_takeover": false, "lead_automation": false}', 0, 0),
-        ('%(starter_id)s', 'starter', 'Başlangıç', 'Küçük işletmeler için', 'starter', 299, 2990, 1000, 2, 100, '{"whatsapp_integration": true, "analytics": true, "custom_branding": false, "priority_support": false, "api_access": false, "export_data": true, "operator_takeover": false, "lead_automation": true}', 14, 1),
-        ('%(pro_id)s', 'pro', 'Profesyonel', 'Büyüyen işletmeler için', 'pro', 599, 5990, 5000, 5, 500, '{"whatsapp_integration": true, "analytics": true, "custom_branding": true, "priority_support": true, "api_access": true, "export_data": true, "operator_takeover": true, "lead_automation": true}', 14, 2),
-        ('%(business_id)s', 'business', 'İşletme', 'Büyük ekipler için', 'business', 1299, 12990, 20000, 20, 2000, '{"whatsapp_integration": true, "analytics": true, "custom_branding": true, "priority_support": true, "api_access": true, "export_data": true, "operator_takeover": true, "lead_automation": true, "white_label": true, "dedicated_support": true}', 14, 3)
-    """ % {
-        'free_id': str(uuid.uuid4()),
-        'starter_id': str(uuid.uuid4()),
-        'pro_id': str(uuid.uuid4()),
-        'business_id': str(uuid.uuid4())
-    })
+    # Typed inserts keep UUID foreign keys consistent on both PostgreSQL and SQLite.
+    plans_table = sa.table(
+        "plans",
+        sa.column("id", sa.UUID()),
+        sa.column("name", sa.String()),
+        sa.column("display_name", sa.String()),
+        sa.column("description", sa.String()),
+        sa.column("plan_type", sa.String()),
+        sa.column("price_monthly", sa.Numeric()),
+        sa.column("price_yearly", sa.Numeric()),
+        sa.column("message_limit", sa.Integer()),
+        sa.column("bot_limit", sa.Integer()),
+        sa.column("knowledge_items_limit", sa.Integer()),
+        sa.column("feature_flags", sa.JSON()),
+        sa.column("trial_days", sa.Integer()),
+        sa.column("sort_order", sa.Integer()),
+    )
+    base_features = {
+        "whatsapp_integration": True,
+        "analytics": True,
+        "custom_branding": False,
+        "priority_support": False,
+        "api_access": False,
+        "export_data": True,
+        "operator_takeover": False,
+        "lead_automation": True,
+    }
+    op.bulk_insert(
+        plans_table,
+        [
+            {
+                "id": uuid.uuid4(),
+                "name": "free",
+                "display_name": "Ücretsiz",
+                "description": "Başlamak için ideal",
+                "plan_type": "free",
+                "price_monthly": 0,
+                "price_yearly": 0,
+                "message_limit": 100,
+                "bot_limit": 1,
+                "knowledge_items_limit": 20,
+                "feature_flags": {key: False for key in base_features},
+                "trial_days": 0,
+                "sort_order": 0,
+            },
+            {
+                "id": uuid.uuid4(),
+                "name": "starter",
+                "display_name": "Başlangıç",
+                "description": "Küçük işletmeler için",
+                "plan_type": "starter",
+                "price_monthly": 299,
+                "price_yearly": 2990,
+                "message_limit": 1000,
+                "bot_limit": 2,
+                "knowledge_items_limit": 100,
+                "feature_flags": base_features,
+                "trial_days": 14,
+                "sort_order": 1,
+            },
+            {
+                "id": uuid.uuid4(),
+                "name": "pro",
+                "display_name": "Profesyonel",
+                "description": "Büyüyen işletmeler için",
+                "plan_type": "pro",
+                "price_monthly": 599,
+                "price_yearly": 5990,
+                "message_limit": 5000,
+                "bot_limit": 5,
+                "knowledge_items_limit": 500,
+                "feature_flags": {
+                    **base_features,
+                    "custom_branding": True,
+                    "priority_support": True,
+                    "api_access": True,
+                    "operator_takeover": True,
+                },
+                "trial_days": 14,
+                "sort_order": 2,
+            },
+            {
+                "id": uuid.uuid4(),
+                "name": "business",
+                "display_name": "İşletme",
+                "description": "Büyük ekipler için",
+                "plan_type": "business",
+                "price_monthly": 1299,
+                "price_yearly": 12990,
+                "message_limit": 20000,
+                "bot_limit": 20,
+                "knowledge_items_limit": 2000,
+                "feature_flags": {
+                    **base_features,
+                    "custom_branding": True,
+                    "priority_support": True,
+                    "api_access": True,
+                    "operator_takeover": True,
+                    "white_label": True,
+                    "dedicated_support": True,
+                },
+                "trial_days": 14,
+                "sort_order": 3,
+            },
+        ],
+    )
 
 
 def downgrade() -> None:

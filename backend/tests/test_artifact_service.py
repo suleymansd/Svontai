@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 import pytest
 
 from app.core.config import settings
@@ -166,3 +166,93 @@ def test_railway_volume_sanitizes_paths_and_uses_private_permissions(client, tmp
         settings.ARTIFACT_STORAGE_PROVIDER = old_provider
         settings.ARTIFACT_STORAGE_LOCAL_BASE_PATH = old_local_path
         settings.ARTIFACT_MAX_FILE_SIZE_BYTES = old_size_limit
+
+
+def test_r2_stores_private_artifact_and_returns_short_lived_download(client):
+    from app.db import session as session_module
+
+    class _S3Client:
+        def __init__(self):
+            self.upload = None
+            self.signed_request = None
+            self.health_bucket = None
+
+        def head_bucket(self, **kwargs):
+            self.health_bucket = kwargs["Bucket"]
+
+        def put_object(self, **kwargs):
+            self.upload = kwargs
+
+        def generate_presigned_url(self, operation, **kwargs):
+            self.signed_request = (operation, kwargs)
+            return "https://private-r2.example/signed-object"
+
+    previous = {
+        "provider": settings.ARTIFACT_STORAGE_PROVIDER,
+        "endpoint": settings.ARTIFACT_R2_ENDPOINT_URL,
+        "access_key": settings.ARTIFACT_R2_ACCESS_KEY_ID,
+        "secret_key": settings.ARTIFACT_R2_SECRET_ACCESS_KEY,
+        "bucket": settings.ARTIFACT_R2_BUCKET,
+        "prefix": settings.ARTIFACT_R2_PREFIX,
+    }
+    settings.ARTIFACT_STORAGE_PROVIDER = "r2"
+    settings.ARTIFACT_R2_ENDPOINT_URL = "https://account.r2.cloudflarestorage.com"
+    settings.ARTIFACT_R2_ACCESS_KEY_ID = "access-key"
+    settings.ARTIFACT_R2_SECRET_ACCESS_KEY = "secret-key"
+    settings.ARTIFACT_R2_BUCKET = "private-artifacts"
+    settings.ARTIFACT_R2_PREFIX = "artifacts"
+
+    db = session_module.SessionLocal()
+    try:
+        service = ArtifactService(db)
+        fake_client = _S3Client()
+        service._r2_provider._client = fake_client
+        tenant_id = uuid.uuid4()
+        persisted = service.persist_tool_artifacts(
+            tenant_id=tenant_id,
+            request_id="../../request",
+            tool_slug="report generator",
+            artifacts=[
+                ToolRunArtifact(
+                    type="file",
+                    name="../../private report.txt",
+                    meta={"content_base64": base64.b64encode(b"confidential").decode("utf-8")},
+                )
+            ],
+        )
+
+        assert persisted[0].storage_provider == "r2"
+        assert persisted[0].path == f"artifacts/{tenant_id}/request/private_report.txt"
+        assert fake_client.upload is not None
+        assert fake_client.upload["Bucket"] == "private-artifacts"
+        assert fake_client.upload["Body"] == b"confidential"
+        assert "ACL" not in fake_client.upload
+        assert fake_client.upload["Metadata"]["tenant-id"] == str(tenant_id)
+
+        parsed = urlparse(persisted[0].url or "")
+        artifact_id = uuid.UUID(parsed.path.split("/tools/artifacts/")[1].split("/download")[0])
+        query = parse_qs(parsed.query)
+        response = service.build_download_response(
+            artifact_id,
+            int(query["expires"][0]),
+            query["sig"][0],
+        )
+        assert isinstance(response, RedirectResponse)
+        assert response.status_code == 307
+        assert response.headers["location"] == "https://private-r2.example/signed-object"
+        assert response.headers["cache-control"] == "private, no-store, max-age=0"
+        assert fake_client.signed_request is not None
+        assert fake_client.signed_request[0] == "get_object"
+        assert 60 <= fake_client.signed_request[1]["ExpiresIn"] <= 3600
+
+        healthy, _message = service.check_storage_health()
+        assert healthy is True
+        assert fake_client.health_bucket == "private-artifacts"
+    finally:
+        db.close()
+        settings.ARTIFACT_STORAGE_PROVIDER = previous["provider"]
+        settings.ARTIFACT_R2_ENDPOINT_URL = previous["endpoint"]
+        settings.ARTIFACT_R2_ACCESS_KEY_ID = previous["access_key"]
+        settings.ARTIFACT_R2_SECRET_ACCESS_KEY = previous["secret_key"]
+        settings.ARTIFACT_R2_BUCKET = previous["bucket"]
+        settings.ARTIFACT_R2_PREFIX = previous["prefix"]

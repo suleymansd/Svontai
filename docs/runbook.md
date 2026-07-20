@@ -78,13 +78,14 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
   - `BACKEND_URL=https://<railway-api> FRONTEND_URL=https://<vercel-app> python scripts/prod_smoke.py`
   - This also checks `FRONTEND_URL/api/frontend-config` so a Vercel build pointing at the wrong backend fails immediately.
 - Protected smoke:
-  - Add `SMARTWA_SMOKE_ACCESS_TOKEN` and `SMARTWA_SMOKE_TENANT_ID`.
+  - Add a dedicated, least-privilege smoke customer's `SMARTWA_SMOKE_EMAIL` and `SMARTWA_SMOKE_PASSWORD` as GitHub repository secrets. Add `SMARTWA_SMOKE_TENANT_ID` only if the account has multiple tenants.
   - Re-run `python scripts/prod_smoke.py`.
   - This checks customer-safe endpoints including onboarding, autopilot, integrations, voice settings, intents, jobs, calls, bots, leads, and appointments.
 - End-user journey smoke:
-  - `BACKEND_URL=https://<railway-api> python scripts/user_journey_smoke.py`
+  - Start the local API and Worker against the same migrated database, then run `BACKEND_URL=http://127.0.0.1:8001 SMOKE_WAIT_FOR_WORKER_SECONDS=20 python scripts/user_journey_smoke.py`.
   - This creates a disposable smoke user and tenant, completes guided onboarding, runs autopilot setup, and creates a voice test-call intent/job.
   - It does not send WhatsApp messages, charge Stripe, or place real phone calls.
+  - Run it against local or staging. Production email verification never returns the verification code in an API response.
 - Admin launch smoke:
   - `BACKEND_URL=https://<railway-api> SMARTWA_ADMIN_ACCESS_TOKEN=<token> SMARTWA_SMOKE_TENANT_ID=<tenant> python scripts/admin_smoke.py`
   - This checks launch board access, concierge status update, admin business profile enrichment and admin-triggered autopilot.
@@ -95,11 +96,26 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Railway worker service must run `python -m app.worker`.
 - Railway web service must set `SERVICE_ROLE=api`; worker must set `SERVICE_ROLE=worker`.
 - Railway web service must set `RUN_SCHEDULED_JOBS_IN_WEB=false`; the worker owns scheduled jobs.
-- Railway backend must mount a persistent volume and use `ARTIFACT_STORAGE_PROVIDER=railway_volume`; local ephemeral storage is forbidden in production.
-- Artifact volume paths use private directory/file permissions (`0700`/`0600`) and signed download URLs should expire in 300 seconds.
+- Railway backend should use private Cloudflare R2 with `ARTIFACT_STORAGE_PROVIDER=r2`. Keep the old Railway volume mounted while old `railway_volume` artifact rows exist.
+- R2 public access must remain disabled. Artifact download URLs are signed and should expire in 300 seconds.
+- Railway health check path is `/health/ready`; `/health/live` only confirms that the process is running.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
 - Alembic head must include revision `041`.
+
+### n8n runtime
+
+- Pin n8n to `n8nio/n8n:2.30.7` and external runners to the matching `n8nio/runners:2.30.7` image.
+- The main n8n service uses `N8N_RUNNERS_MODE=external`; the runner connects to the private task broker and must never expose a public domain.
+- Keep custom/community package installation disabled unless a reviewed package is explicitly required.
+- After changing runner credentials, rotate the shared token and redeploy both services in the same maintenance window.
+
+### OpenWA runtime
+
+- Pin the gateway image to `ghcr.io/rmyndharis/openwa:0.10.0` and keep its `/app/data` volume attached.
+- A `qr_ready` state is not an outage. It requires the customer to scan the QR once from the setup screen.
+- Repeated reconnect attempts without a QR must create a single action-required notification, not an endless incident stream.
+- OpenWA is an unofficial WhatsApp Web connection. Account restriction risk must remain visible in the Terms and customer setup consent.
 
 ## Database backup and restore
 

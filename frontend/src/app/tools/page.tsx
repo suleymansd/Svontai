@@ -16,7 +16,7 @@ export default function ToolsRootPage() {
     <MarketingShell>
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
         <div className="max-w-3xl">
-          <h1 className="text-4xl font-semibold">SmartWA Tool Marketplace</h1>
+          <h1 className="text-4xl font-semibold">SvontAI Araç Kataloğu</h1>
           <p className="mt-4 text-muted-foreground">
             Ajans ve kurumsal ekipler için WhatsApp, doküman, e-posta ve CRM süreçlerini tek otonom çalışma katmanında birleştirin.
           </p>
@@ -45,7 +45,7 @@ export default function ToolsRootPage() {
           <div className="flex items-center gap-3">
             <Bot className="h-5 w-5 text-primary" />
             <p className="text-sm text-muted-foreground">
-              Kurulum sonrası SmartWA entegrasyon sağlığını izler, retry uygular ve kullanıcı onayı gerektiren noktaları açıkça gösterir.
+              Kurulum sonrası SvontAI entegrasyon sağlığını izler, yeniden dener ve kullanıcı onayı gerektiren noktaları açıkça gösterir.
             </p>
           </div>
         </div>

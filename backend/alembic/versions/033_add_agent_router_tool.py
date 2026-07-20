@@ -105,6 +105,7 @@ def upgrade() -> None:
         )
         """
     ).bindparams(
+        sa.bindparam("id", type_=sa.UUID()),
         sa.bindparam("required_integrations_json", type_=sa.JSON()),
         sa.bindparam("input_schema_json", type_=sa.JSON()),
         sa.bindparam("output_schema_json", type_=sa.JSON()),
@@ -114,7 +115,7 @@ def upgrade() -> None:
     bind.execute(
         insert_stmt,
         {
-            "id": str(uuid.uuid4()),
+            "id": uuid.uuid4(),
             "key": "agent_router",
             "slug": "agent_router",
             "name": "Agent Router",

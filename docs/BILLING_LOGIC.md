@@ -142,43 +142,16 @@ def check_feature(tenant_id, feature_key):
     return subscription.plan.feature_flags.get(feature_key, False)
 ```
 
-## 💰 Payment Integration (TODO)
+## Payment Integration
 
-### Stripe Integration
+İlk satış sürümü `BILLING_MODE=manual` ve `PAYMENTS_ENABLED=false` ile çalışır.
+Müşterinin plan talebi backend'e kaydedilir, destek talebi ve audit olayı üretir;
+ödeme ve ticari sözleşme SvontAI dışında tamamlandıktan sonra admin planı etkinleştirir.
 
-```python
-# Future implementation
-def create_checkout_session(tenant_id, plan_name):
-    """
-    1. Create Stripe checkout session
-    2. Return checkout URL
-    3. Handle success/cancel webhooks
-    """
-    pass
-
-def handle_stripe_webhook(event):
-    """
-    Events to handle:
-    - checkout.session.completed → Upgrade plan
-    - invoice.paid → Continue subscription
-    - invoice.payment_failed → Mark as PAST_DUE
-    - customer.subscription.deleted → Cancel
-    """
-    pass
-```
-
-### Iyzico Integration (Turkey)
-
-```python
-# For Turkish market
-def create_iyzico_payment(tenant_id, plan_name):
-    """
-    1. Create payment form
-    2. Handle 3D Secure
-    3. Process callback
-    """
-    pass
-```
+Stripe checkout, portal ve imzalı webhook kodu hazırdır fakat şirket/ödeme hesabı
+tamamlanmadan production'da açılmaz. Açılacağı zaman `BILLING_MODE=stripe`, canlı
+credential'lar ve fiyat ID sözleşmesi birlikte etkinleştirilmelidir. Iyzico bu sürümün
+desteklenen sağlayıcıları arasında değildir.
 
 ## 📈 Upgrade/Downgrade
 
@@ -311,4 +284,3 @@ BILLING_EVENTS = [
     "limit.reached"
 ]
 ```
-

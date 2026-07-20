@@ -43,16 +43,12 @@ def test_frontend_api_ts_matches_backend_routes(client):
     assert frontend_calls, "No frontend API calls extracted; parser may be broken."
 
     available: set[tuple[str, str]] = set()
-    # TestClient internals vary between Starlette/httpx releases. The route
-    # contract belongs to the FastAPI application itself.
-    for route in backend_app.routes:
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", None)
-        if not path or not methods:
-            continue
+    # FastAPI 0.139 keeps included routers lazy. OpenAPI is the stable public
+    # contract and expands those routers without relying on private internals.
+    for path, operations in backend_app.openapi().get("paths", {}).items():
         canonical = _canonical_path(path)
-        for method in methods:
-            if method in {"HEAD", "OPTIONS"}:
+        for method in operations:
+            if method.upper() in {"HEAD", "OPTIONS", "PARAMETERS"}:
                 continue
             available.add((method.upper(), canonical))
 

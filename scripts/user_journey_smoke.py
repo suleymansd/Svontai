@@ -9,6 +9,7 @@ Environment:
   BACKEND_URL or SMARTWA_BACKEND_URL: API base URL, default http://127.0.0.1:8001
   SMOKE_EMAIL_PREFIX: optional email prefix, default user-smoke
   SMOKE_DOMAIN: optional email domain, default example.com
+  SMOKE_WAIT_FOR_WORKER_SECONDS: optional worker completion wait, default 0
 """
 
 from __future__ import annotations
@@ -276,6 +277,45 @@ def run() -> int:
         if not isinstance(parsed, list) or not parsed:
             raise SmokeError("voice intents list is empty after test-call")
         _record(steps, "voice intents", f"latest={parsed[0].get('status')}")
+
+        worker_wait_seconds = max(0, int(os.getenv("SMOKE_WAIT_FOR_WORKER_SECONDS") or "0"))
+        if worker_wait_seconds:
+            deadline = time.monotonic() + worker_wait_seconds
+            latest_job_status = job_status
+            calls: list[dict[str, Any]] = []
+            while time.monotonic() < deadline:
+                status, raw, parsed = _request(
+                    "GET",
+                    "/voice-automation/jobs",
+                    base_url=base_url,
+                    token=token,
+                    tenant_id=tenant_id,
+                )
+                _expect(status, {200}, raw, "voice worker jobs")
+                if isinstance(parsed, list) and parsed:
+                    latest_job_status = parsed[0].get("status")
+                if latest_job_status == "failed":
+                    raise SmokeError(f"voice worker job failed: {parsed[0]!r}")
+
+                status, raw, parsed_calls = _request(
+                    "GET",
+                    "/calls",
+                    base_url=base_url,
+                    token=token,
+                    tenant_id=tenant_id,
+                )
+                _expect(status, {200}, raw, "voice worker calls")
+                calls = parsed_calls if isinstance(parsed_calls, list) else []
+                if latest_job_status == "completed" and calls:
+                    break
+                time.sleep(1)
+
+            if latest_job_status != "completed" or not calls:
+                raise SmokeError(
+                    f"worker did not complete dry-run within {worker_wait_seconds}s "
+                    f"(job={latest_job_status}, calls={len(calls)})"
+                )
+            _record(steps, "voice worker completion", f"job={latest_job_status}, calls={len(calls)}")
 
     except Exception as exc:
         for step in steps:
