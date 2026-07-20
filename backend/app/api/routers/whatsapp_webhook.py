@@ -37,7 +37,9 @@ from app.models.conversation import Conversation, ConversationSource, Conversati
 from app.models.message import Message, MessageSender
 from app.models.bot import Bot
 from app.models.knowledge import BotKnowledgeItem
+from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
+from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
@@ -391,6 +393,11 @@ async def process_whatsapp_reply_in_background(
         knowledge_items = db.query(BotKnowledgeItem).filter(
             BotKnowledgeItem.bot_id == bot.id
         ).all()
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if tenant is None:
+            logger.error("whatsapp.direct_reply_tenant_missing tenant_id=%s", tenant_id)
+            return
+        appointment_service = AppointmentAvailabilityService(db)
         db.refresh(conversation, ["messages"])
         reply = await ai_service.generate_reply(
             bot=bot,
@@ -398,6 +405,12 @@ async def process_whatsapp_reply_in_background(
             conversation=conversation,
             last_user_message=message_content,
             bot_settings=bot.settings,
+            runtime_context=appointment_service.build_ai_context(tenant),
+        )
+        reply, appointment = appointment_service.apply_ai_action(
+            tenant=tenant,
+            conversation=conversation,
+            reply=reply,
         )
         if not reply.strip():
             logger.warning(
@@ -425,6 +438,16 @@ async def process_whatsapp_reply_in_background(
             },
         ))
         db.commit()
+        if appointment is not None:
+            await send_tenant_push_notification(
+                tenant_id=tenant_id,
+                event_type="appointment",
+                title="Yeni randevu oluşturuldu",
+                body=f"{appointment.customer_name} için {appointment.subject} randevusu oluşturuldu.",
+                url="/dashboard/appointments",
+                tag="svontai-ai-appointment",
+                extra={"appointment_id": str(appointment.id)},
+            )
         SystemEventService(db).log(
             tenant_id=str(tenant_id),
             source="whatsapp",

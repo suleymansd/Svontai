@@ -362,7 +362,7 @@ def _sync_profile_to_bot(db: Session, tenant: Tenant, profile: dict) -> None:
     if industry and industry != "unknown":
         bot.description = f"{tenant.name} için {industry} odağında müşteri iletişimini yöneten SmartWA asistanı."
     if summary:
-        bot.welcome_message = f"Merhaba, {tenant.name} ekibi adına size yardımcı olabilirim."
+        bot.welcome_message = "Nasıl yardımcı olabilirim?"
 
     answer = (
         f"İşletme: {tenant.name}\n"

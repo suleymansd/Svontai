@@ -147,5 +147,6 @@ Run this as a real customer after automated smoke passes.
 11. Open Botlarım and confirm the customer can customize their bot.
 12. Open Aramalar and toggle AI Arama Asistanı settings.
 13. Create a test call intent and confirm the call appears in the calls area without placing a real call.
-14. As admin, open `/admin/launch`, set a concierge customer to in progress, enrich profile, run autopilot and mark launched.
-15. Check mobile width for obvious text overflow or blocked controls.
+14. Open Randevular > Çalışma Planı, save services and weekly hours, then confirm only calculated free slots can be selected.
+15. As admin, open `/admin/launch`, set a concierge customer to in progress, enrich profile, run autopilot and mark launched.
+16. Check mobile width for obvious text overflow or blocked controls.

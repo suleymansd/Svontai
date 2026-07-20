@@ -254,6 +254,16 @@ def run() -> int:
                 ("bots", "/bots", _expect_list),
                 ("leads", "/leads", _expect_list),
                 ("appointments", "/appointments", _expect_list),
+                (
+                    "appointment settings",
+                    "/appointments/settings",
+                    _expect_dict_keys("configured", "timezone", "services", "weekly_hours"),
+                ),
+                (
+                    "appointment availability",
+                    "/appointments/availability?days=7",
+                    _expect_dict_keys("timezone", "reliable", "slots"),
+                ),
             ]
             for name, path, validator in protected_checks:
                 results.append(

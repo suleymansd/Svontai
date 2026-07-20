@@ -19,6 +19,7 @@ from app.models.message import Message, MessageSender
 from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead
 from app.models.sales_inquiry import SalesInquiry
+from app.models.tenant import Tenant
 from app.schemas.public import (
     ChatInitRequest,
     ChatInitResponse,
@@ -30,6 +31,7 @@ from app.schemas.public import (
 from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
+from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.email_service import EmailService
 from app.services.system_event_service import SystemEventService
 from app.core.config import settings
@@ -304,12 +306,22 @@ async def send_chat_message(
     db.refresh(conversation, ["messages"])
     
     # Generate AI response
+    tenant = db.query(Tenant).filter(Tenant.id == bot.tenant_id).first()
+    appointment_service = AppointmentAvailabilityService(db)
     ai_response = await ai_service.generate_reply(
         bot=bot,
         knowledge_items=knowledge_items,
         conversation=conversation,
-        last_user_message=request.message
+        last_user_message=request.message,
+        bot_settings=bot.settings,
+        runtime_context=appointment_service.build_ai_context(tenant) if tenant else None,
     )
+    if tenant:
+        ai_response, _ = appointment_service.apply_ai_action(
+            tenant=tenant,
+            conversation=conversation,
+            reply=ai_response,
+        )
     
     # Save bot message
     bot_message = Message(

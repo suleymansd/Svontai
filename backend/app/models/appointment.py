@@ -37,6 +37,16 @@ class Appointment(Base):
         nullable=True,
         index=True
     )
+    customer_phone: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+        index=True,
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     subject: Mapped[str] = mapped_column(
         String(255),
         nullable=False
@@ -49,6 +59,17 @@ class Appointment(Base):
         DateTime,
         nullable=False,
         index=True
+    )
+    duration_minutes: Mapped[int] = mapped_column(
+        Integer,
+        default=60,
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(
+        String(30),
+        default="manual",
+        nullable=False,
+        index=True,
     )
     status: Mapped[str] = mapped_column(
         String(20),

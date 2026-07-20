@@ -449,7 +449,7 @@ class GoogleCalendarService:
 
     @staticmethod
     def _appointment_event_payload(appointment: Appointment) -> dict:
-        end_at = appointment.starts_at + timedelta(hours=1)
+        end_at = appointment.starts_at + timedelta(minutes=appointment.duration_minutes or 60)
         description_parts = [
             f"Müşteri: {appointment.customer_name}",
             appointment.notes or "",
@@ -689,6 +689,45 @@ class GoogleCalendarService:
         busy_rows = (((data.get("calendars") or {}).get(calendar_id) or {}).get("busy") or [])
         output: list[tuple[datetime, datetime]] = []
         for row in busy_rows:
+            start_at = self._parse_google_dt(row.get("start"))
+            end_at = self._parse_google_dt(row.get("end"))
+            if start_at and end_at and end_at > start_at:
+                output.append((start_at, end_at))
+        return output
+
+    def list_tenant_busy_intervals(
+        self,
+        tenant_id: UUID,
+        *,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[tuple[datetime, datetime]]:
+        """Return primary-calendar busy periods for the tenant Google connection."""
+        access_token = self._tenant_access_token(tenant_id)
+        response = httpx.post(
+            f"{self.CALENDAR_API_BASE}/freeBusy",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "timeMin": time_min.isoformat() + "Z",
+                "timeMax": time_max.isoformat() + "Z",
+                "items": [{"id": "primary"}],
+            },
+            timeout=20,
+        )
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+        if not response.is_success or "error" in data:
+            detail = (data.get("error") or {}).get("message") or response.text[:300]
+            raise GoogleCalendarError(f"Google Calendar doluluk bilgisi alınamadı: {detail}")
+
+        rows = (((data.get("calendars") or {}).get("primary") or {}).get("busy") or [])
+        output: list[tuple[datetime, datetime]] = []
+        for row in rows:
             start_at = self._parse_google_dt(row.get("start"))
             end_at = self._parse_google_dt(row.get("end"))
             if start_at and end_at and end_at > start_at:

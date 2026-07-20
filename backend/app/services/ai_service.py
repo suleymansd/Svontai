@@ -81,7 +81,8 @@ class AIService:
         self, 
         bot: Bot, 
         knowledge_items: list[BotKnowledgeItem],
-        bot_settings: Optional[BotSettings] = None
+        bot_settings: Optional[BotSettings] = None,
+        runtime_context: str | None = None,
     ) -> str:
         """
         Build the system prompt with bot context, knowledge base, and safety guardrails.
@@ -99,7 +100,7 @@ class AIService:
         if custom_prompt:
             base_prompt = custom_prompt + "\n\n"
         else:
-            base_prompt = f"""Sen "{bot.name}" adlı işletmenin müşteri destek AI asistanısın.
+            base_prompt = f"""Bu görüşmede "{bot.name}" adına müşteri iletişimini yürüten asistansın.
 {f"İşletme Açıklaması: {bot.description}" if bot.description else ""}
 
 """
@@ -117,6 +118,12 @@ class AIService:
 4. Kısa ve net cevaplar ver (maksimum 2-3 cümle).
 5. Her zaman nazik ve yardımsever ol.
 6. Dil: Türkçe (kullanıcı farklı dilde yazarsa o dilde cevap ver)
+7. İnsan gibi doğal konuş; çağrı merkezi metni, reklam sloganı veya robotik kalıp kullanma.
+8. "Merhaba" veya başka bir selamı yalnızca konuşmanın ilk yanıtında ve müşteri selam verdiyse kullan.
+9. Her mesajda işletme adını, kendi adını veya "iletişime geçtiğiniz için teşekkürler" ifadesini tekrarlama.
+10. Konuşma geçmişinde alınmış bir bilgiyi tekrar sorma; müşterinin son mesajına doğrudan cevap ver.
+11. Aynı cümleyi veya soruyu art arda tekrarlama. Tek seferde en fazla bir net soru sor.
+12. Kendinden "yapay zeka", "bot" veya "sistem" diye bahsetme; müşteri özellikle sorarsa dürüstçe dijital asistan olduğunu söyle.
 
 """
         
@@ -147,8 +154,26 @@ C: {item.answer}
 """
         else:
             base_prompt += "\n(Henüz bilgi tabanı eklenmemiş. Genel bilgilerle yardımcı ol.)\n"
+
+        if runtime_context:
+            base_prompt += f"\n{runtime_context.strip()}\n"
         
         return base_prompt
+
+    @staticmethod
+    def _remove_repeated_greeting(reply: str, messages: list[Message]) -> str:
+        """Remove an unnecessary greeting after the assistant already joined the conversation."""
+        if not any(message.sender == "bot" for message in messages):
+            return reply.strip()
+        cleaned = re.sub(
+            r"^\s*(?:merhaba|selam(?:lar)?|iyi\s+(?:günler|akşamlar|sabahlar))"
+            r"(?:\s+[^,\n.!?]{1,80})?\s*[,!.:-]?\s*",
+            "",
+            reply,
+            count=1,
+            flags=re.IGNORECASE,
+        ).strip()
+        return cleaned or reply.strip()
     
     def _build_conversation_context(
         self, 
@@ -234,7 +259,8 @@ C: {item.answer}
         knowledge_items: list[BotKnowledgeItem],
         conversation: Conversation,
         last_user_message: str,
-        bot_settings: Optional[BotSettings] = None
+        bot_settings: Optional[BotSettings] = None,
+        runtime_context: str | None = None,
     ) -> str:
         """
         Generate an AI response with guardrails and safety features.
@@ -264,7 +290,12 @@ C: {item.answer}
             return fallback_msg
         
         # Build system prompt
-        system_prompt = self._build_system_prompt(bot, knowledge_items, bot_settings)
+        system_prompt = self._build_system_prompt(
+            bot,
+            knowledge_items,
+            bot_settings,
+            runtime_context=runtime_context,
+        )
         
         # Build messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -290,6 +321,7 @@ C: {item.answer}
             )
             
             reply = response.choices[0].message.content or fallback_msg
+            reply = self._remove_repeated_greeting(reply, list(conversation.messages or []))
             
             # Post-process: Check if response indicates uncertainty
             uncertainty_phrases = [
