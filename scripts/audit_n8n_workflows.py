@@ -24,7 +24,13 @@ NODE_REFERENCE_PATTERNS = (
     re.compile(r'\$\(\s*["\']([^"\']+)["\']\s*\)'),
 )
 TOOL_RESPONSE_NODES = {"Edit Fields1", "Edit Fields3", "Unsupported Tool", "Auth Fail"}
-WHATSAPP_JSON_REQUEST_NODES = {"Upsert Lead", "Generate Gemini Reply", "Send WhatsApp Reply"}
+WHATSAPP_JSON_REQUEST_NODES = {
+    "Upsert Lead",
+    "Generate Gemini Reply",
+    "Send WhatsApp Reply",
+    "Send WhatsApp Media",
+}
+WHATSAPP_MEDIA_NODES = {"Has Media?", "Send WhatsApp Media"}
 
 
 def _api() -> tuple[str, dict[str, str]]:
@@ -159,6 +165,9 @@ def _audit_workflow(workflow: dict) -> list[str]:
                 issues.append(f"{name}: {response_node_name} does not return the standard response envelope")
 
     if name == "SvontAI - WhatsApp Gemini v1":
+        missing_media = WHATSAPP_MEDIA_NODES - node_name_set
+        if missing_media:
+            issues.append(f"{name}: missing media delivery nodes {sorted(missing_media)}")
         for request_node_name in WHATSAPP_JSON_REQUEST_NODES:
             request_node = nodes_by_name.get(request_node_name)
             json_body = str((request_node or {}).get("parameters", {}).get("jsonBody") or "").strip()

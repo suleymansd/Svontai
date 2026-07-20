@@ -23,7 +23,8 @@ import {
   ChevronsUpDown,
   User,
   Building2,
-  ShieldCheck
+  ShieldCheck,
+  Images,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ const sidebarItems = [
   { name: 'Ana Panel', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Sistem Durumu', href: '/dashboard/autopilot', icon: ShieldCheck },
   { name: 'AI Asistanım', href: '/dashboard/bots', icon: Bot },
+  { name: 'Medya', href: '/dashboard/media', icon: Images },
   { name: 'Mesajlar', href: '/dashboard/conversations', icon: MessagesSquare },
   { name: 'Aramalar', href: '/dashboard/calls', icon: PhoneCall },
   { name: 'Müşteriler', href: '/dashboard/leads', icon: Users },

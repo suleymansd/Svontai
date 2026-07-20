@@ -56,6 +56,9 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
     ), patch(
         "app.api.routers.n8n_tools.AppointmentAvailabilityService.apply_ai_action",
         return_value=("Size nasıl yardımcı olabilirim?", None),
+    ), patch(
+        "app.api.routers.n8n_tools.AssistantMediaService.extract_action",
+        return_value=("Size nasıl yardımcı olabilirim?", None),
     ), patch.object(
         ai_service,
         "generate_reply",

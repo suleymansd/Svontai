@@ -135,9 +135,12 @@ alembic upgrade head
 Production workflow ve merkezi hata akışını API üzerinden doğrulayın:
 
 ```bash
+python scripts/install_n8n_whatsapp_workflow.py
 python scripts/install_n8n_error_workflow.py
 python scripts/audit_n8n_workflows.py
 ```
+
+İlk komut WhatsApp metin ve özel medya gönderim düğümlerini idempotent olarak kurar veya günceller.
 
 ## 🔧 Yapılandırma
 

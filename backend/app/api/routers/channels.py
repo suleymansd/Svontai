@@ -31,6 +31,7 @@ from app.models.bot import Bot
 from app.models.conversation import Conversation, ConversationSource
 from app.models.message import Message, MessageSender
 from app.models.automation import AutomationRun, AutomationRunStatus
+from app.services.assistant_media_service import AssistantMediaService
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,18 @@ class WhatsAppDocumentSendRequest(BaseModel):
     media_id: Optional[str] = Field(default=None, alias="mediaId")
     filename: Optional[str] = None
     caption: Optional[str] = None
+    meta: Optional[dict] = None
+    bot_id: Optional[str] = Field(default=None, alias="botId")
+    phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
+
+
+class WhatsAppMediaSendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: str = Field(..., alias="tenantId", description="Tenant UUID")
+    to: str
+    asset_id: str = Field(..., alias="assetId")
+    caption: Optional[str] = Field(default=None, max_length=1024)
     meta: Optional[dict] = None
     bot_id: Optional[str] = Field(default=None, alias="botId")
     phone_number_id: Optional[str] = Field(default=None, alias="phoneNumberId")
@@ -355,12 +368,8 @@ async def send_whatsapp_document(
         wa_message_id = result.get("message_id")
         await _store_bot_message(db, tenant_id, body.to, f"[document:{body.filename or ''}]", wa_message_id)
 
-        # Billing-aware metering (outbound)
         try:
             SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
-        except Exception:
-            pass
-        try:
             UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
         except Exception:
             pass
@@ -374,6 +383,72 @@ async def send_whatsapp_document(
             _update_run_failed(db, run_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
+
+@router.post("/whatsapp/send-media", response_model=WhatsAppSendResponse)
+async def send_whatsapp_media(
+    request: Request,
+    body: WhatsAppMediaSendRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        auth_result = await verify_n8n_bearer_token(request)
+        if auth_result.get("tenant_id") != body.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant ID mismatch in token")
+        tenant_id = uuid.UUID(body.tenant_id)
+        asset_id = uuid.UUID(body.asset_id)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant or asset ID") from exc
+
+    run_id = body.meta.get("runId") if body.meta else None
+    service = AssistantMediaService(db)
+    asset = service.get(tenant_id, asset_id)
+    if asset is None or not asset.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active media asset not found")
+    account = await _get_whatsapp_account(db, body.tenant_id, body.phone_number_id, body.bot_id)
+    if not account:
+        return WhatsAppSendResponse(success=False, error="No WhatsApp account found for tenant", run_id=run_id)
+
+    try:
+        artifact = service.artifact_for(asset)
+        content = service.artifacts.read_artifact_bytes(artifact)
+        result = await whatsapp_gateway_service.send_media(
+            account,
+            to=body.to,
+            media_type=asset.media_type,
+            content_bytes=content,
+            mime_type=asset.mime_type,
+            filename=artifact.name,
+            caption=body.caption,
+        )
+        message_id = result.get("message_id")
+        await _store_bot_message(
+            db,
+            body.tenant_id,
+            body.to,
+            f"[{asset.media_type}:{asset.title}]",
+            message_id,
+            raw_payload={
+                "provider": result.get("provider"),
+                "media_asset_id": str(asset.id),
+                "media_type": asset.media_type,
+            },
+        )
+        service.mark_sent(asset)
+        try:
+            SubscriptionService(db).increment_message_count(tenant_id)
+            UsageCounterService(db).increment_message_count(tenant_id, 1)
+        except Exception:
+            pass
+        if run_id:
+            _update_run_success(db, run_id, {"wa_message_id": message_id, "media_asset_id": str(asset.id)})
+        return WhatsAppSendResponse(success=True, message_id=message_id, run_id=run_id)
+    except Exception as exc:
+        logger.error("WhatsApp media send failed: %s", exc, exc_info=True)
+        if run_id:
+            _update_run_failed(db, run_id, str(exc))
+        return WhatsAppSendResponse(success=False, error="Media send failed", run_id=run_id)
 
 @router.post("/automation/status")
 async def update_automation_status(
@@ -462,7 +537,8 @@ async def _store_bot_message(
     tenant_id: str,
     to_number: str,
     text: str,
-    external_id: Optional[str] = None
+    external_id: Optional[str] = None,
+    raw_payload: Optional[dict] = None,
 ):
     """Store bot message in conversation history."""
     try:
@@ -490,7 +566,8 @@ async def _store_bot_message(
             conversation_id=conversation.id,
             sender=MessageSender.BOT.value,
             content=text,
-            external_id=external_id
+            external_id=external_id,
+            raw_payload=raw_payload,
         )
         db.add(message)
         db.commit()

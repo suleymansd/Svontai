@@ -21,6 +21,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -75,6 +76,55 @@ def _request(
             raw = response.read(300_000).decode("utf-8", errors="replace")
             parsed = _parse_json(raw)
             return response.status, raw, parsed
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(50_000).decode("utf-8", errors="replace")
+        return exc.code, raw, _parse_json(raw)
+
+
+def _request_multipart(
+    path: str,
+    *,
+    base_url: str,
+    token: str,
+    tenant_id: str,
+    fields: dict[str, str],
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> tuple[int, str, Any]:
+    boundary = f"----SvontAISmoke{uuid.uuid4().hex}"
+    chunks: list[bytes] = []
+    for name, value in fields.items():
+        chunks.extend([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+            value.encode("utf-8"),
+            b"\r\n",
+        ])
+    chunks.extend([
+        f"--{boundary}\r\n".encode(),
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode(),
+        f"Content-Type: {content_type}\r\n\r\n".encode(),
+        content,
+        b"\r\n",
+        f"--{boundary}--\r\n".encode(),
+    ])
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=b"".join(chunks),
+        headers={
+            "User-Agent": "SmartWA-user-journey-smoke/1.0",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": tenant_id,
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            raw = response.read(300_000).decode("utf-8", errors="replace")
+            return response.status, raw, _parse_json(raw)
     except urllib.error.HTTPError as exc:
         raw = exc.read(50_000).decode("utf-8", errors="replace")
         return exc.code, raw, _parse_json(raw)
@@ -265,22 +315,31 @@ def run() -> int:
             raise SmokeError(f"assistant training did not complete: {parsed!r}")
         _record(steps, "assistant guided training", "completed")
 
-        status, raw, parsed = _request(
-            "PATCH",
-            "/bots/assistant-profile/capabilities/media_catalog",
+        status, raw, parsed = _request_multipart(
+            "/media",
             base_url=base_url,
             token=token,
             tenant_id=tenant_id,
-            payload={
-                "enabled": True,
-                "config": {
-                    "items": [{
-                        "label": "Smoke katalog",
-                        "url": "https://example.com/catalog.pdf",
-                        "keywords": ["katalog", "ürünler"],
-                    }],
-                },
+            fields={
+                "title": "Smoke katalog",
+                "description": "Smoke ürün kataloğu",
+                "keywords": "katalog, ürünler",
             },
+            filename="smoke-catalog.pdf",
+            content_type="application/pdf",
+            content=b"%PDF-1.4\nSvontAI smoke catalog",
+        )
+        _expect(status, {201}, raw, "assistant media upload")
+        if not isinstance(parsed, dict) or parsed.get("media_type") != "catalog":
+            raise SmokeError(f"media upload failed: {parsed!r}")
+        _record(steps, "assistant media upload", "private catalog stored")
+
+        status, raw, parsed = _request(
+            "GET",
+            "/bots/assistant-profile",
+            base_url=base_url,
+            token=token,
+            tenant_id=tenant_id,
         )
         _expect(status, {200}, raw, "assistant media capability")
         media_capability = next(

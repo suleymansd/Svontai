@@ -138,6 +138,72 @@ class WhatsAppGatewayService:
             "raw": result,
         }
 
+    async def send_media(
+        self,
+        account: WhatsAppAccount,
+        *,
+        to: str,
+        media_type: str,
+        content_bytes: bytes,
+        mime_type: str,
+        filename: str,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        if media_type == "catalog":
+            return await self.send_document(
+                account,
+                to=to,
+                content_bytes=content_bytes,
+                mime_type=mime_type,
+                filename=filename,
+                caption=caption,
+            )
+        if media_type not in {"image", "video"}:
+            raise RuntimeError("Desteklenmeyen WhatsApp medya türü.")
+
+        self._require_send_allowed(account)
+        if account.provider == "openwa":
+            if not account.provider_session_id:
+                raise OpenWAError("OpenWA oturum kimliği eksik.")
+            result = await openwa_client.send_media(
+                account.provider_session_id,
+                to,
+                media_type=media_type,
+                base64_data=base64.b64encode(content_bytes).decode(),
+                mimetype=mime_type,
+                filename=filename,
+                caption=caption,
+            )
+            return {
+                "provider": "openwa",
+                "message_id": result.get("messageId"),
+                "raw": result,
+            }
+
+        access_token = decrypt_token(account.access_token_encrypted)
+        if not access_token or not account.phone_number_id:
+            raise RuntimeError("Meta WhatsApp erişim bilgileri eksik.")
+        upload_result = await meta_api_service.upload_media(
+            access_token=access_token,
+            phone_number_id=account.phone_number_id,
+            filename=filename,
+            content_bytes=content_bytes,
+            mime_type=mime_type,
+        )
+        result = await meta_api_service.send_media_message(
+            access_token=access_token,
+            phone_number_id=account.phone_number_id,
+            to=to,
+            media_type=media_type,
+            media_id=upload_result["id"],
+            caption=caption,
+        )
+        return {
+            "provider": "meta_cloud",
+            "message_id": result.get("messages", [{}])[0].get("id"),
+            "raw": result,
+        }
+
     @staticmethod
     def _require_send_allowed(account: WhatsAppAccount) -> None:
         key = f"whatsapp-send:{account.tenant_id}"

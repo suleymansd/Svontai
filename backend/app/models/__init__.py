@@ -26,6 +26,7 @@ from app.models.tool import Tool
 from app.models.tenant_tool import TenantTool
 from app.models.tool_run import ToolRun
 from app.models.artifact import Artifact
+from app.models.assistant_media import AssistantMediaAsset
 from app.models.ticket import Ticket, TicketMessage
 from app.models.password_reset import PasswordResetCode
 from app.models.email_verification import EmailVerificationCode
@@ -119,6 +120,7 @@ __all__ = [
     "TenantTool",
     "ToolRun",
     "Artifact",
+    "AssistantMediaAsset",
     "PushSubscription",
     "SalesInquiry",
     "Ticket",
