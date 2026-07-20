@@ -21,6 +21,7 @@ from app.db.session import get_db
 from app.core.config import settings
 from app.dependencies.auth import get_current_tenant, get_current_user
 from app.dependencies.permissions import require_permissions
+from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.lead import Lead
 from app.models.real_estate import (
     RealEstateGoogleCalendarIntegration,
@@ -928,9 +929,16 @@ async def get_google_calendar_status(
     ).first()
     if not integration:
         return GoogleCalendarStatusResponse(connected=False, status="inactive", calendar_id=None)
+    token = db.query(GoogleOAuthToken).filter(
+        GoogleOAuthToken.tenant_id == current_tenant.id,
+        GoogleOAuthToken.provider == "google",
+    ).first()
+    scopes_ready = GoogleCalendarService.has_required_calendar_scopes(
+        list(token.scopes_json or []) if token else []
+    )
     return GoogleCalendarStatusResponse(
-        connected=integration.status == "active",
-        status=integration.status,
+        connected=integration.status == "active" and scopes_ready,
+        status=integration.status if scopes_ready else "reauthorization_required",
         calendar_id=integration.calendar_id,
     )
 

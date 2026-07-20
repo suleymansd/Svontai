@@ -41,7 +41,7 @@ GOOGLE_SCOPE_MAP: dict[str, list[str]] = {
     ],
     "google_calendar": [
         "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar",
+        "https://www.googleapis.com/auth/calendar.events.freebusy",
     ],
 }
 
@@ -87,7 +87,24 @@ def _google_item(
     configured: bool,
 ) -> IntegrationStatusItem:
     required_scopes = GOOGLE_SCOPE_MAP[key]
-    if not granted_scopes or not _has_any_scope(granted_scopes, required_scopes):
+    if token_state == "expired" and granted_scopes:
+        return IntegrationStatusItem(
+            status="expired",
+            required_scopes=required_scopes,
+            granted_scopes=granted_scopes,
+            expires_at=expires_at,
+            connectable=configured,
+            manageable=True,
+            message="Google erişim süresi doldu. Gerekli izinleri yenilemek için tekrar bağlayın.",
+        )
+
+    scope_ready = (
+        GoogleCalendarService.has_required_calendar_scopes(granted_scopes)
+        if key == "google_calendar"
+        else _has_any_scope(granted_scopes, required_scopes)
+    )
+    if not granted_scopes or not scope_ready:
+        has_partial_google_connection = bool(granted_scopes)
         return IntegrationStatusItem(
             status="missing",
             required_scopes=required_scopes,
@@ -96,21 +113,12 @@ def _google_item(
             connectable=configured,
             manageable=bool(granted_scopes),
             message=(
-                "Google bağlantısını bir kez tamamladığınızda Drive, Gmail, Sheets ve Calendar birlikte açılır."
+                "Google Calendar uygunluk izni eksik. Randevu saatlerini doğrulamak için hesabı yeniden bağlayın."
+                if key == "google_calendar" and has_partial_google_connection
+                else "Google bağlantısını bir kez tamamladığınızda Drive, Gmail, Sheets ve Calendar birlikte açılır."
                 if configured
                 else "Google OAuth sunucu ayarları henüz tamamlanmadı. Sistem yöneticisinin Google Client bilgilerini eklemesi gerekiyor."
             ),
-        )
-
-    if token_state == "expired":
-        return IntegrationStatusItem(
-            status="expired",
-            required_scopes=required_scopes,
-            granted_scopes=granted_scopes,
-            expires_at=expires_at,
-            connectable=configured,
-            manageable=True,
-            message="Google erişim süresi doldu. Tekrar bağlayın.",
         )
 
     return IntegrationStatusItem(
