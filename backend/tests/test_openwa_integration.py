@@ -146,14 +146,23 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
     from app.services.ai_service import ai_service
     from app.services.openwa_client import openwa_client
 
-    _, tenant_id = _create_tenant(client)
+    token, tenant_id = _create_tenant(client)
+    tenant_headers = _headers(token, tenant_id)
     monkeypatch.setattr(settings, "OPENWA_WEBHOOK_SECRET", "test-openwa-secret")
     monkeypatch.setattr(settings, "USE_N8N", True)
     generate_reply = AsyncMock(return_value="Merhaba, size nasıl yardımcı olabilirim?")
     send_text = AsyncMock(return_value={"messageId": "openwa-reply-1"})
+    get_contact = AsyncMock(return_value={
+        "id": "905559998877@c.us",
+        "name": "Rehberdeki Müşteri",
+        "pushName": "WhatsApp Profili",
+        "number": "905559998877",
+        "isMyContact": True,
+    })
     n8n_trigger = AsyncMock(return_value=AutomationRunStatus.FAILED.value)
     monkeypatch.setattr(ai_service, "generate_reply", generate_reply)
     monkeypatch.setattr(openwa_client, "send_text", send_text)
+    monkeypatch.setattr(openwa_client, "get_contact", get_contact)
     monkeypatch.setattr(whatsapp_webhook, "trigger_n8n_in_background", n8n_trigger)
 
     session_id = "82d1023f-998b-4ada-bf1c-a1e192e933c6"
@@ -204,7 +213,7 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
             "timestamp": 1784196000,
             "fromMe": False,
             "isGroup": False,
-            "contact": {"pushName": "Müşteri"},
+            "contact": {"pushName": "WhatsApp Profili"},
         },
     }
     raw_body = json.dumps(payload, separators=(",", ":")).encode()
@@ -238,11 +247,27 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
 
     generate_reply.assert_awaited_once()
     n8n_trigger.assert_awaited_once()
+    get_contact.assert_awaited_once_with(session_id, "905559998877@c.us")
     send_text.assert_awaited_once_with(
         session_id,
         "905559998877",
         "Merhaba, size nasıl yardımcı olabilirim?",
     )
+
+    conversations = client.get("/conversations", headers=tenant_headers)
+    assert conversations.status_code == 200, conversations.text
+    assert len(conversations.json()) == 1
+    conversation = conversations.json()[0]
+    assert conversation["customer_name"] == "Rehberdeki Müşteri"
+    assert conversation["customer_phone"] == "905559998877"
+    assert conversation["last_message"] == "Merhaba, size nasıl yardımcı olabilirim?"
+
+    conversation_detail = client.get(
+        f"/conversations/{conversation['id']}",
+        headers=tenant_headers,
+    )
+    assert conversation_detail.status_code == 200, conversation_detail.text
+    assert [item["sender"] for item in conversation_detail.json()["messages"]] == ["user", "bot"]
 
 
 def test_openwa_gateway_routes_outbound_to_tenant_session(client, monkeypatch):

@@ -8,6 +8,7 @@ n8n for workflow processing. Otherwise, the legacy AI response flow is used.
 
 import json
 import logging
+import re
 import uuid
 from typing import Optional
 from datetime import datetime
@@ -40,7 +41,7 @@ from app.services.ai_service import ai_service
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
 from app.services.real_estate_service import RealEstateService
 from app.models.automation import AutomationChannel, AutomationRunStatus
-from app.services.openwa_client import OpenWAClient
+from app.services.openwa_client import OpenWAClient, OpenWAError, openwa_client
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 from app.services.push_notification_service import send_tenant_push_notification
 
@@ -52,6 +53,110 @@ router = APIRouter(prefix="/whatsapp", tags=["WhatsApp Webhook"])
 
 # Rate limiting state (in production, use Redis)
 _webhook_requests = {}
+
+_CONTACT_NAME_SOURCE_PRIORITY = {
+    "profile": 10,
+    "business": 20,
+    "phonebook": 30,
+}
+
+
+def _clean_contact_name(value: object, phone_number: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.split())[:255]
+    if not cleaned or cleaned.casefold() in {"unknown", "bilinmeyen", "null", "none"}:
+        return None
+    phone_digits = re.sub(r"\D", "", phone_number)
+    name_digits = re.sub(r"\D", "", cleaned)
+    if phone_digits and name_digits == phone_digits and not any(char.isalpha() for char in cleaned):
+        return None
+    return cleaned
+
+
+def _contact_name_candidate(
+    payload: dict,
+    phone_number: str,
+) -> tuple[str | None, str | None]:
+    candidates = (
+        (payload.get("name"), "phonebook"),
+        (payload.get("verifiedName"), "business"),
+        (payload.get("shortName"), "phonebook"),
+        (payload.get("pushName"), "profile"),
+        (payload.get("notifyName"), "profile"),
+        (payload.get("senderName"), "profile"),
+    )
+    for value, source in candidates:
+        cleaned = _clean_contact_name(value, phone_number)
+        if cleaned:
+            return cleaned, source
+    return None, None
+
+
+async def _resolve_openwa_contact_name(
+    *,
+    db: Session,
+    tenant_id: uuid.UUID,
+    session_id: str,
+    sender_jid: str,
+    phone_number: str,
+    data: dict,
+) -> tuple[str | None, str | None]:
+    contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
+    payload_name, payload_source = _contact_name_candidate(contact, phone_number)
+    if not payload_name:
+        payload_name, payload_source = _contact_name_candidate(data, phone_number)
+
+    existing = (
+        db.query(Conversation.extra_data)
+        .join(Bot, Conversation.bot_id == Bot.id)
+        .filter(
+            Bot.tenant_id == tenant_id,
+            Conversation.external_user_id == phone_number,
+            Conversation.source == ConversationSource.WHATSAPP.value,
+        )
+        .order_by(Conversation.updated_at.desc())
+        .first()
+    )
+    existing_data = dict(existing[0] or {}) if existing else {}
+    existing_name = _clean_contact_name(existing_data.get("contact_name"), phone_number)
+    existing_source = (
+        str(existing_data.get("contact_name_source") or "legacy")
+        if existing_name
+        else None
+    )
+
+    best_name, best_source = payload_name, payload_source
+    if (
+        existing_name
+        and _CONTACT_NAME_SOURCE_PRIORITY.get(existing_source or "", 0)
+        >= _CONTACT_NAME_SOURCE_PRIORITY.get(payload_source or "", 0)
+    ):
+        return existing_name, existing_source
+
+    if (
+        _CONTACT_NAME_SOURCE_PRIORITY.get(best_source or "", 0)
+        >= _CONTACT_NAME_SOURCE_PRIORITY["phonebook"]
+    ):
+        return best_name, best_source
+
+    try:
+        remote_contact = await openwa_client.get_contact(session_id, sender_jid)
+    except OpenWAError as exc:
+        logger.info(
+            "openwa.contact_lookup_unavailable session_id=%s status=%s",
+            session_id,
+            exc.status_code,
+        )
+        return best_name, best_source
+
+    remote_name, remote_source = _contact_name_candidate(remote_contact, phone_number)
+    if (
+        _CONTACT_NAME_SOURCE_PRIORITY.get(remote_source or "", 0)
+        > _CONTACT_NAME_SOURCE_PRIORITY.get(best_source or "", 0)
+    ):
+        return remote_name, remote_source
+    return best_name, best_source
 
 
 @router.post("/openwa/webhook")
@@ -120,7 +225,11 @@ async def process_openwa_message_event(
     if data.get("fromMe") or data.get("isStatusBroadcast"):
         return
     if data.get("isGroup"):
-        logger.info("openwa.group_message_ignored session_id=%s message_id=%s", session_id, data.get("id"))
+        logger.info(
+            "openwa.group_message_ignored session_id=%s message_id=%s",
+            session_id,
+            data.get("id"),
+        )
         return
 
     sender = data.get("senderPhone") or data.get("from") or data.get("chatId")
@@ -139,7 +248,11 @@ async def process_openwa_message_event(
         elif message_type in {"audio", "voice", "ptt"}:
             content = "[Audio received]"
         elif message_type == "document":
-            filename = ((data.get("media") or {}).get("filename") if isinstance(data.get("media"), dict) else None)
+            filename = (
+                (data.get("media") or {}).get("filename")
+                if isinstance(data.get("media"), dict)
+                else None
+            )
             content = f"[Document received: {filename}]" if filename else "[Document received]"
         elif message_type == "location":
             location = data.get("location") if isinstance(data.get("location"), dict) else {}
@@ -149,8 +262,14 @@ async def process_openwa_message_event(
         else:
             content = f"[{message_type} received]"
 
-    contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
-    contact_name = contact.get("pushName") or contact.get("name")
+    contact_name, contact_name_source = await _resolve_openwa_contact_name(
+        db=db,
+        tenant_id=uuid.UUID(tenant_id_str),
+        session_id=session_id,
+        sender_jid=str(data.get("from") or data.get("chatId") or sender or ""),
+        phone_number=from_number,
+        data=data,
+    )
     message_id = str(data.get("id") or raw_payload.get("idempotencyKey") or uuid.uuid4())
 
     await handle_incoming_message(
@@ -160,6 +279,7 @@ async def process_openwa_message_event(
         access_token_encrypted="",
         from_number=from_number,
         contact_name=contact_name,
+        contact_name_source=contact_name_source,
         message_content=content,
         message_type=message_type,
         message_id=message_id,
@@ -659,6 +779,7 @@ async def process_message_event(
                     access_token_encrypted=access_token_encrypted,
                     from_number=from_number,
                     contact_name=contact_name,
+                    contact_name_source=("profile" if contact_name else None),
                     message_content=content,
                     message_type=message_type,
                     message_id=message_id,
@@ -762,6 +883,7 @@ async def handle_incoming_message(
     access_token_encrypted: str,
     from_number: str,
     contact_name: Optional[str],
+    contact_name_source: Optional[str],
     message_content: str,
     message_type: str,
     message_id: str,
@@ -826,13 +948,32 @@ async def handle_incoming_message(
             conversation_is_ai_paused = bool(conversation_row[1])
             conversation_status = conversation_row[2] or ConversationStatus.AI_ACTIVE.value
             existing_extra_data = dict(conversation_row[3] or {})
-            if contact_name and not existing_extra_data.get("contact_name"):
-                updated_extra_data = {**existing_extra_data, "contact_name": contact_name}
-                db.query(Conversation).filter(Conversation.id == conversation_id).update(
-                    {Conversation.extra_data: updated_extra_data},
-                    synchronize_session=False,
+            updated_extra_data = {**existing_extra_data, "phone_number": from_number}
+            existing_name = _clean_contact_name(
+                existing_extra_data.get("contact_name"),
+                from_number,
+            )
+            existing_source = str(existing_extra_data.get("contact_name_source") or "legacy")
+            incoming_source = contact_name_source or "profile"
+            should_update_name = bool(
+                contact_name
+                and (
+                    not existing_name
+                    or _CONTACT_NAME_SOURCE_PRIORITY.get(incoming_source, 0)
+                    >= _CONTACT_NAME_SOURCE_PRIORITY.get(existing_source, 0)
                 )
-                db.commit()
+            )
+            if should_update_name:
+                updated_extra_data["contact_name"] = contact_name
+                updated_extra_data["contact_name_source"] = incoming_source
+            db.query(Conversation).filter(Conversation.id == conversation_id).update(
+                {
+                    Conversation.extra_data: updated_extra_data,
+                    Conversation.updated_at: utc_now_naive(),
+                },
+                synchronize_session=False,
+            )
+            db.commit()
         else:
             conversation_id = uuid.uuid4()
             conversation_is_ai_paused = False
@@ -847,6 +988,7 @@ async def handle_incoming_message(
                 is_ai_paused=False,
                 extra_data={
                     "contact_name": contact_name,
+                    "contact_name_source": contact_name_source,
                     "phone_number": from_number,
                 },
             )
@@ -867,6 +1009,7 @@ async def handle_incoming_message(
                     "phone_number_id": account_phone_number_id,
                     "display_phone_number": account_display_phone_number,
                     "access_token_present": bool(access_token_encrypted),
+                    "contact_name_source": contact_name_source,
                 },
             },
         )

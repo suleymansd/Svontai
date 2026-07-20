@@ -108,6 +108,24 @@ class Conversation(Base):
         onupdate=utc_now_naive,
         nullable=False
     )
+
+    @property
+    def customer_name(self) -> str | None:
+        value = (self.extra_data or {}).get("contact_name")
+        return str(value).strip() if value else None
+
+    @property
+    def customer_phone(self) -> str:
+        value = (self.extra_data or {}).get("phone_number")
+        return str(value).strip() if value else self.external_user_id
+
+    @property
+    def last_message(self) -> str | None:
+        return self.messages[-1].content if self.messages else None
+
+    @property
+    def last_message_at(self) -> datetime | None:
+        return self.messages[-1].created_at if self.messages else None
     
     # Relationships
     bot: Mapped["Bot"] = relationship(

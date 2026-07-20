@@ -5,7 +5,7 @@ Conversation management router.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant
@@ -40,7 +40,9 @@ async def list_all_conversations(
     Returns:
         List of conversations.
     """
-    conversations = db.query(Conversation).join(Bot).filter(
+    conversations = db.query(Conversation).options(
+        selectinload(Conversation.messages)
+    ).join(Bot).filter(
         Bot.tenant_id == current_tenant.id
     ).order_by(
         Conversation.updated_at.desc()
@@ -83,7 +85,9 @@ async def list_bot_conversations(
             detail="Bot bulunamadı"
         )
     
-    conversations = db.query(Conversation).filter(
+    conversations = db.query(Conversation).options(
+        selectinload(Conversation.messages)
+    ).filter(
         Conversation.bot_id == bot_id
     ).order_by(
         Conversation.updated_at.desc()
@@ -110,7 +114,9 @@ async def get_conversation(
     Returns:
         The conversation with messages.
     """
-    conversation = db.query(Conversation).join(Bot).filter(
+    conversation = db.query(Conversation).options(
+        selectinload(Conversation.messages)
+    ).join(Bot).filter(
         Conversation.id == conversation_id,
         Bot.tenant_id == current_tenant.id
     ).first()

@@ -47,9 +47,13 @@ export default function ConversationsPage() {
     return conv.customer_name?.toLowerCase().includes(search) || conv.customer_phone?.includes(search)
   })
 
-  const activeCount = conversations?.filter((c: any) => c.status === 'active').length || 0
+  const activeCount = conversations?.filter((c: any) => c.status !== 'closed').length || 0
   const closedCount = conversations?.filter((c: any) => c.status === 'closed').length || 0
   const totalCount = conversations?.length || 0
+  const today = new Date().toDateString()
+  const todayCount = conversations?.filter(
+    (c: any) => new Date(c.created_at).toDateString() === today
+  ).length || 0
 
   return (
     <ContentContainer>
@@ -64,7 +68,7 @@ export default function ConversationsPage() {
           <KPIStat label="Toplam" value={totalCount} icon={<MessageSquare className="h-5 w-5" />} />
           <KPIStat label="Aktif" value={activeCount} icon={<Clock className="h-5 w-5" />} />
           <KPIStat label="Kapatılan" value={closedCount} icon={<MessageSquare className="h-5 w-5" />} />
-          <KPIStat label="Bugün" value="0" icon={<MessageSquare className="h-5 w-5" />} />
+          <KPIStat label="Bugün" value={todayCount} icon={<MessageSquare className="h-5 w-5" />} />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-320px)] min-h-[500px]">
@@ -123,8 +127,8 @@ export default function ConversationsPage() {
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <Badge variant={conv.status === 'active' ? 'success' : 'secondary'}>
-                            {conv.status === 'active' ? 'Aktif' : 'Kapalı'}
+                          <Badge variant={conv.status !== 'closed' ? 'success' : 'secondary'}>
+                            {conv.status !== 'closed' ? 'Aktif' : 'Kapalı'}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
                             {formatDate(conv.last_message_at || conv.created_at)}
@@ -161,7 +165,7 @@ export default function ConversationsPage() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold">
-                        {selectedConvData.customer_name || selectedConvData.customer_phone}
+                        {selectedConvData.customer_name || selectedConvData.customer_phone || 'Bilinmeyen'}
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {selectedConvData.customer_phone && (
@@ -178,8 +182,8 @@ export default function ConversationsPage() {
                         )}
                       </div>
                     </div>
-                    <Badge variant={selectedConvData.status === 'active' ? 'success' : 'secondary'}>
-                      {selectedConvData.status === 'active' ? 'Aktif' : 'Kapalı'}
+                    <Badge variant={selectedConvData.status !== 'closed' ? 'success' : 'secondary'}>
+                      {selectedConvData.status !== 'closed' ? 'Aktif' : 'Kapalı'}
                     </Badge>
                   </div>
                 </div>
@@ -190,13 +194,13 @@ export default function ConversationsPage() {
                       key={msg.id}
                       className={cn(
                         'flex gap-3',
-                        msg.sender_type === 'bot' ? 'justify-end' : 'justify-start'
+                        msg.sender === 'bot' ? 'justify-end' : 'justify-start'
                       )}
                     >
                       <div
                         className={cn(
                           'max-w-[70%] rounded-2xl px-4 py-3 text-sm',
-                          msg.sender_type === 'bot'
+                          msg.sender === 'bot'
                             ? 'bubble-bot text-primary-foreground'
                             : 'bg-muted'
                         )}
