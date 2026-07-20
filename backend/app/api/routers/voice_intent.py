@@ -20,8 +20,12 @@ from app.db.session import get_db
 from app.models.call import Call, CallTranscript
 from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
+from app.services.appointment_availability_service import AppointmentAvailabilityService
 from app.services.assistant_profile_service import AssistantProfileService
+from app.services.audit_log_service import AuditLogService
 from app.services.n8n_client import N8NClient
+from app.services.push_notification_service import send_tenant_push_notification
+from app.services.voice_appointment_service import VoiceAppointmentService
 
 logger = logging.getLogger(__name__)
 
@@ -131,19 +135,76 @@ async def voice_intent(
                 CallTranscript.tenant_id == body.tenant_id,
             ).order_by(CallTranscript.segment_index.desc()).limit(12).all()
             segments = [(row.speaker, row.text) for row in reversed(rows)]
-        response_text = await ai_service.generate_voice_reply(
-            bot=bot,
-            knowledge_items=list(bot.knowledge_items or []),
-            user_text=body.text,
-            transcript=segments,
-            bot_settings=bot.settings,
-            runtime_context=profile_service.build_runtime_context(tenant, bot),
-        )
+        appointment = None
+        appointment_enabled = profile_service.capability_enabled(bot, "appointment_management")
+        booking_result = None
+        if call_row is not None and appointment_enabled:
+            booking_result = VoiceAppointmentService(db).handle_turn(
+                tenant=tenant,
+                call=call_row,
+                user_text=body.text,
+            )
+        if booking_result is not None and booking_result.handled:
+            response_text = booking_result.response_text
+            appointment = booking_result.appointment
+        else:
+            response_text = await ai_service.generate_voice_reply(
+                bot=bot,
+                knowledge_items=list(bot.knowledge_items or []),
+                user_text=body.text,
+                transcript=segments,
+                bot_settings=bot.settings,
+                runtime_context=profile_service.build_runtime_context(tenant, bot),
+            )
+            if call_row is not None and appointment_enabled:
+                response_text, appointment = AppointmentAvailabilityService(db).apply_ai_action(
+                    tenant=tenant,
+                    call=call_row,
+                    reply=response_text,
+                )
+        if appointment is not None:
+            call_row.meta_json = {
+                **(call_row.meta_json or {}),
+                "appointment_id": str(appointment.id),
+            }
+            db.commit()
+            AuditLogService(db).safe_log(
+                action="voice.appointment.create",
+                tenant_id=body.tenant_id,
+                user_id=None,
+                resource_type="appointment",
+                resource_id=str(appointment.id),
+                payload={
+                    "call_id": str(call_row.id),
+                    "starts_at": appointment.starts_at.isoformat(),
+                    "source": appointment.source,
+                },
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("User-Agent"),
+            )
+            await send_tenant_push_notification(
+                tenant_id=body.tenant_id,
+                event_type="appointment",
+                title="Sesli asistandan yeni randevu",
+                body=f"{appointment.customer_name} için {appointment.subject} randevusu oluşturuldu.",
+                url="/dashboard/appointments",
+                tag="svontai-voice-appointment",
+                extra={
+                    "appointment_id": str(appointment.id),
+                    "call_id": str(call_row.id),
+                },
+            )
         end_call = any(
             phrase in body.text.casefold()
             for phrase in ("görüşürüz", "hoşça kal", "kapatabiliriz", "teşekkürler bu kadar")
         )
-        response_data = {"responseText": response_text, "endCall": end_call, "provider": ai_service.provider}
+        response_data = {
+            "responseText": response_text,
+            "endCall": end_call,
+            "provider": ai_service.provider,
+            "appointmentCreated": appointment is not None,
+            "appointmentId": str(appointment.id) if appointment is not None else None,
+        }
         run.mark_success(response_data)
         db.commit()
     except Exception as exc:

@@ -1,5 +1,6 @@
 import re
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 
@@ -226,6 +227,118 @@ def test_signed_voice_intent_uses_tenant_ai_and_is_idempotent(client, monkeypatc
     assert duplicate.status_code == 200, duplicate.text
     assert duplicate.json()["responseText"] == first.json()["responseText"]
     assert generate.await_count == 1
+
+
+def test_signed_voice_intent_books_confirmed_real_slot_once(client, monkeypatch):
+    from app.api.routers import voice_intent as voice_intent_module
+    from app.core.config import settings
+    from app.core.n8n_security import generate_signature
+    from app.db.session import SessionLocal
+    from app.models.appointment import Appointment
+    from app.models.call import Call, CallDirection
+    from app.models.tenant import Tenant
+    from app.services.appointment_availability_service import default_appointment_settings
+
+    _access_token, tenant_id = _create_tenant_session(client, email="voice-booking@example.com")
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == UUID(tenant_id)).one()
+        appointment_settings = default_appointment_settings()
+        appointment_settings.update({
+            "configured": True,
+            "timezone": "UTC",
+            "minimum_notice_hours": 0,
+        })
+        appointment_settings["weekly_hours"] = {
+            day: {"enabled": True, "start": "00:00", "end": "23:59"}
+            for day in appointment_settings["weekly_hours"]
+        }
+        tenant.settings = {
+            **(tenant.settings or {}),
+            "appointment_settings": appointment_settings,
+        }
+        call = Call(
+            tenant_id=tenant.id,
+            provider="twilio",
+            provider_call_id="CA-booking-test",
+            direction=CallDirection.OUTBOUND.value,
+            status="in_progress",
+            from_number="tel:+12404106113",
+            to_number="tel:+905559998877",
+        )
+        db.add(call)
+        db.commit()
+        db.refresh(call)
+        call_id = call.id
+    finally:
+        db.close()
+
+    generate = AsyncMock(return_value="Bu akışta yapay zeka çağrılmamalı")
+    notify = AsyncMock()
+    monkeypatch.setattr(voice_intent_module.ai_service, "generate_voice_reply", generate)
+    monkeypatch.setattr(voice_intent_module, "send_tenant_push_notification", notify)
+
+    base_payload = {
+        "tenantId": tenant_id,
+        "eventType": "voice_call_intent",
+        "from": "tel:+12404106113",
+        "to": "tel:+905559998877",
+        "call": {
+            "provider": "twilio",
+            "provider_call_id": "CA-booking-test",
+            "direction": "outbound",
+            "status": "in_progress",
+        },
+    }
+
+    def post_turn(turn: int, text: str):
+        payload = {
+            **base_payload,
+            "eventId": f"twilio:CA-booking-test:turn:{turn}",
+            "text": text,
+            "metadata": {"turn": turn},
+        }
+        signature, timestamp = generate_signature(payload, settings.VOICE_GATEWAY_TO_SVONTAI_SECRET)
+        return client.post(
+            "/api/v1/voice/intent",
+            json=payload,
+            headers={
+                "X-Voice-Signature": signature,
+                "X-Voice-Timestamp": str(timestamp),
+            },
+        )
+
+    first = post_turn(1, "Randevu almak istiyorum")
+    assert first.status_code == 200, first.text
+    assert "Uygun saatleri kontrol ettim" in first.json()["responseText"]
+    assert first.json()["raw"]["appointmentCreated"] is False
+
+    second = post_turn(2, "Birinci seçeneği istiyorum")
+    assert second.status_code == 200, second.text
+    assert "onaylıyor musunuz" in second.json()["responseText"]
+    assert second.json()["raw"]["appointmentCreated"] is False
+
+    third = post_turn(3, "Evet, onaylıyorum")
+    assert third.status_code == 200, third.text
+    assert "randevu sistemine kaydettim" in third.json()["responseText"]
+    assert third.json()["raw"]["appointmentCreated"] is True
+    appointment_id = third.json()["raw"]["appointmentId"]
+
+    duplicate = post_turn(3, "Evet, onaylıyorum")
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["raw"]["appointmentId"] == appointment_id
+    assert generate.await_count == 0
+    assert notify.await_count == 1
+
+    db = SessionLocal()
+    try:
+        rows = db.query(Appointment).filter(Appointment.call_id == call_id).all()
+        assert len(rows) == 1
+        assert str(rows[0].id) == appointment_id
+        assert rows[0].source == "ai_voice"
+        assert rows[0].calendar_sync_status == "pending"
+    finally:
+        db.close()
 
 
 def test_voice_gateway_escapes_twiml_values():

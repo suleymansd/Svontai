@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 from app.models.appointment import Appointment
+from app.models.call import Call, CallDirection
 from app.models.conversation import Conversation, ConversationSource
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -179,6 +180,50 @@ def test_ai_action_books_only_a_current_slot(client):
         _, duplicate = service.apply_ai_action(tenant=tenant, conversation=conversation, reply=reply)
         assert duplicate is None
         assert db.query(Appointment).filter(Appointment.conversation_id == conversation.id).count() == 1
+    finally:
+        db.close()
+
+
+def test_ai_action_books_voice_call_once(client):
+    from app.db import session as session_module
+
+    db = session_module.SessionLocal()
+    try:
+        _, tenant = _tenant_with_schedule(db)
+        call = Call(
+            tenant_id=tenant.id,
+            provider="twilio",
+            provider_call_id=f"CA-{uuid.uuid4().hex}",
+            direction=CallDirection.OUTBOUND.value,
+            status="in_progress",
+            from_number="tel:+12404106113",
+            to_number="tel:+905551112233",
+        )
+        db.add(call)
+        db.commit()
+        db.refresh(call)
+
+        service = AppointmentAvailabilityService(db)
+        slot = service.get_available_slots(tenant, days=2, service_id="consultation", limit=1)["slots"][0]
+        action = {
+            "type": "book_appointment",
+            "service_id": "consultation",
+            "start_at": slot["start_at"].isoformat() + "Z",
+        }
+        reply = f"Randevunuzu oluşturdum. <svontai_action>{json.dumps(action)}</svontai_action>"
+
+        clean, appointment = service.apply_ai_action(tenant=tenant, call=call, reply=reply)
+        assert clean == "Randevunuzu oluşturdum."
+        assert appointment is not None
+        assert appointment.call_id == call.id
+        assert appointment.conversation_id is None
+        assert appointment.customer_phone == "+905551112233"
+        assert appointment.source == "ai_voice"
+        assert appointment.calendar_sync_status == "pending"
+
+        _, duplicate = service.apply_ai_action(tenant=tenant, call=call, reply=reply)
+        assert duplicate is None
+        assert db.query(Appointment).filter(Appointment.call_id == call.id).count() == 1
     finally:
         db.close()
 

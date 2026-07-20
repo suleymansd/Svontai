@@ -445,6 +445,8 @@ C: {item.answer}
 - Yazım dilini Türkçe ses sentezine uygun tut; doğal duraklamalar için nokta ve virgül kullan.
 - İngilizce veya teknik kısaltmaları telaffuz edilecek biçimde açık yaz; sembol, eğik çizgi ve parantez kullanma.
 - Telefon numarası, tarih, saat, para ve ölçüleri konuşma dilinde kolay okunacak biçimde yaz.
+- GERÇEK RANDEVU BİLGİSİ mevcutsa randevu talebini yetkiliye aktarma; gerçek boş saatlerden en fazla üç seçenek sun.
+- Müşteri önerdiğin saati açıkça onayladığında randevu işlem satırını eksiksiz üret. Bu görünmez işlem satırı doğal konuşma kuralının tek istisnasıdır.
 - Bilmediğin fiyat, uygunluk veya işletme bilgisini uydurma.
 """
         messages = [{"role": "system", "content": system_prompt}]

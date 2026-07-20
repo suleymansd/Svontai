@@ -47,6 +47,11 @@ class Appointment(Base):
         nullable=True,
         index=True,
     )
+    call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("calls.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     subject: Mapped[str] = mapped_column(
         String(255),
         nullable=False
