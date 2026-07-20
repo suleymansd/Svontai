@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from app.core.config import settings
 from app.services import email_service as email_service_module
 from app.services.email_service import EmailService
@@ -59,6 +61,48 @@ def test_operational_report_template_uses_real_metrics():
     assert "%91.7" in html
     assert "20.07.2026 · 18:00" in html
     assert "https://svontai.example/dashboard" in html
+
+
+def test_operational_report_template_does_not_alarm_for_recovered_failures():
+    report = deepcopy(_report())
+    report["metrics"].update({
+        "failed_automations": 4,
+        "unresolved_automation_failures": 0,
+        "recovered_automation_failures": 4,
+    })
+    report["health"] = {"healthy": True, "attention_reasons": []}
+
+    html = render_operational_report_email(
+        report=report,
+        dashboard_url="https://svontai.example/dashboard",
+    )
+
+    assert "Sistem sağlıklı çalışıyor" in html
+    assert "4 geçmiş otomasyon hatası sonraki başarılı çalışmayla düzeldi" in html
+    assert "Başarısız deneme" in html
+    assert "Açık otomasyon sorunu" in html
+    assert "Düzeltilmiş geçmiş hata" in html
+
+
+def test_operational_report_template_explains_unresolved_failure():
+    report = deepcopy(_report())
+    report["metrics"].update({
+        "failed_automations": 1,
+        "unresolved_automation_failures": 1,
+        "recovered_automation_failures": 0,
+    })
+    report["health"] = {
+        "healthy": False,
+        "attention_reasons": ["Son başarılı çalışmadan sonra 1 otomasyon hatası var."],
+    }
+
+    html = render_operational_report_email(
+        report=report,
+        dashboard_url="https://svontai.example/dashboard",
+    )
+
+    assert "Kontrol edilmesi gereken durum var" in html
+    assert "Son başarılı çalışmadan sonra 1 otomasyon hatası var." in html
 
 
 def test_password_reset_template_has_security_context_and_escapes_content():
