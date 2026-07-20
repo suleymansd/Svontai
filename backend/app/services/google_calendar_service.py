@@ -40,12 +40,34 @@ class GoogleCalendarService:
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/spreadsheets.readonly",
         "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar.events.freebusy",
     ]
     STATE_EXP_MINUTES = 15
     CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+    CALENDAR_FREEBUSY_SCOPE = "https://www.googleapis.com/auth/calendar.events.freebusy"
+    CALENDAR_FULL_SCOPE = "https://www.googleapis.com/auth/calendar"
+    CALENDAR_FREEBUSY_ALTERNATIVE_SCOPES = {
+        CALENDAR_FREEBUSY_SCOPE,
+        "https://www.googleapis.com/auth/calendar.freebusy",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        CALENDAR_FULL_SCOPE,
+    }
 
     def __init__(self, db: Session):
         self.db = db
+
+    @classmethod
+    def has_calendar_event_scope(cls, scopes: list[str] | set[str] | None) -> bool:
+        granted = set(scopes or [])
+        return bool({cls.CALENDAR_EVENTS_SCOPE, cls.CALENDAR_FULL_SCOPE} & granted)
+
+    @classmethod
+    def has_calendar_freebusy_scope(cls, scopes: list[str] | set[str] | None) -> bool:
+        return bool(cls.CALENDAR_FREEBUSY_ALTERNATIVE_SCOPES & set(scopes or []))
+
+    @classmethod
+    def has_required_calendar_scopes(cls, scopes: list[str] | set[str] | None) -> bool:
+        return cls.has_calendar_event_scope(scopes) and cls.has_calendar_freebusy_scope(scopes)
 
     @staticmethod
     def is_configured() -> bool:
@@ -328,6 +350,11 @@ class GoogleCalendarService:
         granted_scopes = GoogleOAuthTokenService.parse_scopes(token_data.get("scope")) or [
             scope for scope in self.SCOPES if scope.startswith("https://www.googleapis.com/auth/")
         ]
+        if not self.has_required_calendar_scopes(granted_scopes):
+            raise GoogleCalendarError(
+                "Randevu oluşturma ve takvim uygunluğu izinleri birlikte verilmedi. "
+                "Google hesabını yeniden bağlayıp istenen Calendar izinlerini onaylayın."
+            )
         if access_token:
             integration.access_token_encrypted = encrypt_token(access_token)
         if refresh_token:
@@ -431,14 +458,18 @@ class GoogleCalendarService:
             )
         return data.get("id")
 
-    def _tenant_access_token(self, tenant_id: UUID) -> str:
+    def _tenant_access_token(self, tenant_id: UUID, *, require_freebusy: bool = False) -> str:
         token_service = GoogleOAuthTokenService(self.db)
         token_row = token_service.get_tenant_google_token(tenant_id)
         if token_row is None:
             raise GoogleCalendarError("Tenant için bağlı Google hesabı bulunamadı.")
         scopes = set(token_row.scopes_json or [])
-        if self.CALENDAR_EVENTS_SCOPE not in scopes and "https://www.googleapis.com/auth/calendar" not in scopes:
+        if not self.has_calendar_event_scope(scopes):
             raise GoogleCalendarError("Google Calendar izni verilmemiş.")
+        if require_freebusy and not self.has_calendar_freebusy_scope(scopes):
+            raise GoogleCalendarError(
+                "Google Calendar uygunluk izni eksik. Entegrasyonlar ekranından Google hesabını yeniden bağlayın."
+            )
         if token_service.ensure_fresh_or_expired(token_row) != "connected":
             raise GoogleCalendarError("Google oturumunun süresi dolmuş; hesabı yeniden bağlayın.")
         token_row = token_service.get_tenant_google_token(tenant_id)
@@ -703,7 +734,7 @@ class GoogleCalendarService:
         time_max: datetime,
     ) -> list[tuple[datetime, datetime]]:
         """Return primary-calendar busy periods for the tenant Google connection."""
-        access_token = self._tenant_access_token(tenant_id)
+        access_token = self._tenant_access_token(tenant_id, require_freebusy=True)
         response = httpx.post(
             f"{self.CALENDAR_API_BASE}/freeBusy",
             headers={

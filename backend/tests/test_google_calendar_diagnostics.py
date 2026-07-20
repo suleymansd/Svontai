@@ -2,9 +2,41 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
+from uuid import UUID
 
 from app.core.config import settings
 from app.services.google_calendar_service import GoogleCalendarService
+
+
+def test_google_oauth_requests_event_and_freebusy_scopes():
+    snapshot = _snapshot_state()
+    try:
+        settings.BACKEND_URL = "https://api.svontai.test"
+        settings.WEBHOOK_PUBLIC_URL = "https://api.svontai.test"
+        settings.GOOGLE_CLIENT_ID = "client-id"
+        settings.GOOGLE_CLIENT_SECRET = "client-secret"
+        settings.GOOGLE_REDIRECT_URI = (
+            "https://api.svontai.test/real-estate/calendar/google/callback"
+        )
+
+        result = GoogleCalendarService(None).get_oauth_start(
+            UUID("00000000-0000-0000-0000-000000000001"),
+            UUID("00000000-0000-0000-0000-000000000002"),
+        )
+        params = parse_qs(urlparse(result["auth_url"]).query)
+        scopes = set(params["scope"][0].split())
+
+        assert GoogleCalendarService.CALENDAR_EVENTS_SCOPE in scopes
+        assert GoogleCalendarService.CALENDAR_FREEBUSY_SCOPE in scopes
+        assert params["prompt"] == ["consent"]
+        assert params["include_granted_scopes"] == ["true"]
+        assert GoogleCalendarService.has_required_calendar_scopes(scopes)
+        assert not GoogleCalendarService.has_required_calendar_scopes(
+            {GoogleCalendarService.CALENDAR_EVENTS_SCOPE}
+        )
+    finally:
+        _restore_state(snapshot)
 
 
 def _snapshot_state() -> dict:
