@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    AI_MAX_REPLY_TOKENS: int = 800
+    AI_REQUEST_TIMEOUT_SECONDS: int = 30
+    AI_REQUEST_MAX_RETRIES: int = 1
     
     # WhatsApp Cloud API (Legacy - for direct integration)
     WHATSAPP_BASE_URL: str = "https://graph.facebook.com/v17.0"
@@ -131,6 +134,14 @@ class Settings(BaseSettings):
     REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS: int = 300
     REAL_ESTATE_WEEKLY_REPORT_DAY: int = 0  # Monday=0 ... Sunday=6
     REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC: int = 8
+
+    # Cost-aware worker polling. Incoming webhooks remain real-time; these values
+    # only control background health/synchronization traffic.
+    INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS: int = 900
+    OPENWA_SESSION_HEALTH_INTERVAL_SECONDS: int = 300
+    OPENWA_RECONNECT_BASE_BACKOFF_SECONDS: int = 900
+    OPENWA_RECONNECT_MAX_BACKOFF_SECONDS: int = 21600
+    GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS: int = 600
 
     # Google Calendar OAuth (Real Estate Pack)
     GOOGLE_CLIENT_ID: str = ""
@@ -457,6 +468,22 @@ class Settings(BaseSettings):
                 backup_key = b""
             if len(backup_key) != 32:
                 missing_real_time_config.append("32-byte DATABASE_BACKUP_ENCRYPTION_KEY_B64")
+        if self.INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS < 300:
+            missing_real_time_config.append("INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS>=300")
+        if self.OPENWA_SESSION_HEALTH_INTERVAL_SECONDS < 120:
+            missing_real_time_config.append("OPENWA_SESSION_HEALTH_INTERVAL_SECONDS>=120")
+        if self.OPENWA_RECONNECT_BASE_BACKOFF_SECONDS < 300:
+            missing_real_time_config.append("OPENWA_RECONNECT_BASE_BACKOFF_SECONDS>=300")
+        if self.OPENWA_RECONNECT_MAX_BACKOFF_SECONDS < self.OPENWA_RECONNECT_BASE_BACKOFF_SECONDS:
+            missing_real_time_config.append("OPENWA_RECONNECT_MAX_BACKOFF_SECONDS>=OPENWA_RECONNECT_BASE_BACKOFF_SECONDS")
+        if self.GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS < 300:
+            missing_real_time_config.append("GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS>=300")
+        if not 100 <= self.AI_MAX_REPLY_TOKENS <= 4000:
+            missing_real_time_config.append("100<=AI_MAX_REPLY_TOKENS<=4000")
+        if not 5 <= self.AI_REQUEST_TIMEOUT_SECONDS <= 120:
+            missing_real_time_config.append("5<=AI_REQUEST_TIMEOUT_SECONDS<=120")
+        if not 0 <= self.AI_REQUEST_MAX_RETRIES <= 3:
+            missing_real_time_config.append("0<=AI_REQUEST_MAX_RETRIES<=3")
         if self.WEBHOOK_PUBLIC_URL.startswith("http://localhost") or self.BACKEND_URL.startswith("http://localhost"):
             missing_real_time_config.append("public WEBHOOK_PUBLIC_URL/BACKEND_URL")
         if self.FRONTEND_URL.startswith("http://localhost"):

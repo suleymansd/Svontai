@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from contextlib import suppress
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from alembic.config import Config
@@ -106,6 +106,31 @@ def _openwa_qr_is_ready(payload: dict | None) -> bool:
     return bool(payload and str(payload.get("qrCode") or "").strip())
 
 
+def _openwa_reconnect_backoff_seconds(metadata: dict | None) -> int:
+    attempts = max(0, int((metadata or {}).get("reconnect_failure_count") or 0))
+    multiplier = 2 ** max(0, attempts - 1)
+    return min(
+        settings.OPENWA_RECONNECT_MAX_BACKOFF_SECONDS,
+        settings.OPENWA_RECONNECT_BASE_BACKOFF_SECONDS * multiplier,
+    )
+
+
+def _openwa_reconnect_is_due(metadata: dict | None, now: datetime | None = None) -> bool:
+    last_attempt_raw = str((metadata or {}).get("last_reconnect_attempt_at") or "").strip()
+    if not last_attempt_raw:
+        return True
+    try:
+        last_attempt = datetime.fromisoformat(last_attempt_raw.replace("Z", "+00:00"))
+        current = now or utc_now_naive()
+        if last_attempt.tzinfo is not None:
+            last_attempt = last_attempt.replace(tzinfo=None)
+        if current.tzinfo is not None:
+            current = current.replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return True
+    return (current - last_attempt).total_seconds() >= _openwa_reconnect_backoff_seconds(metadata)
+
+
 def _expected_migration_heads() -> set[str]:
     backend_root = Path(__file__).resolve().parents[1]
     config = Config(str(backend_root / "alembic.ini"))
@@ -187,7 +212,11 @@ def _run_real_estate_automation() -> None:
 def _run_integration_diagnostics() -> None:
     db = SessionLocal()
     try:
-        with scheduled_job_lock(db, "integration_diagnostics", 300) as job:
+        with scheduled_job_lock(
+            db,
+            "integration_diagnostics",
+            settings.INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS,
+        ) as job:
             if job is None:
                 return
             service = AutopilotService(db)
@@ -203,7 +232,8 @@ def _sync_openwa_sessions() -> None:
         return
     db = SessionLocal()
     try:
-        with scheduled_job_lock(db, "openwa_session_health", 120, lock_seconds=100) as job:
+        interval = settings.OPENWA_SESSION_HEALTH_INTERVAL_SECONDS
+        with scheduled_job_lock(db, "openwa_session_health", interval, lock_seconds=max(60, interval - 30)) as job:
             if job is None:
                 return
             accounts = db.query(WhatsAppAccount).filter(
@@ -225,6 +255,16 @@ def _sync_openwa_sessions() -> None:
                         previous_health=str(previous_metadata.get("health_status") or ""),
                     )
                     if recovery_action == "reconnect":
+                        if not _openwa_reconnect_is_due(previous_metadata):
+                            continue
+                        previous_failures += 1
+                        account.provider_metadata_json = {
+                            **(account.provider_metadata_json or {}),
+                            "health_status": "reconnecting",
+                            "reconnect_failure_count": previous_failures,
+                            "last_reconnect_attempt_at": utc_now_naive().isoformat(),
+                        }
+                        db.commit()
                         asyncio.run(openwa_client.start_session(account.provider_session_id))
                         result = asyncio.run(service.refresh_openwa_status(account.tenant_id))
                         recovery_action = _openwa_recovery_action(
@@ -451,7 +491,13 @@ def _run_outbound_voice_jobs() -> None:
 def _sync_google_calendar_appointments() -> None:
     db = SessionLocal()
     try:
-        with scheduled_job_lock(db, "google_calendar_appointment_sync", 120, lock_seconds=100) as job:
+        interval = settings.GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS
+        with scheduled_job_lock(
+            db,
+            "google_calendar_appointment_sync",
+            interval,
+            lock_seconds=max(60, interval - 30),
+        ) as job:
             if job is None:
                 return
             service = GoogleCalendarService(db)
@@ -570,11 +616,11 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),
-        asyncio.create_task(_run_every("integration_diagnostics", 300, _run_integration_diagnostics)),
-        asyncio.create_task(_run_every("openwa_session_health", 120, _sync_openwa_sessions)),
+        asyncio.create_task(_run_every("integration_diagnostics", settings.INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS, _run_integration_diagnostics)),
+        asyncio.create_task(_run_every("openwa_session_health", settings.OPENWA_SESSION_HEALTH_INTERVAL_SECONDS, _sync_openwa_sessions)),
         asyncio.create_task(_run_every("stuck_run_cleanup", 60, _cleanup_stuck_runs)),
         asyncio.create_task(_run_every("outbound_voice_jobs", 30, _run_outbound_voice_jobs)),
-        asyncio.create_task(_run_every("google_calendar_appointment_sync", 120, _sync_google_calendar_appointments)),
+        asyncio.create_task(_run_every("google_calendar_appointment_sync", settings.GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS, _sync_google_calendar_appointments)),
         asyncio.create_task(_run_every("daily_operational_report", 3600, _send_daily_operational_reports)),
         asyncio.create_task(_run_every("weekly_operational_push", 3600, _send_weekly_operational_reports)),
         asyncio.create_task(_run_every("encrypted_database_backup", 300, _run_database_backup)),

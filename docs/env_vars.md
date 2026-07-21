@@ -51,6 +51,14 @@
 - `RATE_LIMIT_REDIS_PREFIX`
 - `SENTRY_DSN`
 - `SENTRY_TRACES_SAMPLE_RATE`
+- `INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS` (production minimum `300`, default `900`)
+- `OPENWA_SESSION_HEALTH_INTERVAL_SECONDS` (production minimum `120`, default `300`)
+- `OPENWA_RECONNECT_BASE_BACKOFF_SECONDS` (default `900`)
+- `OPENWA_RECONNECT_MAX_BACKOFF_SECONDS` (default `21600`)
+- `GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS` (production minimum `300`, default `600`)
+- `AI_MAX_REPLY_TOKENS` (hard customer-reply output cap; default `800`)
+- `AI_REQUEST_TIMEOUT_SECONDS` (provider timeout; default `30`)
+- `AI_REQUEST_MAX_RETRIES` (provider retry cap; default `1`)
 - `USE_N8N`
 - `N8N_BASE_URL`
 - `N8N_API_KEY`

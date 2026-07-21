@@ -30,7 +30,11 @@ class AIService:
         self.client: Optional[AsyncOpenAI] = None
         self.provider = settings.AI_PROVIDER
         if settings.ai_api_key:
-            client_options = {"api_key": settings.ai_api_key}
+            client_options = {
+                "api_key": settings.ai_api_key,
+                "timeout": settings.AI_REQUEST_TIMEOUT_SECONDS,
+                "max_retries": settings.AI_REQUEST_MAX_RETRIES,
+            }
             if settings.ai_base_url:
                 client_options["base_url"] = settings.ai_base_url
             self.client = AsyncOpenAI(**client_options)
@@ -287,7 +291,8 @@ C: {item.answer}
         fallback_msg = settings_obj.fallback_message if bot_settings else "Üzgünüm, bu konuda size yardımcı olamıyorum. Lütfen bizimle iletişime geçin."
         handoff_msg = settings_obj.human_handoff_message if bot_settings else "Sizi bir müşteri temsilcimize bağlıyorum. Lütfen bekleyin."
         memory_window = settings_obj.memory_window if bot_settings else 10
-        max_tokens = settings_obj.max_response_length if bot_settings else 500
+        requested_max_tokens = settings_obj.max_response_length if bot_settings else 500
+        max_tokens = max(100, min(requested_max_tokens, settings.AI_MAX_REPLY_TOKENS))
         rate_per_minute = settings_obj.rate_limit_per_minute if bot_settings else 20
         rate_per_hour = settings_obj.rate_limit_per_hour if bot_settings else 100
         prohibited = settings_obj.prohibited_topics if bot_settings else []

@@ -317,6 +317,27 @@ async def process_whatsapp_reply_in_background(
     """Route through n8n, falling back to the tenant bot when n8n is unavailable."""
     from app.db.session import SessionLocal
 
+    limit_db = SessionLocal()
+    try:
+        subscription_service = SubscriptionService(limit_db)
+        if subscription_service.get_subscription(tenant_id) is None:
+            subscription_service.create_subscription(tenant_id, "free")
+        can_reply, limit_message = subscription_service.check_message_limit(
+            tenant_id,
+            current_message_already_counted=True,
+        )
+        if not can_reply:
+            logger.warning(
+                "whatsapp.reply_skipped_by_plan_limit tenant_id=%s message_id=%s reason=%s",
+                tenant_id,
+                message_id,
+                limit_message,
+            )
+            limit_db.commit()
+            return
+    finally:
+        limit_db.close()
+
     if use_n8n and n8n_workflow_id:
         run_status = await trigger_n8n_in_background(
             tenant_id=tenant_id,

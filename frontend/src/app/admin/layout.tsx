@@ -28,7 +28,8 @@ import {
   LifeBuoy,
   AlertTriangle,
   BookOpen,
-  Inbox
+  Inbox,
+  ReceiptText,
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -38,6 +39,7 @@ const navigation = [
   { name: 'Kullanıcılar', href: '/admin/users', icon: Users },
   { name: 'Müşteriler', href: '/admin/customers', icon: Building2 },
   { name: 'Satış Talepleri', href: '/admin/inquiries', icon: Inbox },
+  { name: 'Proforma Faturalar', href: '/admin/invoices', icon: ReceiptText },
   { name: 'Tenantlar', href: '/admin/tenants', icon: Building2 },
   { name: 'Planlar', href: '/admin/plans', icon: Package },
   { name: 'Araçlar', href: '/admin/tools', icon: Boxes },
@@ -152,6 +154,7 @@ export default function AdminLayout({
 
       {/* Sidebar */}
       <aside className={cn(
+        "print:hidden",
         "fixed top-0 left-0 z-50 h-full w-72 bg-card/95 backdrop-blur-xl border-r border-border/70 transform transition-transform duration-300 lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
@@ -244,9 +247,9 @@ export default function AdminLayout({
       </aside>
 
       {/* Main Content */}
-      <div className="lg:pl-72">
+      <div className="lg:pl-72 print:pl-0">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/70">
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/70 print:hidden">
           <div className="flex items-center justify-between h-16 px-4 lg:px-8">
             <button
               className="lg:hidden p-2 text-muted-foreground hover:text-foreground"

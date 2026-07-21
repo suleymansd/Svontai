@@ -3,13 +3,15 @@ Admin API routes for system administration.
 """
 
 import logging
-from datetime import datetime, timedelta
+import uuid
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from app.core.time import utc_now_naive
 from uuid import UUID
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from sqlalchemy import String, and_, cast, func, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,7 @@ from app.models.whatsapp_account import WhatsAppAccount
 from app.models.onboarding import AuditLog
 from app.models.real_estate import RealEstatePackSettings
 from app.models.sales_inquiry import SalesInquiry
+from app.models.invoice import Invoice
 from app.schemas.user import UserResponse, UserAdminUpdate
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
@@ -94,6 +97,75 @@ class SalesInquiryListResponse(BaseModel):
 
 class SalesInquiryStatusUpdate(BaseModel):
     status: Literal["new", "contacted", "qualified", "closed", "spam"]
+
+
+class InvoiceLineInput(BaseModel):
+    description: str = Field(min_length=1, max_length=300)
+    quantity: Decimal = Field(gt=0, le=1000000)
+    unit: str = Field(default="adet", min_length=1, max_length=30)
+    unit_price: Decimal = Field(ge=0, le=999999999)
+    tax_rate: Decimal = Field(default=Decimal("20"), ge=0, le=100)
+
+
+class InvoiceCreate(BaseModel):
+    tenant_id: UUID | None = None
+    issue_date: date
+    due_date: date
+    currency: str = Field(default="TRY", min_length=3, max_length=3)
+    seller_name: str = Field(min_length=1, max_length=180)
+    seller_email: EmailStr | None = None
+    seller_phone: str | None = Field(default=None, max_length=40)
+    seller_address: str | None = Field(default=None, max_length=1500)
+    seller_tax_office: str | None = Field(default=None, max_length=120)
+    seller_tax_number: str | None = Field(default=None, max_length=40)
+    customer_name: str = Field(min_length=1, max_length=180)
+    customer_email: EmailStr | None = None
+    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_address: str | None = Field(default=None, max_length=1500)
+    customer_tax_office: str | None = Field(default=None, max_length=120)
+    customer_tax_number: str | None = Field(default=None, max_length=40)
+    items: list[InvoiceLineInput] = Field(min_length=1, max_length=50)
+    notes: str | None = Field(default=None, max_length=3000)
+
+
+class InvoiceStatusUpdate(BaseModel):
+    status: Literal["draft", "sent", "paid", "cancelled"]
+
+
+class InvoiceResponse(BaseModel):
+    id: UUID
+    invoice_number: str
+    tenant_id: UUID | None
+    document_type: str
+    status: str
+    issue_date: date
+    due_date: date
+    currency: str
+    seller_name: str
+    seller_email: str | None
+    seller_phone: str | None
+    seller_address: str | None
+    seller_tax_office: str | None
+    seller_tax_number: str | None
+    customer_name: str
+    customer_email: str | None
+    customer_phone: str | None
+    customer_address: str | None
+    customer_tax_office: str | None
+    customer_tax_number: str | None
+    items: list[dict]
+    subtotal: Decimal
+    tax_total: Decimal
+    total: Decimal
+    notes: str | None
+    legal_notice: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class InvoiceListResponse(BaseModel):
+    items: list[InvoiceResponse]
+    total: int
 
 
 class UserListResponse(BaseModel):
@@ -2157,3 +2229,193 @@ async def make_user_admin(
     db.refresh(user)
     
     return UserResponse.model_validate(user)
+
+
+_MONEY_QUANT = Decimal("0.01")
+_PROFORMA_NOTICE = "Bu belge bilgilendirme amaçlı proformadır; e-Fatura veya e-Arşiv fatura yerine geçmez."
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+def _optional_text(value: object) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def _invoice_response(row: Invoice) -> InvoiceResponse:
+    return InvoiceResponse(
+        id=row.id,
+        invoice_number=row.invoice_number,
+        tenant_id=row.tenant_id,
+        document_type=row.document_type,
+        status=row.status,
+        issue_date=row.issue_date,
+        due_date=row.due_date,
+        currency=row.currency,
+        seller_name=row.seller_name,
+        seller_email=row.seller_email,
+        seller_phone=row.seller_phone,
+        seller_address=row.seller_address,
+        seller_tax_office=row.seller_tax_office,
+        seller_tax_number=row.seller_tax_number,
+        customer_name=row.customer_name,
+        customer_email=row.customer_email,
+        customer_phone=row.customer_phone,
+        customer_address=row.customer_address,
+        customer_tax_office=row.customer_tax_office,
+        customer_tax_number=row.customer_tax_number,
+        items=list(row.items_json or []),
+        subtotal=row.subtotal,
+        tax_total=row.tax_total,
+        total=row.total,
+        notes=row.notes,
+        legal_notice=_PROFORMA_NOTICE,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/invoices", response_model=InvoiceListResponse)
+async def list_invoices(
+    search: str | None = Query(default=None, max_length=180),
+    invoice_status: Literal["draft", "sent", "paid", "cancelled"] | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> InvoiceListResponse:
+    _ = admin
+    query = db.query(Invoice)
+    if invoice_status:
+        query = query.filter(Invoice.status == invoice_status)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(or_(
+            Invoice.invoice_number.ilike(pattern),
+            Invoice.customer_name.ilike(pattern),
+            Invoice.customer_email.ilike(pattern),
+        ))
+    total = query.count()
+    rows = query.order_by(Invoice.created_at.desc()).limit(limit).all()
+    return InvoiceListResponse(items=[_invoice_response(row) for row in rows], total=total)
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
+async def get_invoice(
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> InvoiceResponse:
+    _ = admin
+    row = db.get(Invoice, invoice_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proforma bulunamadı")
+    return _invoice_response(row)
+
+
+@router.post("/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+async def create_invoice(
+    payload: InvoiceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> InvoiceResponse:
+    if payload.due_date < payload.issue_date:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Son ödeme tarihi düzenleme tarihinden önce olamaz")
+
+    if payload.tenant_id is not None and db.get(Tenant, payload.tenant_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant bulunamadı")
+
+    items: list[dict] = []
+    subtotal = Decimal("0")
+    tax_total = Decimal("0")
+    for line in payload.items:
+        line_subtotal = _money(line.quantity * line.unit_price)
+        line_tax = _money(line_subtotal * line.tax_rate / Decimal("100"))
+        line_total = _money(line_subtotal + line_tax)
+        subtotal += line_subtotal
+        tax_total += line_tax
+        items.append({
+            "description": line.description.strip(),
+            "quantity": str(line.quantity.normalize()),
+            "unit": line.unit.strip(),
+            "unit_price": str(_money(line.unit_price)),
+            "tax_rate": str(line.tax_rate.normalize()),
+            "subtotal": str(line_subtotal),
+            "tax": str(line_tax),
+            "total": str(line_total),
+        })
+
+    subtotal = _money(subtotal)
+    tax_total = _money(tax_total)
+    total = _money(subtotal + tax_total)
+    invoice_number = f"SV-{payload.issue_date:%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+    row = Invoice(
+        invoice_number=invoice_number,
+        tenant_id=payload.tenant_id,
+        created_by_user_id=admin.id,
+        document_type="proforma",
+        status="draft",
+        issue_date=payload.issue_date,
+        due_date=payload.due_date,
+        currency=payload.currency.upper(),
+        seller_name=payload.seller_name.strip(),
+        seller_email=str(payload.seller_email) if payload.seller_email else None,
+        seller_phone=_optional_text(payload.seller_phone),
+        seller_address=_optional_text(payload.seller_address),
+        seller_tax_office=_optional_text(payload.seller_tax_office),
+        seller_tax_number=_optional_text(payload.seller_tax_number),
+        customer_name=payload.customer_name.strip(),
+        customer_email=str(payload.customer_email) if payload.customer_email else None,
+        customer_phone=_optional_text(payload.customer_phone),
+        customer_address=_optional_text(payload.customer_address),
+        customer_tax_office=_optional_text(payload.customer_tax_office),
+        customer_tax_number=_optional_text(payload.customer_tax_number),
+        items_json=items,
+        subtotal=subtotal,
+        tax_total=tax_total,
+        total=total,
+        notes=_optional_text(payload.notes),
+    )
+    db.add(row)
+    db.flush()
+    log_admin_action(
+        db,
+        admin,
+        "admin.invoice.create",
+        "invoice",
+        str(row.id),
+        {"invoice_number": row.invoice_number, "customer_name": row.customer_name, "total": str(row.total)},
+        request=request,
+    )
+    db.commit()
+    db.refresh(row)
+    return _invoice_response(row)
+
+
+@router.patch("/invoices/{invoice_id}/status", response_model=InvoiceResponse)
+async def update_invoice_status(
+    invoice_id: UUID,
+    payload: InvoiceStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> InvoiceResponse:
+    row = db.get(Invoice, invoice_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proforma bulunamadı")
+    previous_status = row.status
+    row.status = payload.status
+    log_admin_action(
+        db,
+        admin,
+        "admin.invoice.status_update",
+        "invoice",
+        str(row.id),
+        {"previous_status": previous_status, "status": row.status},
+        request=request,
+    )
+    db.commit()
+    db.refresh(row)
+    return _invoice_response(row)

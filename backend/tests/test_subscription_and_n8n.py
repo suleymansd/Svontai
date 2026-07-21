@@ -69,6 +69,28 @@ def test_message_limit_logs_event():
         assert kwargs["code"] == "MESSAGE_LIMIT_EXCEEDED"
 
 
+def test_message_limit_allows_the_last_already_counted_message():
+    tenant_id = uuid.uuid4()
+    subscription = SimpleNamespace(
+        plan=SimpleNamespace(message_limit=5, name="pro"),
+        messages_used_this_month=5,
+        status="active",
+        is_active=lambda: True,
+    )
+
+    service = SubscriptionService(MagicMock())
+    service.get_subscription = MagicMock(return_value=subscription)
+
+    allowed, _ = service.check_message_limit(tenant_id, current_message_already_counted=True)
+    assert allowed is True
+
+    subscription.messages_used_this_month = 6
+    service._log_limit_event = MagicMock()
+    allowed, _ = service.check_message_limit(tenant_id, current_message_already_counted=True)
+    assert allowed is False
+    service._log_limit_event.assert_called_once()
+
+
 def test_verify_n8n_request_valid_signature():
     payload = {"hello": "world"}
     payload_str = json.dumps(payload, separators=(",", ":"), sort_keys=True)
