@@ -320,6 +320,12 @@ export const adminApi = {
     api.get('/admin/sales-inquiries', { params }),
   updateSalesInquiry: (id: string, status: 'new' | 'contacted' | 'qualified' | 'closed' | 'spam') =>
     api.patch(`/admin/sales-inquiries/${id}`, { status }),
+  listInvoices: (params?: { search?: string; status?: 'draft' | 'sent' | 'paid' | 'cancelled'; limit?: number }) =>
+    api.get('/admin/invoices', { params }),
+  getInvoice: (id: string) => api.get(`/admin/invoices/${id}`),
+  createInvoice: (data: Record<string, unknown>) => api.post('/admin/invoices', data),
+  updateInvoiceStatus: (id: string, status: 'draft' | 'sent' | 'paid' | 'cancelled') =>
+    api.patch(`/admin/invoices/${id}/status`, { status }),
   updateTenantPlan: (id: string, data: {
     plan_type: 'free' | 'pro' | 'premium' | 'enterprise'
     note: string

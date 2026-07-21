@@ -49,6 +49,7 @@ from app.models.stripe_webhook_event import StripeWebhookEvent
 from app.models.autopilot import SetupRun, IntegrationHealthCheck, AgencyClient, ScheduledJob
 from app.models.push_subscription import PushSubscription
 from app.models.sales_inquiry import SalesInquiry
+from app.models.invoice import Invoice
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -123,6 +124,7 @@ __all__ = [
     "AssistantMediaAsset",
     "PushSubscription",
     "SalesInquiry",
+    "Invoice",
     "Ticket",
     "TicketMessage",
     "PasswordResetCode",

@@ -15,6 +15,8 @@ def test_gemini_provider_uses_google_compatible_endpoint(monkeypatch):
     client_class.assert_called_once_with(
         api_key="gemini-test-key",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        timeout=30,
+        max_retries=1,
     )
     assert service.provider == "gemini"
     assert service.model == "gemini-3.1-flash-lite"
@@ -32,6 +34,10 @@ def test_openai_provider_remains_backwards_compatible(monkeypatch):
     with patch("app.services.ai_service.AsyncOpenAI") as client_class:
         service = AIService()
 
-    client_class.assert_called_once_with(api_key="openai-test-key")
+    client_class.assert_called_once_with(
+        api_key="openai-test-key",
+        timeout=30,
+        max_retries=1,
+    )
     assert service.provider == "openai"
     assert service.model == "gpt-4o-mini"

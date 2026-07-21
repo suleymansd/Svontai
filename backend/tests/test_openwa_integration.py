@@ -319,7 +319,13 @@ def test_openwa_webhook_secret_is_scoped_per_session(client, monkeypatch):
 
 
 def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
-    from app.worker import _openwa_qr_is_ready, _openwa_recovery_action
+    from datetime import datetime, timedelta
+
+    from app.worker import (
+        _openwa_qr_is_ready,
+        _openwa_reconnect_is_due,
+        _openwa_recovery_action,
+    )
 
     assert _openwa_recovery_action(
         status="qr_ready",
@@ -351,6 +357,22 @@ def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
     ) == "wait"
     assert _openwa_qr_is_ready({"status": "qr_ready", "qrCode": "data:image/png;base64,dGVzdA=="})
     assert not _openwa_qr_is_ready({"status": "initializing", "qrCode": None})
+
+    now = datetime(2026, 7, 21, 12, 0, 0)
+    assert not _openwa_reconnect_is_due(
+        {
+            "reconnect_failure_count": 2,
+            "last_reconnect_attempt_at": (now - timedelta(minutes=20)).isoformat(),
+        },
+        now=now,
+    )
+    assert _openwa_reconnect_is_due(
+        {
+            "reconnect_failure_count": 2,
+            "last_reconnect_attempt_at": (now - timedelta(minutes=31)).isoformat(),
+        },
+        now=now,
+    )
 
 
 def test_openwa_connected_state_clears_auto_rotation_guard(client):

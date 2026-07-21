@@ -107,7 +107,12 @@ class SubscriptionService:
             TenantSubscription.tenant_id == tenant_id
         ).first()
     
-    def check_message_limit(self, tenant_id: uuid.UUID) -> tuple[bool, str]:
+    def check_message_limit(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        current_message_already_counted: bool = False,
+    ) -> tuple[bool, str]:
         """
         Check if tenant can send more messages.
         Returns (can_send, message).
@@ -130,7 +135,12 @@ class SubscriptionService:
         
         # Check message limit
         plan = subscription.plan
-        if subscription.messages_used_this_month >= plan.message_limit:
+        limit_reached = (
+            subscription.messages_used_this_month > plan.message_limit
+            if current_message_already_counted
+            else subscription.messages_used_this_month >= plan.message_limit
+        )
+        if limit_reached:
             self._log_limit_event(
                 tenant_id,
                 "MESSAGE_LIMIT_EXCEEDED",

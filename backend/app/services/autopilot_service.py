@@ -270,6 +270,7 @@ class AutopilotService:
         ]
         for item in items:
             self._upsert_health(tenant.id, item)
+        self.db.commit()
         health_score = int(round(sum(item["health_score"] for item in items) / max(1, len(items))))
         return {"health_score": health_score, "items": items}
 
@@ -289,7 +290,6 @@ class AutopilotService:
         row.requires_user_action = item.get("requires_user_action", False)
         row.action_url = item.get("action_url")
         row.checked_at = utc_now()
-        self.db.commit()
 
     def _item(self, provider: str, status: str, score: int, message: str, **extra) -> dict:
         return {
