@@ -171,6 +171,7 @@ def test_voice_live_twilio_job_uses_real_provider_contract(client, monkeypatch):
     assert captured["data"]["From"] == "+15005550006"
     assert captured["data"]["Url"].startswith("https://voice.example.com/twilio/voice/outbound")
     assert captured["data"]["StatusCallback"].startswith("https://voice.example.com/twilio/voice/status")
+    assert captured["data"]["TimeLimit"] == "300"
 
     jobs_resp = client.get("/voice-automation/jobs", headers=headers)
     assert jobs_resp.status_code == 200, jobs_resp.text
@@ -186,6 +187,43 @@ def test_voice_live_twilio_job_uses_real_provider_contract(client, monkeypatch):
     assert len(calls) == 1
     assert calls[0]["provider"] == "twilio"
     assert calls[0]["provider_call_id"] == "CA1234567890"
+
+
+def test_voice_global_cost_guard_and_destination_allowlist(client):
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+    from app.models.voice_automation import OutboundCallJob
+    from app.services.voice_automation_service import VoiceAutomationService
+
+    _access_token, tenant_id = _create_tenant_session(client, email="voice-cost-guard@example.com")
+    db = SessionLocal()
+    old_daily = settings.VOICE_GLOBAL_DAILY_CALL_LIMIT
+    old_monthly = settings.VOICE_GLOBAL_MONTHLY_CALL_LIMIT
+    old_prefixes = settings.VOICE_ALLOWED_DESTINATION_PREFIXES
+    try:
+        settings.VOICE_GLOBAL_DAILY_CALL_LIMIT = 1
+        settings.VOICE_GLOBAL_MONTHLY_CALL_LIMIT = 10
+        settings.VOICE_ALLOWED_DESTINATION_PREFIXES = "+90,+49"
+        db.add(OutboundCallJob(
+            tenant_id=UUID(tenant_id),
+            provider="twilio",
+            from_number="+15005550006",
+            to_number="+905559998877",
+            status="running",
+            provider_call_id="CA-cost-guard",
+        ))
+        db.commit()
+
+        service = VoiceAutomationService(db)
+        assert service._global_limit_reason() == "global_daily_limit"
+        assert service._destination_allowed("+905559998877") is True
+        assert service._destination_allowed("+4915112345678") is True
+        assert service._destination_allowed("+441234567890") is False
+    finally:
+        db.close()
+        settings.VOICE_GLOBAL_DAILY_CALL_LIMIT = old_daily
+        settings.VOICE_GLOBAL_MONTHLY_CALL_LIMIT = old_monthly
+        settings.VOICE_ALLOWED_DESTINATION_PREFIXES = old_prefixes
 
 
 def test_signed_voice_intent_uses_tenant_ai_and_is_idempotent(client, monkeypatch):

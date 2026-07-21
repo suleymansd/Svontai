@@ -65,3 +65,9 @@ class TwoFactorSetupResponse(BaseModel):
     """Schema for 2FA setup response."""
     secret: str
     otpauth_uri: str
+
+
+class AdminTwoFactorEnableRequest(BaseModel):
+    """Enable mandatory super-admin 2FA with a short-lived enrollment token."""
+    setup_token: str
+    code: str

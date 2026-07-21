@@ -1,6 +1,6 @@
 # SvontAI Sales Readiness
 
-Last reviewed: 20 July 2026
+Last reviewed: 21 July 2026
 
 ## Launch scope
 
@@ -27,10 +27,11 @@ issues that require customer action.
 - Private R2 artifact storage with tenant-scoped keys and short-lived signed downloads.
 - CI gates for backend tests, dependency audit, frontend audit, lint, build and Playwright.
 - Public/protected production smoke scripts and recurring GitHub uptime checks.
+- Mandatory super-admin 2FA with a password-gated, short-lived first-login enrollment flow.
+- Live Twilio calls with tenant limits plus platform daily/monthly caps, destination allowlist and call duration limit.
 
 ## Deliberately unavailable at launch
 
-- Live phone calling: UI shows unavailable until a real Twilio account, number and explicit tenant permission exist.
 - In-app card payment: sales and payment are handled manually until a legal entity and payment account are ready.
 - Official Meta Embedded Signup: OpenWA QR is the launch path; Meta remains an optional verified-business alternative.
 - Unreviewed marketplace tools: only capabilities marked production-ready should be customer-visible.
@@ -45,6 +46,9 @@ issues that require customer action.
 6. Publish final privacy, terms, KVKK disclosure, OpenWA consent and commercial contract reviewed for the actual seller.
 7. Establish a legally valid invoicing/sales process before accepting payment.
 8. Keep Google OAuth optional until its production consent/publishing verification is complete.
+9. Set Railway workspace usage alert and hard limit from **Workspace > Usage > Set Usage Limits**. Choose a hard limit that can stop all services without interrupting an active paid customer unexpectedly.
+10. Enable Twilio balance/usage alerts and keep outbound geo permissions limited to sold markets. Application defaults allow only `+90`, 50 calls/day, 500 calls/month and 300 seconds/call.
+11. Complete the first super-admin login enrollment after `SUPER_ADMIN_REQUIRE_2FA=true` is deployed and store the authenticator recovery process in the company password vault.
 
 ## Release gate
 

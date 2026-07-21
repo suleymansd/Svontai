@@ -19,6 +19,7 @@ from app.core.security import (
     verify_password,
     create_access_token,
     create_refresh_token,
+    create_temporary_token,
     decode_token,
     hash_token
 )
@@ -43,6 +44,7 @@ from app.models.email_verification import EmailVerificationCode
 from app.models.onboarding import AuditLog
 from app.schemas.auth import (
     ChangePasswordRequest,
+    AdminTwoFactorEnableRequest,
     LoginRequest,
     TwoFactorDisableRequest,
     TwoFactorEnableRequest,
@@ -179,15 +181,6 @@ def _validate_super_admin_login(user: User, credentials: LoginRequest) -> str | 
             detail={
                 "code": "ADMIN_SESSION_NOTE_REQUIRED",
                 "message": "Süper admin girişi için en az 8 karakterlik oturum notu zorunludur."
-            }
-        )
-
-    if settings.SUPER_ADMIN_REQUIRE_2FA and not user.two_factor_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "SUPER_ADMIN_2FA_SETUP_REQUIRED",
-                "message": "Süper admin girişi için önce 2FA etkinleştirmelisiniz."
             }
         )
 
@@ -352,7 +345,56 @@ async def login(
             },
         )
 
+    if (
+        user.is_admin
+        and settings.SUPER_ADMIN_REQUIRE_2FA
+        and not user.two_factor_enabled
+        and credentials.portal != "super_admin"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "SUPER_ADMIN_2FA_SETUP_REQUIRED",
+                "message": "Önce süper admin giriş ekranından 2FA kurulumunu tamamlayın.",
+            },
+        )
+
     admin_session_note = _validate_super_admin_login(user, credentials)
+
+    if credentials.portal == "super_admin" and settings.SUPER_ADMIN_REQUIRE_2FA and not user.two_factor_enabled:
+        secret = generate_secret()
+        user.two_factor_secret_encrypted = encrypt_token(secret)
+        user.two_factor_enabled = False
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        setup_token = create_temporary_token(
+            {"sub": str(user.id), "portal": "super_admin"},
+            token_type="admin_2fa_setup",
+            expires_minutes=10,
+        )
+        db.add(
+            AuditLog(
+                tenant_id=None,
+                user_id=user.id,
+                action="super_admin_2fa_enrollment_started",
+                resource_type="auth",
+                resource_id=str(user.id),
+                payload_json={"session_note": admin_session_note},
+                ip_address=client_ip(request),
+                user_agent=request.headers.get("User-Agent"),
+            )
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "SUPER_ADMIN_2FA_SETUP_REQUIRED",
+                "message": "Süper admin girişi için Authenticator doğrulamasını tamamlayın.",
+                "setup_token": setup_token,
+                "secret": secret,
+                "otpauth_uri": provisioning_uri(secret, user.email),
+            },
+        )
 
     if user.failed_login_attempts or user.locked_until:
         user.failed_login_attempts = 0
@@ -408,6 +450,66 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token
     )
+
+
+@router.post("/admin/2fa/enable")
+async def enable_super_admin_two_factor(
+    payload: AdminTwoFactorEnableRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Complete mandatory super-admin 2FA enrollment without issuing a broad session."""
+    require_rate_limit(
+        login_rate_limiter,
+        rate_limit_key(request, "admin-2fa-enable"),
+        "Çok fazla doğrulama denemesi yaptınız. Lütfen daha sonra tekrar deneyin.",
+    )
+    token_payload = decode_token(payload.setup_token)
+    if (
+        not token_payload
+        or token_payload.get("type") != "admin_2fa_setup"
+        or token_payload.get("portal") != "super_admin"
+        or not token_payload.get("sub")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="2FA kurulum oturumu geçersiz veya süresi dolmuş.",
+        )
+
+    try:
+        user_id = UUID(str(token_payload["sub"]))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="2FA kurulum oturumu geçersiz.",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_admin or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Süper admin yetkisi gerekli.")
+    if user.two_factor_enabled:
+        return {"enabled": True}
+
+    secret_encrypted = (user.two_factor_secret_encrypted or "").strip()
+    secret = decrypt_token(secret_encrypted) if secret_encrypted else ""
+    if not secret or not verify_code(secret, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Doğrulama kodu geçersiz.")
+
+    user.two_factor_enabled = True
+    db.add(
+        AuditLog(
+            tenant_id=None,
+            user_id=user.id,
+            action="super_admin_2fa_enabled",
+            resource_type="auth",
+            resource_id=str(user.id),
+            payload_json={"mandatory": settings.SUPER_ADMIN_REQUIRE_2FA},
+            ip_address=client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+        )
+    )
+    db.commit()
+    return {"enabled": True}
 
 
 @router.post("/refresh", response_model=TokenResponse)

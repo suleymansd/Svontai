@@ -322,7 +322,7 @@ Railway API servisinde `SERVICE_ROLE=api`, dedicated worker servisinde
 `SERVICE_ROLE=worker` kullanılmalıdır. Kalıcı artifact volume yalnızca API servisine
 bağlanır; worker bu sağlık kontrolünü API servisine devreder.
 
-`SUPER_ADMIN_REQUIRE_2FA=true` olduğunda, Super Admin portalı girişleri için 2FA zorunlu olur.
+`SUPER_ADMIN_REQUIRE_2FA=true` olduğunda Super Admin portalı girişleri için 2FA zorunlu olur. Henüz 2FA kurmamış doğrulanmış admin, parola kontrolünden sonra 10 dakikalık sınırlı enrollment akışına alınır; doğrulama tamamlanmadan admin access/refresh tokenı verilmez.
 `BOOTSTRAP_ADMIN_EMAIL` ilk açılışta sadece admin yoksa çalışır; belirtilen kullanıcıya global admin yetkisi verir.
 `ALLOW_ADMIN_PLAN_OVERRIDE=true` ise prod ortamda `/admin/tenants/{tenant_id}/plan` endpoint’i aktif olur.
 `TOOL_RUNNER_DEBUG=true` olduğunda `/tools/run` öncesi çözümlenen n8n URL/hostname/env snapshot loglanır (secret maskeli).

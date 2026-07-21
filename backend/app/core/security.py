@@ -70,6 +70,19 @@ def create_refresh_token(data: dict[str, Any], session_id: str | None = None) ->
     return encoded_jwt
 
 
+def create_temporary_token(
+    data: dict[str, Any],
+    *,
+    token_type: str,
+    expires_minutes: int,
+) -> str:
+    """Create a short-lived JWT for one narrowly scoped security operation."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=max(1, expires_minutes))
+    to_encode.update({"exp": expire, "type": token_type})
+    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
 def decode_token(token: str) -> dict[str, Any] | None:
     """
     Decode and validate a JWT token.

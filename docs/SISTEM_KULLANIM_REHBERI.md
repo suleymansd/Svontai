@@ -22,7 +22,7 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
 
 ### Güvenli giriş
 - Super admin için `/admin/login` veya `/login?portal=super_admin` kullan.
-- Üretimde `SUPER_ADMIN_REQUIRE_2FA=true` önerilir.
+- Üretimde `SUPER_ADMIN_REQUIRE_2FA=true` zorunludur. İlk güvenli girişte panel Authenticator kurulum anahtarını gösterir; kod onaylanmadan admin oturumu üretilmez.
 - Super admin girişinde oturum notu zorunlu tutulur (audit kaydı için).
 
 ### Tenant yönetimi
@@ -55,6 +55,10 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
     - Voice webhook: `POST /twilio/voice/inbound`
     - Gather action: `POST /twilio/voice/intent`
     - Status callback (opsiyonel): `POST /twilio/voice/status`
+    - `VOICE_GLOBAL_DAILY_CALL_LIMIT=50`
+    - `VOICE_GLOBAL_MONTHLY_CALL_LIMIT=500`
+    - `VOICE_MAX_CALL_DURATION_SECONDS=300`
+    - `VOICE_ALLOWED_DESTINATION_PREFIXES=+90`
 - Vercel:
   - `NEXT_PUBLIC_BACKEND_URL`
 - Güvenlik:

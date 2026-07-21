@@ -19,7 +19,8 @@ This document records the production cost controls reviewed on 2026-07-21.
 - Customer AI replies have a server-side 800-token output cap, a 30-second timeout and at most one provider retry.
 - Tenant monthly message limits are enforced before n8n or direct AI reply generation.
 - API, authentication, webhook, public chat, tool, media and test-call rate limits use Redis in production.
-- Voice automation has a tenant daily call limit. Keep `VOICE_OUTBOUND_MODE=dry_run` except while live calling is intentionally sold.
+- Voice automation has tenant and platform-wide daily limits, a platform monthly limit, an allowed destination prefix list and a per-call duration cap. Production defaults are 50 calls/day, 500 calls/month, Turkey (`+90`) only and 300 seconds per call.
+- Keep `VOICE_OUTBOUND_MODE=dry_run` except while live calling is intentionally sold. Configure `VOICE_GLOBAL_DAILY_CALL_LIMIT`, `VOICE_GLOBAL_MONTHLY_CALL_LIMIT`, `VOICE_MAX_CALL_DURATION_SECONDS` and `VOICE_ALLOWED_DESTINATION_PREFIXES` before enabling live mode.
 - Artifact and database backup retention should remain finite; the default database backup retention is 30 days.
 
 ## Provider Limits

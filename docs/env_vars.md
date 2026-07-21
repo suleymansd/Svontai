@@ -75,6 +75,10 @@
 - `VOICE_OUTBOUND_PROVIDER` (`twilio`)
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
+- `VOICE_GLOBAL_DAILY_CALL_LIMIT` (default: `50`)
+- `VOICE_GLOBAL_MONTHLY_CALL_LIMIT` (default: `500`)
+- `VOICE_MAX_CALL_DURATION_SECONDS` (default: `300`)
+- `VOICE_ALLOWED_DESTINATION_PREFIXES` (comma-separated E.164 prefixes, default: `+90`)
 - `BILLING_MODE` (`manual` | `stripe`, default: `manual`)
 - `PAYMENTS_ENABLED`
 - `SALES_CONTACT_EMAIL`

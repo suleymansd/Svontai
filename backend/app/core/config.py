@@ -229,6 +229,10 @@ class Settings(BaseSettings):
     VOICE_OUTBOUND_PROVIDER: Literal["twilio"] = "twilio"
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
+    VOICE_GLOBAL_DAILY_CALL_LIMIT: int = 50
+    VOICE_GLOBAL_MONTHLY_CALL_LIMIT: int = 500
+    VOICE_MAX_CALL_DURATION_SECONDS: int = 300
+    VOICE_ALLOWED_DESTINATION_PREFIXES: str = "+90"
     
     # Default workflow ID for incoming WhatsApp messages
     N8N_INCOMING_WORKFLOW_ID: str = ""
@@ -534,6 +538,20 @@ class Settings(BaseSettings):
                 "FATAL: VOICE_OUTBOUND_MODE=live requires VOICE_GATEWAY_PUBLIC_URL, "
                 "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
             )
+        if self.VOICE_OUTBOUND_MODE == "live":
+            if self.VOICE_GLOBAL_DAILY_CALL_LIMIT < 1:
+                raise ValueError("FATAL: VOICE_GLOBAL_DAILY_CALL_LIMIT must be positive in live mode.")
+            if self.VOICE_GLOBAL_MONTHLY_CALL_LIMIT < self.VOICE_GLOBAL_DAILY_CALL_LIMIT:
+                raise ValueError(
+                    "FATAL: VOICE_GLOBAL_MONTHLY_CALL_LIMIT must be at least the daily limit."
+                )
+            if not 30 <= self.VOICE_MAX_CALL_DURATION_SECONDS <= 3600:
+                raise ValueError("FATAL: VOICE_MAX_CALL_DURATION_SECONDS must be between 30 and 3600.")
+            prefixes = [item.strip() for item in self.VOICE_ALLOWED_DESTINATION_PREFIXES.split(",") if item.strip()]
+            if not prefixes or any(not item.startswith("+") or not item[1:].isdigit() for item in prefixes):
+                raise ValueError(
+                    "FATAL: VOICE_ALLOWED_DESTINATION_PREFIXES must contain comma-separated E.164 prefixes."
+                )
         
         return self
 
