@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowRight, CheckCircle2, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Copy, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
 
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,13 @@ export default function AdminLoginPageClient() {
   const [error, setError] = useState('')
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [setupCode, setSetupCode] = useState('')
+  const [notice, setNotice] = useState('')
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{
+    setupToken: string
+    secret: string
+    otpauthUri: string
+  } | null>(null)
   const [adminSessionNote, setAdminSessionNote] = useState('')
   const [formData, setFormData] = useState({ email: '', password: '' })
   const verificationCompleted = searchParams.get('verified') === '1'
@@ -36,8 +43,21 @@ export default function AdminLoginPageClient() {
     e.preventDefault()
     setIsLoading(true)
     setError('')
+    setNotice('')
 
     try {
+      if (twoFactorSetup) {
+        await authApi.enableAdminTwoFactor({
+          setup_token: twoFactorSetup.setupToken,
+          code: setupCode,
+        })
+        setTwoFactorSetup(null)
+        setTwoFactorRequired(true)
+        setTwoFactorCode(setupCode)
+        setNotice('2FA etkinleştirildi. Aynı kod geçerliyse girişe devam edebilirsiniz.')
+        return
+      }
+
       clearAdminTenantContext()
 
       const loginResponse = await authApi.login({
@@ -83,7 +103,17 @@ export default function AdminLoginPageClient() {
       } else if (detailCode === 'ADMIN_SESSION_NOTE_REQUIRED') {
         setError(detailMessage || 'Süper admin giriş notu zorunlu.')
       } else if (detailCode === 'SUPER_ADMIN_2FA_SETUP_REQUIRED') {
-        setError(detailMessage || 'Süper admin için 2FA etkinleştirilmeli.')
+        if (detail?.setup_token && detail?.secret && detail?.otpauth_uri) {
+          setTwoFactorSetup({
+            setupToken: detail.setup_token,
+            secret: detail.secret,
+            otpauthUri: detail.otpauth_uri,
+          })
+          setSetupCode('')
+          setError('')
+        } else {
+          setError(detailMessage || 'Süper admin için 2FA etkinleştirilmeli.')
+        }
       } else {
         setError(detailMessage || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.')
       }
@@ -123,6 +153,59 @@ export default function AdminLoginPageClient() {
               </div>
             )}
 
+            {notice && (
+              <div className="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                {notice}
+              </div>
+            )}
+
+            {twoFactorSetup ? (
+              <div className="space-y-5 rounded-md border bg-muted/30 p-5">
+                <div>
+                  <h2 className="font-semibold">Authenticator kurulumu</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Authenticator uygulamanızda yeni hesap ekleyin ve aşağıdaki anahtarı girin.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border bg-background p-3">
+                  <code className="min-w-0 flex-1 break-all text-sm font-semibold tracking-wider">
+                    {twoFactorSetup.secret}
+                  </code>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    title="Kurulum anahtarını kopyala"
+                    onClick={() => navigator.clipboard.writeText(twoFactorSetup.secret)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <a
+                  href={twoFactorSetup.otpauthUri}
+                  className="inline-flex text-sm font-medium text-primary hover:underline"
+                >
+                  Authenticator uygulamasında aç
+                </a>
+                <div className="space-y-2">
+                  <Label htmlFor="two_factor_setup_code">Uygulamadaki 6 haneli kod</Label>
+                  <Input
+                    id="two_factor_setup_code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="000000"
+                    className="h-12 rounded-xl text-center text-lg tracking-[0.3em]"
+                    value={setupCode}
+                    onChange={(event) => setSetupCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                    minLength={6}
+                    maxLength={6}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Bu kurulum oturumu 10 dakika geçerlidir.</p>
+              </div>
+            ) : <>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">
                 E-posta
@@ -194,6 +277,7 @@ export default function AdminLoginPageClient() {
                 />
               </div>
             )}
+            </>}
 
             <Button
               type="submit"
@@ -207,7 +291,7 @@ export default function AdminLoginPageClient() {
                 </>
               ) : (
                 <>
-                  Super Admin Girişi
+                  {twoFactorSetup ? '2FA’yı Etkinleştir' : 'Super Admin Girişi'}
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </>
               )}

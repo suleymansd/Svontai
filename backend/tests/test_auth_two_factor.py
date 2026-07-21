@@ -114,3 +114,98 @@ def test_two_factor_setup_and_login_flow(client):
 
     login_after_disable = client.post("/auth/login", json={"email": email, "password": password})
     assert login_after_disable.status_code == 200, login_after_disable.text
+
+
+def test_mandatory_super_admin_can_enroll_without_existing_session(client):
+    from app.core.config import settings
+    from app.core.security import create_access_token
+    from app.db.session import SessionLocal
+    from app.models.user import User
+
+    email = "admin-2fa-enrollment@example.com"
+    password = "Password123!"
+    register_resp = client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": "Secure Admin"},
+    )
+    assert register_resp.status_code == 201, register_resp.text
+    request_code = client.post("/auth/email-verification/request", json={"email": email})
+    code = _extract_6_digit_code(request_code.json().get("message", ""))
+    assert client.post(
+        "/auth/email-verification/confirm",
+        json={"email": email, "code": code},
+    ).status_code == 200
+
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.email == email).one()
+        admin.is_admin = True
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+
+    old_required = settings.SUPER_ADMIN_REQUIRE_2FA
+    settings.SUPER_ADMIN_REQUIRE_2FA = True
+    try:
+        tenant_portal_bypass = client.post(
+            "/auth/login",
+            json={"email": email, "password": password, "portal": "tenant"},
+        )
+        assert tenant_portal_bypass.status_code == 403
+        assert tenant_portal_bypass.json()["detail"]["code"] == "SUPER_ADMIN_2FA_SETUP_REQUIRED"
+
+        enrollment = client.post(
+            "/auth/login",
+            json={
+                "email": email,
+                "password": password,
+                "portal": "super_admin",
+                "admin_session_note": "production security enrollment",
+            },
+        )
+        assert enrollment.status_code == 403, enrollment.text
+        detail = enrollment.json()["detail"]
+        assert detail["code"] == "SUPER_ADMIN_2FA_SETUP_REQUIRED"
+        assert detail["setup_token"]
+        assert detail["secret"]
+
+        invalid = client.post(
+            "/auth/admin/2fa/enable",
+            json={"setup_token": detail["setup_token"], "code": "000000"},
+        )
+        assert invalid.status_code == 400
+
+        current_code = generate_code(detail["secret"])
+        enabled = client.post(
+            "/auth/admin/2fa/enable",
+            json={"setup_token": detail["setup_token"], "code": current_code},
+        )
+        assert enabled.status_code == 200, enabled.text
+        assert enabled.json()["enabled"] is True
+
+        stale_admin_token = create_access_token({
+            "sub": str(admin_id),
+            "portal": "super_admin",
+            "mfa": False,
+        })
+        stale_access = client.get(
+            "/auth/2fa/status",
+            headers=_auth_headers(stale_admin_token),
+        )
+        assert stale_access.status_code == 403
+        assert stale_access.json()["detail"]["code"] == "SUPER_ADMIN_MFA_REQUIRED"
+
+        login = client.post(
+            "/auth/login",
+            json={
+                "email": email,
+                "password": password,
+                "portal": "super_admin",
+                "admin_session_note": "production security login",
+                "two_factor_code": current_code,
+            },
+        )
+        assert login.status_code == 200, login.text
+    finally:
+        settings.SUPER_ADMIN_REQUIRE_2FA = old_required

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.security import decode_token
+from app.core.config import settings
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
@@ -95,6 +96,17 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hesap devre dışı bırakılmış"
+        )
+
+    if user.is_admin and settings.SUPER_ADMIN_REQUIRE_2FA and (
+        not user.two_factor_enabled or payload.get("mfa") is not True
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "SUPER_ADMIN_MFA_REQUIRED",
+                "message": "Bu admin oturumu iki faktörlü doğrulama ile yeniden açılmalıdır.",
+            },
         )
 
     if user.locked_until and user.locked_until > utc_now_naive():

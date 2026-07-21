@@ -114,6 +114,9 @@ export const authApi = {
 
   disableTwoFactor: (data: { current_password: string; code: string }) =>
     api.post('/auth/2fa/disable', data),
+
+  enableAdminTwoFactor: (data: { setup_token: string; code: string }) =>
+    api.post('/auth/admin/2fa/enable', data),
 }
 
 // User API

@@ -8,7 +8,7 @@ from datetime import timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings as app_settings
@@ -275,8 +275,28 @@ class VoiceAutomationService:
         skipped = 0
         for job in jobs:
             try:
+                global_limit_reason = (
+                    self._global_limit_reason()
+                    if app_settings.VOICE_OUTBOUND_MODE == "live"
+                    else None
+                )
+                if global_limit_reason:
+                    job.next_attempt_at = now + timedelta(hours=12)
+                    job.meta_json = {**(job.meta_json or {}), "cost_guard_skip_reason": global_limit_reason}
+                    self.db.commit()
+                    skipped += 1
+                    self._log(
+                        job.tenant_id,
+                        "VOICE_GLOBAL_COST_LIMIT_REACHED",
+                        "Outbound voice call delayed by the global cost guard",
+                        {"job_id": str(job.id), "reason": global_limit_reason},
+                        None,
+                    )
+                    continue
                 if self._daily_limit_reached(job.tenant_id):
                     job.next_attempt_at = now + timedelta(hours=12)
+                    job.meta_json = {**(job.meta_json or {}), "cost_guard_skip_reason": "tenant_daily_limit"}
+                    self.db.commit()
                     skipped += 1
                     continue
                 self._start_job(job)
@@ -395,12 +415,15 @@ class VoiceAutomationService:
             raise RuntimeError("Twilio credentials are missing")
         if not app_settings.VOICE_GATEWAY_PUBLIC_URL.strip() or not twiml_url:
             raise RuntimeError("VOICE_GATEWAY_PUBLIC_URL is required for live outbound calls")
+        if not self._destination_allowed(job.to_number):
+            raise RuntimeError("Destination country is not allowed by VOICE_ALLOWED_DESTINATION_PREFIXES")
 
         form_data = {
             "To": job.to_number,
             "From": job.from_number,
             "Url": twiml_url,
             "Method": "POST",
+            "TimeLimit": str(app_settings.VOICE_MAX_CALL_DURATION_SECONDS),
         }
         if status_callback:
             form_data.update({
@@ -474,6 +497,42 @@ class VoiceAutomationService:
             ]),
         ).scalar() or 0
         return int(count) >= int(settings.daily_call_limit or 0)
+
+    def _global_limit_reason(self) -> str | None:
+        now = utc_now_naive()
+        statuses = [OutboundCallJobStatus.RUNNING.value, OutboundCallJobStatus.COMPLETED.value]
+        live_call_filter = or_(
+            OutboundCallJob.status == OutboundCallJobStatus.RUNNING.value,
+            OutboundCallJob.provider_call_id.like("CA%"),
+        )
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        daily_count = self.db.query(func.count(OutboundCallJob.id)).filter(
+            OutboundCallJob.created_at >= day_start,
+            OutboundCallJob.status.in_(statuses),
+            live_call_filter,
+        ).scalar() or 0
+        if int(daily_count) >= app_settings.VOICE_GLOBAL_DAILY_CALL_LIMIT:
+            return "global_daily_limit"
+
+        month_start = day_start.replace(day=1)
+        monthly_count = self.db.query(func.count(OutboundCallJob.id)).filter(
+            OutboundCallJob.created_at >= month_start,
+            OutboundCallJob.status.in_(statuses),
+            live_call_filter,
+        ).scalar() or 0
+        if int(monthly_count) >= app_settings.VOICE_GLOBAL_MONTHLY_CALL_LIMIT:
+            return "global_monthly_limit"
+        return None
+
+    @staticmethod
+    def _destination_allowed(phone: str) -> bool:
+        normalized = _normalize_phone(phone)
+        prefixes = [
+            item.strip()
+            for item in app_settings.VOICE_ALLOWED_DESTINATION_PREFIXES.split(",")
+            if item.strip()
+        ]
+        return bool(normalized and any(normalized.startswith(prefix) for prefix in prefixes))
 
     def _get_or_create_lead(
         self,
