@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, Plus, ReceiptText, Trash2 } from 'lucide-react'
 
 import { adminApi } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -100,6 +101,9 @@ const money = (value: number, currency: string) => new Intl.NumberFormat('tr-TR'
   currency,
 }).format(value)
 
+const optionalText = (value: string) => value.trim() || null
+const validOptionalEmail = (value: string) => !value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+
 export default function AdminInvoicesPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -125,8 +129,26 @@ export default function AdminInvoicesPage() {
     mutationFn: () => adminApi.createInvoice({
       ...form,
       tenant_id: form.tenant_id || null,
-      seller_email: form.seller_email || null,
-      customer_email: form.customer_email || null,
+      seller_name: form.seller_name.trim(),
+      seller_email: optionalText(form.seller_email),
+      seller_phone: optionalText(form.seller_phone),
+      seller_address: optionalText(form.seller_address),
+      seller_tax_office: optionalText(form.seller_tax_office),
+      seller_tax_number: optionalText(form.seller_tax_number),
+      customer_name: form.customer_name.trim(),
+      customer_email: optionalText(form.customer_email),
+      customer_phone: optionalText(form.customer_phone),
+      customer_address: optionalText(form.customer_address),
+      customer_tax_office: optionalText(form.customer_tax_office),
+      customer_tax_number: optionalText(form.customer_tax_number),
+      notes: optionalText(form.notes),
+      items: form.items.map((line) => ({
+        description: line.description.trim(),
+        quantity: Number(line.quantity),
+        unit: line.unit.trim(),
+        unit_price: Number(line.unit_price),
+        tax_rate: Number(line.tax_rate),
+      })),
     }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['admin-invoices'] })
@@ -135,9 +157,9 @@ export default function AdminInvoicesPage() {
       toast({ title: 'Proforma oluşturuldu' })
       router.push(`/admin/invoices/${response.data.id}`)
     },
-    onError: () => toast({
+    onError: (error) => toast({
       title: 'Proforma oluşturulamadı',
-      description: 'Alanları kontrol edip tekrar deneyin.',
+      description: getApiErrorMessage(error, 'Alanları kontrol edip tekrar deneyin.'),
       variant: 'destructive',
     }),
   })
@@ -206,8 +228,20 @@ export default function AdminInvoicesPage() {
     && form.customer_name.trim()
     && form.issue_date
     && form.due_date
+    && form.due_date >= form.issue_date
+    && validOptionalEmail(form.seller_email)
+    && validOptionalEmail(form.customer_email)
     && form.items.length
-    && form.items.every((line) => line.description.trim() && Number(line.quantity) > 0 && Number(line.unit_price) >= 0)
+    && form.items.every((line) => (
+      line.description.trim()
+      && line.unit.trim()
+      && Number(line.quantity) > 0
+      && Number(line.quantity) <= 1000000
+      && Number(line.unit_price) >= 0
+      && Number(line.unit_price) <= 999999999
+      && Number(line.tax_rate) >= 0
+      && Number(line.tax_rate) <= 100
+    ))
   )
 
   return (
@@ -276,14 +310,14 @@ export default function AdminInvoicesPage() {
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Düzenleyen</h3>
                 <Input value={form.seller_name} onChange={(event) => setForm({ ...form, seller_name: event.target.value })} placeholder="İsim / unvan" />
-                <div className="grid gap-3 sm:grid-cols-2"><Input type="email" value={form.seller_email} onChange={(event) => setForm({ ...form, seller_email: event.target.value })} placeholder="E-posta" /><Input value={form.seller_phone} onChange={(event) => setForm({ ...form, seller_phone: event.target.value })} placeholder="Telefon" /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><Input type="email" value={form.seller_email} onChange={(event) => setForm({ ...form, seller_email: event.target.value })} placeholder="E-posta" aria-invalid={!validOptionalEmail(form.seller_email)} /><Input value={form.seller_phone} onChange={(event) => setForm({ ...form, seller_phone: event.target.value })} placeholder="Telefon" /></div>
                 <Textarea value={form.seller_address} onChange={(event) => setForm({ ...form, seller_address: event.target.value })} placeholder="Adres" rows={3} />
                 <div className="grid gap-3 sm:grid-cols-2"><Input value={form.seller_tax_office} onChange={(event) => setForm({ ...form, seller_tax_office: event.target.value })} placeholder="Vergi dairesi" /><Input value={form.seller_tax_number} onChange={(event) => setForm({ ...form, seller_tax_number: event.target.value })} placeholder="VKN / TCKN" /></div>
               </div>
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Müşteri</h3>
                 <Input value={form.customer_name} onChange={(event) => setForm({ ...form, customer_name: event.target.value })} placeholder="İsim / işletme" />
-                <div className="grid gap-3 sm:grid-cols-2"><Input type="email" value={form.customer_email} onChange={(event) => setForm({ ...form, customer_email: event.target.value })} placeholder="E-posta" /><Input value={form.customer_phone} onChange={(event) => setForm({ ...form, customer_phone: event.target.value })} placeholder="Telefon" /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><Input type="email" value={form.customer_email} onChange={(event) => setForm({ ...form, customer_email: event.target.value })} placeholder="E-posta" aria-invalid={!validOptionalEmail(form.customer_email)} /><Input value={form.customer_phone} onChange={(event) => setForm({ ...form, customer_phone: event.target.value })} placeholder="Telefon" /></div>
                 <Textarea value={form.customer_address} onChange={(event) => setForm({ ...form, customer_address: event.target.value })} placeholder="Adres" rows={3} />
                 <div className="grid gap-3 sm:grid-cols-2"><Input value={form.customer_tax_office} onChange={(event) => setForm({ ...form, customer_tax_office: event.target.value })} placeholder="Vergi dairesi" /><Input value={form.customer_tax_number} onChange={(event) => setForm({ ...form, customer_tax_number: event.target.value })} placeholder="VKN / TCKN" /></div>
               </div>
@@ -292,13 +326,16 @@ export default function AdminInvoicesPage() {
             <section className="space-y-3">
               <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Kalemler</h3><Button type="button" size="sm" variant="outline" onClick={() => setForm((current) => ({ ...current, items: [...current.items, emptyLine()] }))}><Plus className="mr-2 h-4 w-4" />Kalem ekle</Button></div>
               <div className="space-y-3">
+                <div className="hidden gap-3 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[minmax(180px,2fr)_80px_90px_120px_90px_40px]">
+                  <span>Açıklama</span><span>Miktar</span><span>Birim</span><span>Birim fiyat</span><span>Vergi %</span><span />
+                </div>
                 {form.items.map((line, index) => (
                   <div key={index} className="grid gap-3 border-b border-border/70 pb-3 sm:grid-cols-[minmax(180px,2fr)_80px_90px_120px_90px_40px]">
                     <Input value={line.description} onChange={(event) => updateLine(index, 'description', event.target.value)} placeholder="Hizmet açıklaması" />
-                    <Input type="number" min="0.01" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, 'quantity', event.target.value)} aria-label="Miktar" />
-                    <Input value={line.unit} onChange={(event) => updateLine(index, 'unit', event.target.value)} aria-label="Birim" />
-                    <Input type="number" min="0" step="0.01" value={line.unit_price} onChange={(event) => updateLine(index, 'unit_price', event.target.value)} aria-label="Birim fiyat" />
-                    <Input type="number" min="0" max="100" step="0.01" value={line.tax_rate} onChange={(event) => updateLine(index, 'tax_rate', event.target.value)} aria-label="Vergi oranı" />
+                    <Input type="number" min="0.01" max="1000000" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, 'quantity', event.target.value)} aria-label="Miktar" placeholder="Miktar" />
+                    <Input value={line.unit} onChange={(event) => updateLine(index, 'unit', event.target.value)} aria-label="Birim" placeholder="Birim" />
+                    <Input type="number" min="0" max="999999999" step="0.01" value={line.unit_price} onChange={(event) => updateLine(index, 'unit_price', event.target.value)} aria-label="Birim fiyat" placeholder="Birim fiyat" />
+                    <Input type="number" min="0" max="100" step="0.01" value={line.tax_rate} onChange={(event) => updateLine(index, 'tax_rate', event.target.value)} aria-label="Vergi oranı" placeholder="Vergi %" />
                     <IconButton label="Kalemi sil" variant="ghost" disabled={form.items.length === 1} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, lineIndex) => lineIndex !== index) }))}><Trash2 className="h-4 w-4" /></IconButton>
                   </div>
                 ))}
