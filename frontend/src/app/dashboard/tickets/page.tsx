@@ -1,9 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LifeBuoy, Plus, Filter, MessageSquareWarning } from 'lucide-react'
+import { BookOpen, LifeBuoy, Plus, Filter, MessageSquareWarning } from 'lucide-react'
 import { ticketsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -127,10 +128,15 @@ export default function TicketsPage() {
           description="Ticket'larınızı yönetin ve destek ekibiyle iletişimde kalın."
           icon={<Icon3DBadge icon={LifeBuoy} from="from-cyan-500" to="to-blue-500" />}
           actions={(
-            <Button type="button" onClick={() => setIsCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Ticket Oluştur
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/docs" target="_blank"><BookOpen className="mr-2 h-4 w-4" />Kullanım Kılavuzu</Link>
+              </Button>
+              <Button type="button" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Ticket Oluştur
+              </Button>
+            </div>
           )}
         />
 

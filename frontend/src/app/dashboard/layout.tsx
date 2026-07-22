@@ -25,6 +25,7 @@ import {
   Building2,
   ShieldCheck,
   Images,
+  BookOpen,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -396,6 +397,12 @@ export default function DashboardLayout({
                 <DropdownMenuItem className="gap-2">
                   <User className="h-4 w-4" />
                   Profil
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/docs" target="_blank" className="gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Kullanım Kılavuzu
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="gap-2 text-destructive">
