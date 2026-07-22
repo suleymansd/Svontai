@@ -19,7 +19,7 @@ jobs:
       SMARTWA_SMOKE_PASSWORD: ${{ secrets.SMARTWA_SMOKE_PASSWORD }}
       SMARTWA_SMOKE_TENANT_ID: ${{ secrets.SMARTWA_SMOKE_TENANT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check public services
         run: |
