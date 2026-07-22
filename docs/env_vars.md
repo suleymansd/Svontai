@@ -177,7 +177,7 @@ have expired or been re-encrypted.
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, Google Calendar appointment sync, stuck automation run cleanup, outbound voice jobs, and daily/weekly operational reports.
-- Current Alembic migration head: `041`.
+- Current Alembic migration head: `046`.
 
 ## n8n execution capacity
 - SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.
