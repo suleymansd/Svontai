@@ -17,7 +17,7 @@ def _create_tenant(client) -> tuple[str, str]:
     password = "Password123!"
     assert client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "OpenWA User"},
+        json={"email": email, "password": password, "full_name": "OpenWA User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     ).status_code == 201
     code_response = client.post("/auth/email-verification/request", json={"email": email})
     code = _extract_code(code_response.json()["message"])
@@ -97,6 +97,20 @@ def test_openwa_qr_onboarding_is_tenant_scoped(client, monkeypatch):
     assert start.status_code == 200, start.text
     assert start.json()["provider"] == "openwa"
     assert start.json()["status"] == "qr_ready"
+
+    from app.db import session as session_module
+    from app.models.onboarding import AuditLog
+
+    db = session_module.SessionLocal()
+    try:
+        consent = db.query(AuditLog).filter(
+            AuditLog.tenant_id == UUID(tenant_id),
+            AuditLog.action == "legal.openwa_risk.accepted",
+        ).one()
+        assert consent.payload_json["notice_version"] == "2026-07-22"
+        assert consent.payload_json["accepted"] is True
+    finally:
+        db.close()
 
     qr = client.get("/api/onboarding/whatsapp/openwa/qr", headers=headers)
     assert qr.status_code == 200, qr.text

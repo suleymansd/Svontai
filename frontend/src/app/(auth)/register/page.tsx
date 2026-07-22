@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { authApi, tenantApi, meApi } from '@/lib/api'
+import { LEGAL_VERSIONS } from '@/lib/legal'
 import { useAuthStore } from '@/lib/store'
 import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
 
@@ -20,6 +22,8 @@ export default function RegisterPage() {
   const [infoMessage, setInfoMessage] = useState('')
   const [verificationRequired, setVerificationRequired] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [pendingCredentials, setPendingCredentials] = useState<{
     email: string
     password: string
@@ -75,6 +79,11 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: formData.full_name,
+        terms_accepted: termsAccepted,
+        privacy_notice_acknowledged: privacyAcknowledged,
+        terms_version: LEGAL_VERSIONS.terms,
+        privacy_version: LEGAL_VERSIONS.privacy,
+        kvkk_notice_version: LEGAL_VERSIONS.kvkk,
       })
       setPendingCredentials({
         email: formData.email,
@@ -308,10 +317,37 @@ export default function RegisterPage() {
               </div>
             )}
 
+            {!verificationRequired ? (
+              <div className="space-y-3 rounded-md border bg-muted/30 p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="terms-accepted"
+                    checked={termsAccepted}
+                    onCheckedChange={(value) => setTermsAccepted(value === true)}
+                  />
+                  <Label htmlFor="terms-accepted" className="text-xs font-normal leading-5">
+                    <Link href="/terms" target="_blank" className="text-primary underline">Kullanım Koşulları</Link>
+                    {' '}ve <Link href="/service-agreement" target="_blank" className="text-primary underline">Hizmet Sözleşmesi esaslarını</Link> okudum ve kabul ediyorum.
+                  </Label>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="privacy-acknowledged"
+                    checked={privacyAcknowledged}
+                    onCheckedChange={(value) => setPrivacyAcknowledged(value === true)}
+                  />
+                  <Label htmlFor="privacy-acknowledged" className="text-xs font-normal leading-5">
+                    <Link href="/kvkk" target="_blank" className="text-primary underline">KVKK Aydınlatma Metni</Link>
+                    {' '}ve <Link href="/privacy" target="_blank" className="text-primary underline">Gizlilik Politikası&apos;nı</Link> okudum.
+                  </Label>
+                </div>
+              </div>
+            ) : null}
+
             <Button
               type="submit"
               className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25 btn-shimmer"
-              disabled={isLoading}
+              disabled={isLoading || (!verificationRequired && (!termsAccepted || !privacyAcknowledged))}
             >
               {isLoading ? (
                 <>
@@ -335,15 +371,7 @@ export default function RegisterPage() {
               >
                 Kodu tekrar gönder
               </button>
-            ) : (
-              <p className="text-xs text-muted-foreground text-center">
-                Kayıt olarak{' '}
-                <Link href="/terms" className="text-primary hover:underline">Kullanım Koşulları</Link>
-                {' '}ve{' '}
-                <Link href="/privacy" className="text-primary hover:underline">Gizlilik Politikası</Link>
-                'nı kabul etmiş olursunuz.
-              </p>
-            )}
+            ) : null}
           </form>
 
           <div className="mt-8 text-center">

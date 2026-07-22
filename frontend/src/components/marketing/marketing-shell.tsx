@@ -78,11 +78,14 @@ export function MarketingShell({ children, className }: MarketingShellProps) {
               </div>
             </div>
             <div className="space-y-3">
-              <p className="text-sm font-semibold">Kaynaklar</p>
+              <p className="text-sm font-semibold">Hukuki</p>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <Link href="/docs" className="block hover:text-foreground">Dokümantasyon</Link>
-                <Link href="/security" className="block hover:text-foreground">Güvenlik</Link>
-                <Link href="/contact" className="block hover:text-foreground">İletişim</Link>
+                <Link href="/kvkk" className="block hover:text-foreground">KVKK Aydınlatma</Link>
+                <Link href="/privacy" className="block hover:text-foreground">Gizlilik Politikası</Link>
+                <Link href="/terms" className="block hover:text-foreground">Kullanım Koşulları</Link>
+                <Link href="/service-agreement" className="block hover:text-foreground">Hizmet Sözleşmesi</Link>
+                <Link href="/manual-payment" className="block hover:text-foreground">Ödeme ve Faturalandırma</Link>
+                <Link href="/openwa-consent" className="block hover:text-foreground">WhatsApp QR Riskleri</Link>
               </div>
             </div>
           </div>

@@ -5,7 +5,9 @@ Pydantic schemas for User model.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, model_validator
+
+from app.core.legal import KVKK_NOTICE_VERSION, PRIVACY_NOTICE_VERSION, TERMS_VERSION
 
 
 class UserBase(BaseModel):
@@ -17,6 +19,25 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating a new user."""
     password: str
+    terms_accepted: bool
+    privacy_notice_acknowledged: bool
+    terms_version: str
+    privacy_version: str
+    kvkk_notice_version: str
+
+    @model_validator(mode="after")
+    def validate_legal_acknowledgements(self):
+        if not self.terms_accepted:
+            raise ValueError("Kullanım koşulları ve hizmet sözleşmesi kabul edilmelidir")
+        if not self.privacy_notice_acknowledged:
+            raise ValueError("KVKK aydınlatma metni ve gizlilik politikası okunmalıdır")
+        if self.terms_version != TERMS_VERSION:
+            raise ValueError("Kullanım koşulları sürümü güncel değil")
+        if self.privacy_version != PRIVACY_NOTICE_VERSION:
+            raise ValueError("Gizlilik politikası sürümü güncel değil")
+        if self.kvkk_notice_version != KVKK_NOTICE_VERSION:
+            raise ValueError("KVKK aydınlatma metni sürümü güncel değil")
+        return self
 
 
 class UserUpdate(BaseModel):

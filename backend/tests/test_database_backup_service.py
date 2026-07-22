@@ -103,3 +103,36 @@ def test_postgres_env_keeps_password_out_of_commands(backup_settings):
     assert env["PGPASSWORD"] == "encoded password"
     assert env["PGDATABASE"] == "svontai"
     assert env["PGSSLMODE"] == "require"
+
+
+def test_upload_requires_encryption_and_restore_metadata(monkeypatch, tmp_path, backup_settings):
+    encrypted = tmp_path / "database.dump.aes256gcm"
+    encrypted.write_bytes(b"encrypted-backup")
+
+    class FakeClient:
+        def __init__(self):
+            self.metadata = {}
+
+        def upload_file(self, _path, _bucket, _key, ExtraArgs):
+            self.metadata = ExtraArgs["Metadata"]
+
+        def head_object(self, **_kwargs):
+            return {
+                "ContentLength": encrypted.stat().st_size,
+                "Metadata": self.metadata,
+            }
+
+    client = FakeClient()
+    monkeypatch.setattr(DatabaseBackupService, "_r2_client", staticmethod(lambda: client))
+
+    DatabaseBackupService()._upload(
+        encrypted,
+        "postgres/latest.dump.aes256gcm",
+        "a" * 64,
+        ("046",),
+        True,
+    )
+
+    assert client.metadata["encryption"] == "aes-256-gcm"
+    assert client.metadata["restore-verified"] == "true"
+    assert client.metadata["backup-format"] == "postgresql-custom"

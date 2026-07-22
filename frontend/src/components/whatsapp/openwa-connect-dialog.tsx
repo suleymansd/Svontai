@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
@@ -253,7 +254,11 @@ export function OpenWAConnectDialog({
                   onCheckedChange={(value) => setRiskAccepted(value === true)}
                 />
                 <Label htmlFor="openwa-risk" className="text-sm font-normal leading-5">
-                  Bu QR bağlantısının Meta Cloud API olmadığını ve WhatsApp’ın hesap kısıtlaması uygulayabileceğini kabul ediyorum.
+                  Bu QR bağlantısının Meta Cloud API olmadığını, bağlantı ve hesap kısıtlama risklerini içeren{' '}
+                  <Link href="/openwa-consent" target="_blank" className="font-medium text-primary underline">
+                    WhatsApp QR Risk Metni&apos;ni
+                  </Link>{' '}
+                  okudum ve kabul ediyorum.
                 </Label>
               </div>
 

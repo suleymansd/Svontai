@@ -98,7 +98,7 @@ def _create_disposable_tenant(base_url: str) -> str:
     status, raw, _ = _request(
         "POST",
         f"{base_url}/auth/register",
-        payload={"email": email, "password": password, "full_name": "Admin Smoke Customer"},
+        payload={"email": email, "password": password, "full_name": "Admin Smoke Customer", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     _expect(status, {201}, raw, "customer register")
 

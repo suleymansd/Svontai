@@ -16,7 +16,7 @@ def _register_verify_and_login(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Two Factor"},
+        json={"email": email, "password": password, "full_name": "Two Factor", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register_resp.status_code == 201, register_resp.text
 
@@ -126,7 +126,7 @@ def test_mandatory_super_admin_can_enroll_without_existing_session(client):
     password = "Password123!"
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Secure Admin"},
+        json={"email": email, "password": password, "full_name": "Secure Admin", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register_resp.status_code == 201, register_resp.text
     request_code = client.post("/auth/email-verification/request", json={"email": email})

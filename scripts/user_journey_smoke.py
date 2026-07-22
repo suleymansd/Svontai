@@ -174,7 +174,7 @@ def run() -> int:
             "POST",
             "/auth/register",
             base_url=base_url,
-            payload={"email": email, "password": password, "full_name": "Smoke User"},
+            payload={"email": email, "password": password, "full_name": "Smoke User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
         )
         _expect(status, {201}, raw, "register")
         _record(steps, "register", email)

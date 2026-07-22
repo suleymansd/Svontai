@@ -53,7 +53,7 @@ def _register_login_and_create_tenant(client) -> tuple[str, str]:
 
     register = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Launch User"},
+        json={"email": email, "password": password, "full_name": "Launch User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register.status_code == 201, register.text
 

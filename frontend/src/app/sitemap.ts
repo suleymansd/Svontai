@@ -11,6 +11,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '/security',
     '/contact',
     '/docs',
+    '/kvkk',
+    '/privacy',
+    '/terms',
+    '/openwa-consent',
+    '/service-agreement',
+    '/manual-payment',
   ]
 
   const useCases = ['real-estate', 'clinics', 'restaurants']

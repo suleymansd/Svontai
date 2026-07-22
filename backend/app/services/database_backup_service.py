@@ -269,6 +269,7 @@ class DatabaseBackupService:
         object_key: str,
         encrypted_sha256: str,
         migration_heads: tuple[str, ...],
+        restore_verified: bool,
     ) -> None:
         client = self._r2_client()
         client.upload_file(
@@ -281,6 +282,8 @@ class DatabaseBackupService:
                     "sha256": encrypted_sha256,
                     "alembic-heads": ",".join(migration_heads),
                     "encryption": "aes-256-gcm",
+                    "restore-verified": "true" if restore_verified else "false",
+                    "backup-format": "postgresql-custom",
                 },
             },
         )
@@ -290,8 +293,14 @@ class DatabaseBackupService:
         )
         if int(head.get("ContentLength") or 0) != encrypted_path.stat().st_size:
             raise DatabaseBackupError("R2 backup size verification failed")
-        if (head.get("Metadata") or {}).get("sha256") != encrypted_sha256:
+        metadata = head.get("Metadata") or {}
+        if metadata.get("sha256") != encrypted_sha256:
             raise DatabaseBackupError("R2 backup checksum metadata verification failed")
+        if metadata.get("encryption") != "aes-256-gcm":
+            raise DatabaseBackupError("R2 backup encryption metadata verification failed")
+        expected_restore = "true" if restore_verified else "false"
+        if metadata.get("restore-verified") != expected_restore:
+            raise DatabaseBackupError("R2 backup restore metadata verification failed")
 
     def _delete_expired(self, current_key: str, now: datetime) -> int:
         client = self._r2_client()
@@ -352,6 +361,7 @@ class DatabaseBackupService:
                 object_key,
                 encrypted_sha256,
                 migration_heads,
+                restore_verified,
             )
             expired_removed = self._delete_expired(object_key, now)
             return DatabaseBackupResult(

@@ -23,6 +23,7 @@ from app.core.encryption import encrypt_token, decrypt_token
 from app.services.meta_api import meta_api_service, MetaAPIError
 from app.services.openwa_client import OpenWAError, openwa_client
 from app.core.config import settings
+from app.core.legal import OPENWA_RISK_NOTICE_VERSION
 
 
 class OnboardingService:
@@ -215,6 +216,7 @@ class OnboardingService:
             "engine_status": started.get("status") or session.get("status") or "initializing",
             "risk_accepted": True,
             "risk_accepted_at": utc_now_naive().isoformat(),
+            "risk_notice_version": OPENWA_RISK_NOTICE_VERSION,
         }
         account.waba_id = None
         account.business_id = None
@@ -249,7 +251,11 @@ class OnboardingService:
             action="openwa_onboarding_started",
             resource_type="whatsapp_account",
             resource_id=str(account.id),
-            payload={"provider": "openwa", "session_id": session_id},
+            payload={
+                "provider": "openwa",
+                "session_id": session_id,
+                "risk_notice_version": OPENWA_RISK_NOTICE_VERSION,
+            },
         )
         return self.openwa_status(account, started)
 
