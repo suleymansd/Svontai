@@ -1,348 +1,103 @@
-# 📖 SvontAi Kullanım Kılavuzu
+# SvontAI Müşteri Kullanım Kılavuzu
 
-Hoş geldiniz! Bu kılavuz, SvontAi'ı en verimli şekilde kullanmanızı sağlayacak.
+Güncel public kılavuz: `https://svontai.com/docs`
 
----
+Bu belge, web kılavuzunun ürün ekibi için metin karşılığıdır. Müşterilerle paylaşılması gereken ana kaynak public web kılavuzudur.
 
-## 🎯 SvontAi Nedir?
+## 1. SvontAI nasıl çalışır?
 
-SvontAi, işletmeniz için **AI destekli müşteri destek asistanı**dır. İki kanaldan müşterilerinize 7/24 otomatik yanıt verir:
+SvontAI, WhatsApp üzerinden gelen müşteri mesajlarını işletme bilgileriyle birlikte değerlendirir. Uygun yanıtı üretir; gerekli olduğunda müşteri, randevu, medya paylaşımı veya destek kaydı oluşturur. İşlem sonuçları panelde ve etkin raporlarda gösterilir.
 
-1. **Web Widget** - Web sitenize eklenen sohbet balonu
-2. **WhatsApp** - WhatsApp Business entegrasyonu
+Temel akış:
 
----
+1. Müşteri WhatsApp üzerinden mesaj gönderir.
+2. SvontAI konuşma geçmişini, işletme profilini ve bilgi tabanını değerlendirir.
+3. Ana asistan doğal bir yanıt üretir.
+4. Talebe göre müşteri, randevu, arama veya destek işlemi oluşturulur.
+5. İşlem sistem olaylarına ve raporlara kaydedilir.
 
-## 🚀 Hızlı Başlangıç (5 Dakikada)
+## 2. İlk kurulum
 
-### Adım 1: Hesap Oluşturun
-1. [svontai.com](http://localhost:3000) adresine gidin
-2. **"Ücretsiz Başla"** butonuna tıklayın
-3. Bilgilerinizi girin ve kayıt olun
+1. Hesap oluşturun ve e-posta doğrulama kodunu girin.
+2. Kurulum sihirbazında sektör, hizmet, iletişim tonu ve işletme bilgilerini yanıtlayın.
+3. WhatsApp hesabınızı QR koduyla bağlayın.
+4. `Randevular > Çalışma Planı` bölümünde hizmetleri ve açık saatleri tanımlayın.
+5. Farklı bir telefon numarasından test mesajı gönderin.
+6. `Sistem Durumu` ekranında WhatsApp ve Yapay Zeka servislerinin bağlı olduğunu doğrulayın.
 
-### Adım 2: İlk Botunuzu Oluşturun
-1. Dashboard'da **"Yeni Bot Oluştur"** butonuna tıklayın
-2. Bot adı girin (örn: "Müşteri Destek")
-3. Karşılama mesajı yazın
-4. **"Bot Oluştur"** butonuna tıklayın
+Bilgi kaynağı yüklemek isteğe bağlıdır. Kurulum cevapları ana asistanın ilk işletme profilini otomatik oluşturur.
 
-### Adım 3: AI'ı Eğitin
-1. Oluşturduğunuz botun **"Eğit"** butonuna tıklayın
-2. İşletmeniz hakkında bilgiler ekleyin
-3. Minimum 5-10 bilgi öğesi ekleyin
+## 3. WhatsApp bağlantısı
 
-### Adım 4: Test Edin
-1. Widget test sayfasını açın
-2. Botunuza sorular sorun
-3. Yanıtları kontrol edin
+1. `WhatsApp Bağlantısı` sayfasını açın.
+2. Yeni QR kodu oluşturun.
+3. Telefonda `WhatsApp > Ayarlar > Bağlı Cihazlar > Cihaz Bağla` yolunu açın.
+4. Paneldeki QR kodunu tarayın.
+5. Durum `Bağlı` olduğunda farklı bir numaradan test mesajı gönderin.
 
----
+Telefon internete bağlı kalmalıdır. Oturum kapanırsa sistem yeniden bağlanmayı dener. Yeni QR gerektiğinde bağlantı sayfası bu durumu gösterir.
 
-## 🤖 Bot Yönetimi
+## 4. AI Asistanım
 
-### Bot Oluşturma
+Her işletmede otomatik oluşturulan bir Ana Asistan bulunur. Ana Asistan tüm konuşmaların ortak işletme bilgisini ve iletişim tonunu yönetir.
 
-```
-Dashboard → Botlar → Yeni Bot Oluştur
-```
+- `Ana Asistanı Eğit`: Seçenekli sorularla işletme davranışını günceller.
+- `İşletme Bilgilerini Yenile`: Kurulum ve profil bilgilerini yeniden işler.
+- Özel botlar: Katalog, teklif veya belirli departman gibi dar görevler için eklenir.
 
-| Alan | Açıklama | Örnek |
-|------|----------|-------|
-| Bot Adı | Botunuzun adı | Müşteri Destek |
-| Açıklama | Ne işe yaradığı | 7/24 müşteri desteği |
-| Karşılama Mesajı | İlk mesaj | Merhaba! 👋 Size nasıl yardımcı olabilirim? |
+Fiyat, hizmet, çalışma saati veya politika değiştiğinde asistan bilgilerini güncelleyin.
 
-### Bot Ayarları
+## 5. Medya Kütüphanesi
 
-Her bot için özelleştirilebilir:
+`Medya` bölümüne JPEG, PNG, WebP, MP4 ve PDF yüklenebilir.
 
-- **Ana Renk**: Widget'ın teması
-- **Widget Pozisyonu**: Sağ veya sol
-- **Dil**: Varsayılan Türkçe
-- **Aktif/Pasif**: Botu açıp kapatma
+- Açıklayıcı bir ad kullanın.
+- İçeriği tarif eden açıklama yazın.
+- Müşterinin kullanabileceği doğal anahtar kelimeler ekleyin.
+- AI kullanım durumunu aktif tutun.
 
----
+Ana asistan müşterinin talebiyle eşleşen aktif içeriği seçerek gönderebilir.
 
-## 🧠 AI Bilgi Tabanı
+## 6. Mesajlar ve müşteriler
 
-### Nasıl Çalışır?
+- `Mesajlar`: Konuşma geçmişi, müşteri kimliği ve AI yanıtları.
+- `Müşteriler`: Telefon, isim, talep ve müşteri durumu.
+- `Destek`: AI tarafından çözülemeyen veya insan müdahalesi isteyen talepler.
 
-```
-Siz: Bilgi eklersiniz
-     ↓
-Müşteri: Soru sorar
-     ↓
-AI: Bilgilerinizi kullanarak akıllı yanıt üretir
-```
+## 7. Randevular
 
-### Etkili Bilgi Ekleme İpuçları
+1. `Randevular > Çalışma Planı` bölümünü açın.
+2. Hizmet adını ve süresini tanımlayın.
+3. Açık günleri ve saat aralıklarını girin.
+4. Saat dilimini kontrol edin.
+5. Planı kaydedip uygun saatlerin oluştuğunu doğrulayın.
 
-#### ✅ İyi Örnek:
-```
-Başlık: Kargo Bilgisi
-Örnek Soru: Kargo ne kadar? Ne zaman gelir?
-Bilgi: 150 TL üzeri siparişlerde kargo ücretsizdir. 
-       Altında 29.90 TL. Teslimat süresi 2-3 iş günüdür.
-       İstanbul içi siparişler 1 iş günü içinde teslim edilir.
-```
+AI yalnızca tanımlı ve boş saatleri sunar. Müşteri onay verdiğinde randevu SvontAI'ye ve bağlıysa Google Calendar'a kaydedilir.
 
-#### ❌ Kötü Örnek:
-```
-Başlık: Kargo
-Soru: Kargo?
-Bilgi: Var.
-```
+## 8. AI aramalar
 
-### Önerilen Bilgi Kategorileri
+Canlı arama hesabınızda etkinleştirildiyse Aramalar ekranından tetikleyicileri, günlük limiti, tekrar deneme sayısını ve bekleme süresini yönetebilirsiniz. Telefon numaralarını ülke koduyla girin.
 
-1. **Genel Bilgiler**
-   - Çalışma saatleri
-   - Adres ve iletişim
-   - Hakkımızda
+Görüşmenin durumu, süresi, özeti ve oluşturulan randevu gibi sonuçlar Aramalar ekranında görünür.
 
-2. **Ürün/Hizmet**
-   - Fiyatlar
-   - Özellikler
-   - Stok durumu
+## 9. Sistem durumu ve raporlar
 
-3. **Sipariş Süreci**
-   - Nasıl sipariş verilir
-   - Ödeme yöntemleri
-   - Kargo bilgileri
+`Sistem Durumu`, bağlı servisleri üç temel durumda gösterir:
 
-4. **Destek**
-   - İade politikası
-   - Garanti koşulları
-   - Sık sorulan sorular
+- `Bağlı`: Servis işlem yapmaya hazırdır.
+- `İşlem gerekli`: Kullanıcı izni, QR veya eksik bilgi gereklidir.
+- `Bağlantı kesildi`: Sistem toparlanmayı dener; gerekirse kullanıcı aksiyonu ister.
 
-### Kaç Bilgi Eklemeliyim?
+Günlük ve haftalık raporlar gelen mesaj, AI yanıtı, yeni müşteri, randevu ve otomasyon sonuçlarını özetler. `Dikkat gerektiren durum` uyarısı görülürse Sistem Durumu ve Destek ekranlarını kontrol edin.
 
-| Bot Kalitesi | Minimum Bilgi |
-|--------------|---------------|
-| ⭐ Temel | 5-10 öğe |
-| ⭐⭐ İyi | 10-25 öğe |
-| ⭐⭐⭐ Harika | 25+ öğe |
+## 10. Güvenli kullanım
 
----
+- Şifre ve doğrulama kodlarını paylaşmayın.
+- QR kodunu yalnızca kendi panelinizde tarayın.
+- Ortak bilgisayarlarda oturumu kapatın.
+- İşletme operasyonu için gerekli olmayan hassas müşteri verilerini istemeyin.
+- Şüpheli hareketleri Destek ekranından bildirin.
 
-## 💬 Web Widget
+## 11. Destek
 
-### Widget Kodunu Alma
-
-1. Bot sayfasına gidin
-2. **Widget Key**'i kopyalayın
-3. Aşağıdaki kodu web sitenize ekleyin:
-
-```html
-<!-- SvontAi Widget -->
-<script>
-  window.SVONTAI_CONFIG = {
-    botKey: 'BOT_PUBLIC_KEY_BURAYA'
-  };
-</script>
-<script src="https://api.svontai.com/widget.js" async></script>
-```
-
-### Widget Özelleştirme
-
-```javascript
-window.SVONTAI_CONFIG = {
-  botKey: 'xxx',
-  position: 'right',     // veya 'left'
-  primaryColor: '#6366f1', // Tema rengi
-  welcomeMessage: 'Merhaba! 👋',
-  placeholder: 'Mesajınızı yazın...'
-};
-```
-
-### Widget Test Etme
-
-Canlıya almadan önce test edin:
-```
-http://localhost:3000/widget-test.html
-```
-
----
-
-## 📱 WhatsApp Entegrasyonu
-
-Detaylı kurulum için: [WHATSAPP_KURULUM.md](./WHATSAPP_KURULUM.md)
-
-### Kısa Özet:
-
-1. Meta Business hesabı oluşturun
-2. WhatsApp Business API erişimi alın
-3. Telefon numarası doğrulayın
-4. API bilgilerini SvontAi'a girin
-5. Webhook yapılandırın
-
----
-
-## 👥 Lead Yönetimi
-
-### Lead Nedir?
-
-Potansiyel müşteri bilgisi. Bot sohbet sırasında şu bilgileri toplayabilir:
-- İsim
-- E-posta
-- Telefon
-- Notlar
-
-### Lead'leri Görüntüleme
-
-```
-Dashboard → Leadler
-```
-
-### Lead Dışa Aktarma
-
-1. **"Dışa Aktar"** butonuna tıklayın
-2. CSV dosyası indirilir
-3. Excel veya CRM'e aktarabilirsiniz
-
----
-
-## 💬 Konuşmalar
-
-### Konuşmaları İzleme
-
-```
-Dashboard → Konuşmalar
-```
-
-Burada görebilirsiniz:
-- Tüm müşteri konuşmaları
-- Mesaj geçmişi
-- Kaynak (Web/WhatsApp)
-- Durum (Aktif/Kapalı)
-
-### Konuşma Detayları
-
-Bir konuşmaya tıklayarak:
-- Tüm mesaj geçmişini görün
-- AI'ın verdiği yanıtları inceleyin
-- Müşteri memnuniyetini değerlendirin
-
----
-
-## ⚙️ Ayarlar
-
-### Profil Ayarları
-- Ad soyad güncelleme
-- E-posta değiştirme
-- Tema tercihi (Açık/Koyu)
-
-### İşletme Ayarları
-- İşletme adı
-- Logo
-- Web sitesi
-
-### Güvenlik
-- Şifre değiştirme
-- İki faktörlü doğrulama (yakında)
-
-### API Anahtarları
-- API key görüntüleme
-- Yeni anahtar oluşturma
-
----
-
-## 📊 İstatistikler (Dashboard)
-
-Dashboard'da şunları görebilirsiniz:
-
-| Metrik | Açıklama |
-|--------|----------|
-| Toplam Bot | Oluşturduğunuz bot sayısı |
-| Aktif Bot | Şu an çalışan botlar |
-| Toplam Lead | Toplanan müşteri bilgisi |
-| Yanıt Oranı | AI'ın başarı oranı |
-
----
-
-## ❓ Sık Sorulan Sorular
-
-### AI yanlış cevap veriyor, ne yapmalıyım?
-
-1. Bilgi tabanınızı kontrol edin
-2. Daha detaylı bilgi ekleyin
-3. Örnek soruları çeşitlendirin
-
-### Müşteri bot yerine insanla konuşmak istiyor?
-
-AI, emin olmadığı durumlarda:
-```
-"Bu konuda size yardımcı olamıyorum. 
-Lütfen 0850 XXX XX XX numarasından bize ulaşın."
-```
-şeklinde yönlendirir.
-
-### WhatsApp mesajları gelmiyor?
-
-1. Webhook URL'ini kontrol edin
-2. Access token'ın geçerli olduğunu doğrulayın
-3. Bot'un aktif olduğundan emin olun
-
-### Widget görünmüyor?
-
-1. Bot key'in doğru olduğunu kontrol edin
-2. Script'in sayfaya yüklendiğini doğrulayın
-3. Tarayıcı konsolunda hata var mı bakın
-
----
-
-## 🎓 En İyi Pratikler
-
-### 1. Bilgi Tabanını Güncel Tutun
-- Yeni ürünler ekleyin
-- Fiyat değişikliklerini güncelleyin
-- Kampanyaları ekleyin
-
-### 2. Konuşmaları Düzenli İnceleyin
-- Müşterilerin en çok neyi sorduğunu görün
-- Eksik bilgileri tamamlayın
-- AI'ın yanlış cevaplarını düzeltin
-
-### 3. Karşılama Mesajını Optimize Edin
-Kısa ve yönlendirici olsun:
-```
-"Merhaba! 👋 Size şu konularda yardımcı olabilirim:
-• Ürün bilgileri
-• Sipariş takibi
-• İade işlemleri
-Nasıl yardımcı olabilirim?"
-```
-
-### 4. Test Edin, Test Edin, Test Edin
-- Farklı sorular sorun
-- Arkadaşlarınıza test ettirin
-- Edge case'leri deneyin
-
----
-
-## 📞 Destek Kanalları
-
-| Kanal | Kullanım |
-|-------|----------|
-| 📧 support@svontai.com | Genel destek |
-| 📚 docs.svontai.com | Teknik dökümanlar |
-| 💬 Dashboard Canlı Destek | Acil sorunlar |
-
----
-
-## 🔄 Güncelleme Notları
-
-### v1.0.0 (Aralık 2024)
-- ✅ İlk sürüm yayınlandı
-- ✅ Web widget desteği
-- ✅ WhatsApp entegrasyonu
-- ✅ AI bilgi tabanı
-- ✅ Lead yönetimi
-- ✅ Admin paneli
-
----
-
-**İyi çalışmalar! 🚀**
-
-*SvontAi Ekibi*
-
+Önce `https://svontai.com/docs#sorun-giderme` bölümündeki kontrolleri uygulayın. Sorun devam ederse `Destek > Ticket Oluştur` yolundan hata mesajı, yaklaşık saat ve etkilenen müşteri veya işlem bilgisini iletin.

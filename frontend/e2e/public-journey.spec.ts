@@ -5,6 +5,7 @@ const publicRoutes = [
   { path: '/login', heading: /Tekrar hoş geldiniz/i },
   { path: '/register', heading: /Hesap|Kayıt/i },
   { path: '/contact', heading: /demo ve kurulum görüşmesi/i },
+  { path: '/docs', heading: /SvontAI kullanım kılavuzu/i },
 ]
 
 for (const route of publicRoutes) {
@@ -32,4 +33,12 @@ test('contact page exposes a real sales request form', async ({ page }) => {
   await expect(page.getByLabel('E-posta')).toBeVisible()
   await expect(page.getByLabel('Mesajınız')).toHaveValue(/PRO planı/)
   await expect(page.getByRole('button', { name: 'Görüşme Talebi Gönder' })).toBeEnabled()
+})
+
+test('customer guide search opens the matching section', async ({ page }) => {
+  await page.goto('/docs')
+  await page.getByLabel('Kılavuzda ara').fill('randevu')
+  await page.getByRole('link', { name: /Randevular/ }).first().click()
+  await expect(page).toHaveURL(/#randevular$/)
+  await expect(page.getByRole('heading', { name: 'Randevu uygunluğunu yapılandırın' })).toBeVisible()
 })
