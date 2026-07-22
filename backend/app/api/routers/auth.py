@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.config import settings
+from app.core.legal import KVKK_NOTICE_VERSION, PRIVACY_NOTICE_VERSION, TERMS_VERSION
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.security import (
     get_password_hash,
@@ -232,6 +233,22 @@ async def register(
     )
     
     db.add(user)
+    db.flush()
+    db.add(AuditLog(
+        user_id=user.id,
+        action="legal.registration.accepted",
+        resource_type="legal_bundle",
+        resource_id=TERMS_VERSION,
+        payload_json={
+            "terms_accepted": True,
+            "privacy_notice_acknowledged": True,
+            "terms_version": TERMS_VERSION,
+            "privacy_version": PRIVACY_NOTICE_VERSION,
+            "kvkk_notice_version": KVKK_NOTICE_VERSION,
+        },
+        ip_address=client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:500] or None,
+    ))
     db.commit()
     db.refresh(user)
 

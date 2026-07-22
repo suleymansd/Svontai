@@ -23,6 +23,9 @@ from app.services.openwa_client import OpenWAError, openwa_client
 from app.services.system_event_service import SystemEventService
 from app.core.rate_limit import rate_limit_key, require_rate_limit, whatsapp_connect_rate_limiter
 from app.core.config import settings
+from app.core.legal import OPENWA_RISK_NOTICE_VERSION
+from app.core.rate_limit import client_ip
+from app.services.audit_log_service import AuditLogService
 
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
@@ -197,6 +200,21 @@ async def start_openwa_onboarding(
         result = await OnboardingService(db).start_openwa_onboarding(
             current_tenant.id,
             accepted_unofficial_risk=body.accepted_unofficial_risk,
+        )
+        AuditLogService(db).safe_log(
+            action="legal.openwa_risk.accepted",
+            tenant_id=current_tenant.id,
+            user_id=current_user.id,
+            resource_type="openwa_risk_notice",
+            resource_id=OPENWA_RISK_NOTICE_VERSION,
+            payload={
+                "accepted": True,
+                "notice_version": OPENWA_RISK_NOTICE_VERSION,
+                "provider": "openwa",
+                "session_id": result.get("session_id"),
+            },
+            ip_address=client_ip(request),
+            user_agent=(request.headers.get("user-agent") or "")[:500] or None,
         )
         SystemEventService(db).log(
             tenant_id=str(current_tenant.id),

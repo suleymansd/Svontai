@@ -72,7 +72,16 @@ api.interceptors.response.use(
 
 // Auth API
 export const authApi = {
-  register: (data: { email: string; password: string; full_name: string }) =>
+  register: (data: {
+    email: string
+    password: string
+    full_name: string
+    terms_accepted: boolean
+    privacy_notice_acknowledged: boolean
+    terms_version: string
+    privacy_version: string
+    kvkk_notice_version: string
+  }) =>
     api.post('/auth/register', data),
   
   login: (data: {

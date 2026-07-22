@@ -1,72 +1,24 @@
+import Link from 'next/link'
+import { LegalDocument } from '@/components/legal/legal-document'
+
 export default function TermsPage() {
   return (
-    <main className="min-h-screen p-8 max-w-4xl mx-auto space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold">Kullanım Koşulları</h1>
-        <p className="text-sm text-muted-foreground">Son güncelleme: 20 Temmuz 2026</p>
-        <p className="text-muted-foreground">
-          Bu koşullar SvontAI&apos;nin self-serve ve concierge kurulum, WhatsApp AI, randevu, lead, destek ve ajans/kurumsal yönetim özelliklerini kapsar.
-        </p>
-      </header>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">1. Hizmet Kapsamı</h2>
-        <p className="text-muted-foreground">
-          SvontAI; işletmeler için WhatsApp odaklı AI asistan, bot yönetimi, mesaj/lead/randevu takibi, entegrasyon sağlık kontrolü, concierge kurulum ve operasyon araçları sunar. Canlı telefon araması henüz sunulmaz; paneldeki arama alanı yalnızca test modunda çalışır. Özellikler plan, kullanım hakkı ve entegrasyon durumuna göre değişebilir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">2. Kurulum Modları</h2>
-        <p className="text-muted-foreground">
-          Self-serve kurulumda işletme bilgilerini siz girersiniz. Concierge kurulumda minimum bilgiyi paylaşırsınız; ekibimiz bilgi formasyonu ve yayına hazırlık sürecini yönetir. WhatsApp, ödeme, dış servis yetkilendirme ve müşteri adına riskli işlem gerektiren aksiyonlarda açık onayınız gerekir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">3. Hesap ve Yetki Sorumluluğu</h2>
-        <p className="text-muted-foreground">
-          Hesap erişimi, ekip yetkileri, entegrasyon anahtarları, müşteri verilerinin doğruluğu ve üçüncü taraf servislerdeki izinler hesabı yöneten işletmenin sorumluluğundadır. Şüpheli erişim veya yanlış yetkilendirme durumunda destek ekibine bildirim yapılmalıdır.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">4. Kabul Edilebilir Kullanım</h2>
-        <p className="text-muted-foreground">
-          Platform spam, izinsiz pazarlama, aldatıcı iletişim, yasa dışı içerik, hassas verilerin yetkisiz işlenmesi, üçüncü taraf haklarının ihlali veya sağlayıcı politikalarına aykırı kullanım için kullanılamaz. Meta WhatsApp, ödeme, e-posta ve telefon sağlayıcılarının kurallarına uyum müşteriye aittir.
-        </p>
-        <p className="text-muted-foreground">
-          QR tabanlı WhatsApp bağlantısı resmi Meta Cloud API değildir. Bu yöntem seçildiğinde bağlantı kesintisi veya WhatsApp hesabı kısıtlaması riski bulunduğu kullanıcıya gösterilir ve açık onay alınır.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">5. AI Çıktıları ve Otonomi</h2>
-        <p className="text-muted-foreground">
-          Sistem güvenli otonomi prensibiyle çalışır; rutin yanıt, tanılama, retry, incident ve ticket akışlarını otomatik yürütebilir. AI çıktıları hatalı veya eksik olabilir. Hukuki, tıbbi, finansal veya yüksek riskli kararlar için insan kontrolü ve işletme onayı gerekir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">6. Ödeme, Plan ve Limitler</h2>
-        <p className="text-muted-foreground">
-          Lansman döneminde plan başvuruları görüşme yoluyla alınır; ücret, dönem ve hizmet kapsamı ayrıca yazılı olarak mutabık kalındıktan sonra plan yönetici tarafından etkinleştirilir. Platform içinde kartla ödeme alınmaz. Plan limitleri ve özellik erişimleri kullanım hakkı sistemiyle uygulanır. Süresi dolan veya iptal edilen planlarda bazı özellikler sınırlandırılabilir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">7. Hizmet Sürekliliği</h2>
-        <p className="text-muted-foreground">
-          Planlı bakım, güvenlik önlemleri, sağlayıcı kesintileri, rate limit, ağ sorunları veya entegrasyon hataları nedeniyle hizmette geçici aksama olabilir. Sistem mümkün olan durumlarda otomatik retry, health check ve incident/ticket akışlarını çalıştırır.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">8. Askıya Alma ve Fesih</h2>
-        <p className="text-muted-foreground">
-          Güvenlik riski, kötüye kullanım, ödeme sorunu veya sağlayıcı politikalarının ihlali halinde hesap, tenant veya entegrasyon geçici olarak sınırlandırılabilir. Hesap sahibi aboneliğini panel veya destek kanalı üzerinden iptal edebilir.
-        </p>
-      </section>
-    </main>
+    <LegalDocument
+      title="Kullanım Koşulları"
+      updatedAt="22 Temmuz 2026"
+      introduction={<p>Bu koşullar SvontAI hesabı, self-serve ve concierge kurulum, WhatsApp asistanı, randevu, lead, arama, medya ve operasyon özelliklerinin kullanımını düzenler. Ücretli hizmette ayrıca <Link href="/service-agreement" className="text-primary underline">Müşteri Hizmet Sözleşmesi</Link> ve imzalı sipariş formu uygulanır.</p>}
+      sections={[
+        { title: 'Hizmet kapsamı', content: <p>SvontAI işletmeler için yapay zeka asistanı, bot ve medya yönetimi, mesaj/lead/randevu takibi, sesli arama, entegrasyon sağlık kontrolü, raporlama ve concierge operasyon araçları sağlar. Özellikler kullanım hakkı, sağlayıcı bağlantısı ve müşteri onayına göre açılır.</p> },
+        { title: 'Hesap güvenliği', content: <p>Kullanıcı doğru bilgi vermek, güçlü parola ve sunulan çok faktörlü doğrulamayı kullanmak, ekip yetkilerini sınırlamak ve şüpheli erişimi gecikmeden bildirmekle sorumludur. Hesap başkasına devredilemez.</p> },
+        { title: 'Kabul edilebilir kullanım', content: <p>Spam, izinsiz pazarlama, aldatıcı iletişim, yasa dışı içerik, yetkisiz kişisel veri işleme, güvenlik önlemlerini aşma ve üçüncü taraf politikalarını ihlal etme yasaktır.</p> },
+        { title: 'Yapay zeka ve otonomi', content: <p>Sistem rutin yanıt, randevu, tanılama ve toparlama işlemlerini otomatik yürütebilir. Yapay zeka çıktıları hatalı olabilir. Hukuki, tıbbi, finansal veya yüksek etkili kararlar için insan kontrolü ve gerekli profesyonel değerlendirme müşteriye aittir.</p> },
+        { title: 'WhatsApp ve dış servisler', content: <p>Meta Cloud, QR tabanlı bağlantı, Google, telefon, yapay zeka ve diğer sağlayıcıların kullanılabilirliği kendi kurallarına bağlıdır. QR yöntemi için ayrıca <Link href="/openwa-consent" className="text-primary underline">WhatsApp QR Risk Metni</Link> açıkça kabul edilmeden bağlantı kurulmaz.</p> },
+        { title: 'Ücret, plan ve limitler', content: <p>Uygulama içinde kartla ödeme alınmaz. Plan, fiyat, vergi, süre ve limitler yazılı teklif/sipariş formunda belirlenir. <Link href="/manual-payment" className="text-primary underline">Manuel ödeme ve faturalandırma süreci</Link> tamamlanmadan ücretli plan etkinleştirilmez.</p> },
+        { title: 'Fikri haklar ve müşteri içeriği', content: <p>Platform yazılımı ve markası üzerindeki haklar hizmet sağlayıcıya aittir. Müşteri yüklediği içerik üzerindeki haklarını korur ve hizmetin çalışması için gerekli sınırlı işleme iznini verir; içeriği kullanmaya yetkili olduğunu taahhüt eder.</p> },
+        { title: 'Süreklilik, askıya alma ve fesih', content: <p>Bakım, güvenlik veya sağlayıcı kesintileri geçici aksamalara neden olabilir. Kötüye kullanım, güvenlik riski, ödeme ihlali veya yasal zorunluluk halinde özellikler sınırlandırılabilir. Fesih ve veri çıkışı imzalı sözleşmeye göre yürütülür.</p> },
+        { title: 'Gizlilik ve kişisel veriler', content: <p>Veri işleme ayrıntıları <Link href="/privacy" className="text-primary underline">Gizlilik Politikası</Link> ve <Link href="/kvkk" className="text-primary underline">KVKK Aydınlatma Metni</Link> içinde açıklanır. İşletme, kendi müşterilerine karşı aydınlatma ve ileti izinlerinden sorumludur.</p> },
+        { title: 'Değişiklik ve iletişim', content: <p>Esaslı koşul değişiklikleri yürürlüğe girmeden önce bildirilir. Sorular ve itirazlar paneldeki Destek alanından veya support@svontai.com adresinden iletilebilir.</p> },
+      ]}
+    />
   )
 }

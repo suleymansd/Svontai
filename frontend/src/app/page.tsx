@@ -513,6 +513,8 @@ export default function HomePage() {
               <ul className="space-y-2 text-muted-foreground">
                 <li><Link href="/privacy" className="hover:text-foreground transition-colors">Gizlilik Politikası</Link></li>
                 <li><Link href="/terms" className="hover:text-foreground transition-colors">Kullanım Koşulları</Link></li>
+                <li><Link href="/kvkk" className="hover:text-foreground transition-colors">KVKK Aydınlatma</Link></li>
+                <li><Link href="/service-agreement" className="hover:text-foreground transition-colors">Hizmet Sözleşmesi</Link></li>
                 <li><Link href="/security" className="hover:text-foreground transition-colors">KVKK ve Güvenlik</Link></li>
               </ul>
             </div>

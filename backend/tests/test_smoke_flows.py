@@ -21,11 +21,30 @@ def test_smoke_register_verify_login_and_core_resources(client):
     password = "Password123!"
     full_name = "User One"
 
-    register_resp = client.post(
+    missing_legal = client.post(
         "/auth/register",
         json={"email": email, "password": password, "full_name": full_name},
     )
+    assert missing_legal.status_code == 422
+
+    register_resp = client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+    )
     assert register_resp.status_code == 201, register_resp.text
+
+    from app.db import session as session_module
+    from app.models.onboarding import AuditLog
+
+    db = session_module.SessionLocal()
+    try:
+        legal_acceptance = db.query(AuditLog).filter(
+            AuditLog.action == "legal.registration.accepted"
+        ).one()
+        assert legal_acceptance.payload_json["terms_version"] == "2026-07-22"
+        assert legal_acceptance.payload_json["kvkk_notice_version"] == "2026-07-22"
+    finally:
+        db.close()
 
     login_before_verify = client.post("/auth/login", json={"email": email, "password": password})
     assert login_before_verify.status_code == 403, login_before_verify.text
@@ -221,7 +240,7 @@ def test_smoke_password_reset_flow(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": full_name},
+        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register_resp.status_code == 201, register_resp.text
 
@@ -258,7 +277,7 @@ def test_login_context_auto_provisions_missing_tenant(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Missing Tenant"},
+        json={"email": email, "password": password, "full_name": "Missing Tenant", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register_resp.status_code == 201, register_resp.text
 

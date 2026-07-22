@@ -27,7 +27,7 @@ def _register_and_login(client) -> tuple[str, str]:
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Billing User"},
+        json={"email": email, "password": password, "full_name": "Billing User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     assert register_resp.status_code == 201, register_resp.text
 

@@ -122,12 +122,20 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - The Railway worker creates a PostgreSQL custom-format dump over the private network. The dump is catalog-checked, encrypted with AES-256-GCM, decrypted, checksum-verified, and restored into a randomly named temporary database before upload.
 - Railway currently builds from the repository root with Railpack. Keep `boto3` in the root `requirements.txt` and Mise `postgres=17` in `railpack.json`; the worker must have PostgreSQL 17 `pg_dump`, `pg_restore`, `psql`, `createdb`, and `dropdb` at runtime.
 - Only the authenticated ciphertext is uploaded to the private Cloudflare R2 bucket. Keep public `r2.dev` access disabled and restrict the API token to Object Read & Write on the backup bucket only.
-- The worker verifies the uploaded object size and SHA-256 metadata. Backups older than `DATABASE_BACKUP_RETENTION_DAYS` are removed automatically; production defaults to 30 days.
+- The worker verifies the uploaded object size, SHA-256, encryption, backup format, and restore-verification metadata. Backups older than `DATABASE_BACKUP_RETENTION_DAYS` are removed automatically; production defaults to 30 days.
 - The restore test checks the Alembic heads and critical tables, then force-deletes only the randomly named temporary restore database. It never restores over the active production database.
 - Backup failures are persisted by the scheduled-job retry policy and reported to Sentry. The worker retries with exponential backoff without creating concurrent dumps.
 - Keep `DATABASE_BACKUP_ENCRYPTION_KEY_B64` outside R2 and retain it for the full lifetime of every encrypted backup. Losing this key makes all backups unrecoverable.
 - Railway native daily, weekly, and monthly backups should be enabled as a second independent layer if the project is upgraded to Pro.
 - Do not store production database URLs, dump contents, R2 credentials, or encryption keys in GitHub Actions, issues, chat, or unencrypted artifacts.
+- After a backup change or at least quarterly, run `python scripts/verify_production_backup.py --run-and-verify` inside the Railway Worker service. A successful JSON result must report `encryption=aes-256-gcm`, `restore_verified=true`, the active Alembic head, and the newly created R2 object key.
+
+## Protected uptime smoke
+
+- The `Production Uptime` GitHub workflow runs every 15 minutes against public health routes and a dedicated least-privilege customer tenant.
+- Repository secrets `SMARTWA_SMOKE_EMAIL`, `SMARTWA_SMOKE_PASSWORD`, and `SMARTWA_SMOKE_TENANT_ID` are mandatory. The workflow fails instead of silently falling back to public-only checks when any secret is absent.
+- The smoke user must never be an admin, must not own customer data, and must have operational e-mail reports disabled.
+- Rotate the smoke password by updating the production smoke user and GitHub secret in the same maintenance window.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
 - `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
 

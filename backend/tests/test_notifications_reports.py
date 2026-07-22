@@ -16,7 +16,7 @@ def _authenticated_tenant(client) -> tuple[str, str, str]:
     password = "Password123!"
     assert client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Notification User"},
+        json={"email": email, "password": password, "full_name": "Notification User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     ).status_code == 201
     code_response = client.post("/auth/email-verification/request", json={"email": email})
     code = _extract_code(code_response.json()["message"])

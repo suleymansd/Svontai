@@ -1,69 +1,22 @@
+import Link from 'next/link'
+import { LegalDocument } from '@/components/legal/legal-document'
+
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen p-8 max-w-4xl mx-auto space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold">Gizlilik ve KVKK Bilgilendirmesi</h1>
-        <p className="text-sm text-muted-foreground">Son güncelleme: 20 Temmuz 2026</p>
-        <p className="text-muted-foreground">
-          Bu metin SvontAI platformunun hangi verileri hangi amaçlarla işlediğini açıklar. Müşterilerinizle ilgili verilerde işletmeniz veri sorumlusu, SvontAI ise hizmet sağlayıcı/alt işleyen rolünde hareket eder.
-        </p>
-      </header>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">1. İşlenen Veri Kategorileri</h2>
-        <p className="text-muted-foreground">
-          Hesap bilgileri, işletme profili, kullanıcı yetkileri, WhatsApp konuşmaları, müşteri iletişim bilgileri, lead ve randevu kayıtları, arama kayıtları, çağrı özetleri, destek talepleri, ödeme/abonelik durumu, entegrasyon ayarları, sistem olayları ve güvenlik logları işlenebilir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">2. İşleme Amaçları</h2>
-        <p className="text-muted-foreground">
-          Veriler; hesabın açılması, otonom kurulumun yürütülmesi, botların hazırlanması, WhatsApp mesajlarının yanıtlanması, lead/randevu/ticket akışlarının oluşturulması, AI arama otomasyonunun çalıştırılması, ödeme ve entitlement yönetimi, güvenlik, hata analizi, audit log ve müşteri desteği için kullanılır.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">3. Concierge Kurulum ve İşletme Bilgisi</h2>
-        <p className="text-muted-foreground">
-          “Biz Kuralım” seçeneğinde paylaştığınız işletme bilgileri, web sitesi, sosyal medya bağlantıları ve destek notları ekibimiz tarafından bot bilgi formasyonunu hazırlamak için kullanılabilir. Eksik bilgi olduğunda destek/ticket süreci üzerinden ek bilgi istenebilir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">4. Üçüncü Taraflar ve Aktarımlar</h2>
-        <p className="text-muted-foreground">
-          Hizmet kapsamında Meta WhatsApp Cloud API veya kullanıcı tarafından seçilen QR tabanlı WhatsApp bağlantı altyapısı, ödeme sağlayıcısı, e-posta sağlayıcısı, ses/telefon sağlayıcısı, n8n otomasyon altyapısı, dosya saklama altyapısı ve AI model sağlayıcılarıyla gerekli asgari veri paylaşılabilir. Her entegrasyon kendi hizmet koşulları ve veri işleme kurallarına tabidir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">5. Güvenlik ve Erişim</h2>
-        <p className="text-muted-foreground">
-          Platform tenant izolasyonu, rol tabanlı erişim, audit log, rate limit, webhook imza kontrolü, hesap kilitleme, kısa ömürlü access token ve güvenli refresh cookie yaklaşımıyla korunur. Buna rağmen hiçbir internet hizmeti mutlak güvenlik garantisi veremez.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">6. Saklama ve Silme</h2>
-        <p className="text-muted-foreground">
-          Veriler hizmet ilişkisi, yasal yükümlülükler, güvenlik kayıtları ve operasyonel gereklilikler devam ettiği sürece saklanır. Hesap sahibi panel veya destek kanalı üzerinden erişim, düzeltme, dışa aktarma ve silme taleplerini iletebilir. Yasal saklama zorunluluğu olan kayıtlar bu kapsam dışında tutulabilir.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">7. Müşteri Sorumluluğu</h2>
-        <p className="text-muted-foreground">
-          İşletmeniz, kendi müşterilerine yapılacak aydınlatma, izin, iletişim tercihleri, WhatsApp politikaları ve sektörel mevzuat uyumu konularından sorumludur. SvontAI bu süreçleri yönetmenize yardımcı olan teknik araçları sağlar; hukuki uyumluluk garantisi vermez.
-        </p>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">8. Başvuru ve İletişim</h2>
-        <p className="text-muted-foreground">
-          Gizlilik ve veri talepleri için hesap içi destek ekranını veya satış/destek e-posta kanalını kullanabilirsiniz. Talebin kapsamına göre kimlik ve yetki doğrulaması istenebilir.
-        </p>
-      </section>
-    </main>
+    <LegalDocument
+      title="Gizlilik Politikası"
+      updatedAt="22 Temmuz 2026"
+      introduction={<p>Bu politika, SvontAI platformu kullanılırken kişisel verilerin ve işletme verilerinin nasıl korunduğunu ve işlendiğini açıklar. KVKK kapsamındaki faaliyet bazlı bilgilendirme için ayrıca <Link className="text-primary underline" href="/kvkk">KVKK Aydınlatma Metni</Link> yayımlanır.</p>}
+      sections={[
+        { title: 'Kapsam ve roller', content: <p>Hesap ve platform kullanım verilerinde hizmeti sunan taraf veri sorumlusu olarak hareket eder. İşletmenin kendi müşterilerine ait WhatsApp, lead, randevu ve çağrı verilerinde işletme veri sorumlusu; SvontAI ise sözleşme ve talimatlarla sınırlı hizmet sağlayıcı/veri işleyen rolündedir.</p> },
+        { title: 'İşlenen bilgiler', content: <p>Hesap ve iletişim bilgileri, işletme profili, kullanıcı rolleri, entegrasyon yetkileri, konuşmalar, kişi ve lead kayıtları, randevular, medya, çağrı kayıt ve özetleri, destek talepleri, kullanım ölçümleri, cihaz/ağ bilgileri, güvenlik ve audit kayıtları işlenebilir.</p> },
+        { title: 'Kullanım amaçları', content: <p>Veriler; hesabı ve tenant izolasyonunu işletmek, botları hazırlamak, mesaj ve randevu otomasyonlarını yürütmek, entegrasyonları tanılamak, destek sağlamak, kötüye kullanımı önlemek, yedek almak, hizmet kalitesini ölçmek ve yasal yükümlülükleri yerine getirmek için kullanılır.</p> },
+        { title: 'Hizmet sağlayıcıları', content: <p>Barındırma, veritabanı, nesne depolama, e-posta, hata izleme, yapay zeka, WhatsApp, telefon ve otomasyon hizmetleri için yalnızca gerekli veriler ilgili sağlayıcılarla paylaşılabilir. Bağlanan her üçüncü taraf hesabı kendi koşullarına ve gizlilik kurallarına tabidir.</p> },
+        { title: 'Saklama ve silme', content: <p>Veriler hizmet ilişkisi, güvenlik ihtiyacı ve yasal saklama süreleri boyunca tutulur. Süre sonunda silinir, anonimleştirilir veya erişimi kısıtlanır. Yedek kopyalar döngüsel saklama süresi sonunda güvenli şekilde kaldırılır.</p> },
+        { title: 'Güvenlik', content: <p>Rol tabanlı yetkilendirme, tenant izolasyonu, güvenli oturum çerezleri, hız sınırı, şifreleme, webhook doğrulaması, audit log, yedekleme ve hata izleme önlemleri uygulanır. Hiçbir internet hizmeti mutlak güvenlik garantisi veremez.</p> },
+        { title: 'Tercihler ve başvurular', content: <p>Veri erişimi, düzeltme, dışa aktarma ve silme talepleri paneldeki Destek alanından veya support@svontai.com adresinden iletilebilir. Talep sahibinin kimliği ve yetkisi doğrulanabilir.</p> },
+        { title: 'Değişiklikler', content: <p>Politika önemli ürün veya mevzuat değişikliklerinde güncellenir. Esaslı değişiklikler platform veya e-posta üzerinden bildirilir; güncel sürüm ve tarihi bu sayfada yayımlanır.</p> },
+      ]}
+    />
   )
 }

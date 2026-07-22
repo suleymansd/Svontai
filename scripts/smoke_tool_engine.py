@@ -113,7 +113,7 @@ def obtain_access_and_tenant(base_url: str) -> tuple[str, str]:
         base_url,
         "POST",
         "/auth/register",
-        payload={"email": email, "password": password, "full_name": full_name},
+        payload={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
     )
     if register.status not in {201, 400}:
         raise SmokeError(f"Register failed: status={register.status} body={register.text[:800]}")
