@@ -375,7 +375,7 @@ def run() -> int:
             base_url=base_url,
             token=token,
             tenant_id=tenant_id,
-            payload={"customer_phone": "+905559998877", "customer_name": "Smoke Lead"},
+            payload={"customer_phone": "+905559998877", "customer_name": "Smoke Lead", "consent_confirmed": True},
         )
         _expect(status, {200}, raw, "voice test call")
         if not isinstance(parsed, dict) or parsed.get("status") != "queued":

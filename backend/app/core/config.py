@@ -141,6 +141,7 @@ class Settings(BaseSettings):
     OPENWA_SESSION_HEALTH_INTERVAL_SECONDS: int = 300
     OPENWA_RECONNECT_BASE_BACKOFF_SECONDS: int = 900
     OPENWA_RECONNECT_MAX_BACKOFF_SECONDS: int = 21600
+    OPENWA_MAX_ACTIVE_SESSIONS: int = 75
     GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS: int = 600
 
     # Google Calendar OAuth (Real Estate Pack)
@@ -480,6 +481,8 @@ class Settings(BaseSettings):
             missing_real_time_config.append("OPENWA_RECONNECT_BASE_BACKOFF_SECONDS>=300")
         if self.OPENWA_RECONNECT_MAX_BACKOFF_SECONDS < self.OPENWA_RECONNECT_BASE_BACKOFF_SECONDS:
             missing_real_time_config.append("OPENWA_RECONNECT_MAX_BACKOFF_SECONDS>=OPENWA_RECONNECT_BASE_BACKOFF_SECONDS")
+        if self.OPENWA_MAX_ACTIVE_SESSIONS < 1:
+            missing_real_time_config.append("OPENWA_MAX_ACTIVE_SESSIONS>=1")
         if self.GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS < 300:
             missing_real_time_config.append("GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS>=300")
         if not 100 <= self.AI_MAX_REPLY_TOKENS <= 4000:

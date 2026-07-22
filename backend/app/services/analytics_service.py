@@ -437,6 +437,56 @@ class AnalyticsService:
             },
         }
 
+    def get_customer_success_summary(self, tenant_id: uuid.UUID, days: int = 30) -> dict:
+        """Return real usage outcomes and a transparent time-saved estimate."""
+        start_at = utc_now_naive() - timedelta(days=days)
+        tenant_messages = self.db.query(Message).join(
+            Conversation, Message.conversation_id == Conversation.id
+        ).join(Bot, Conversation.bot_id == Bot.id).filter(
+            Bot.tenant_id == tenant_id,
+            Message.created_at >= start_at,
+        )
+        incoming = tenant_messages.filter(Message.sender == MessageSender.USER.value).count()
+        ai_replies = tenant_messages.filter(Message.sender == MessageSender.BOT.value).count()
+        conversations = self.db.query(func.count(Conversation.id)).join(Bot).filter(
+            Bot.tenant_id == tenant_id,
+            Conversation.created_at >= start_at,
+        ).scalar() or 0
+        handoffs = self.db.query(func.count(Conversation.id)).join(Bot).filter(
+            Bot.tenant_id == tenant_id,
+            Conversation.updated_at >= start_at,
+            Conversation.status.in_(["waiting", "human_takeover"]),
+        ).scalar() or 0
+        leads = self.db.query(func.count(Lead.id)).filter(
+            Lead.tenant_id == tenant_id,
+            Lead.is_deleted.is_(False),
+            Lead.created_at >= start_at,
+        ).scalar() or 0
+        appointments = self.db.query(func.count(Appointment.id)).filter(
+            Appointment.tenant_id == tenant_id,
+            Appointment.created_at >= start_at,
+        ).scalar() or 0
+        successful_automations = self.db.query(func.count(AutomationRun.id)).filter(
+            AutomationRun.tenant_id == str(tenant_id),
+            AutomationRun.created_at >= start_at,
+            AutomationRun.status == AutomationRunStatus.SUCCESS.value,
+        ).scalar() or 0
+
+        estimated_minutes = int(ai_replies * 2 + appointments * 6 + successful_automations * 3)
+        return {
+            "period_days": days,
+            "messages_received": int(incoming),
+            "ai_replies": int(ai_replies),
+            "response_coverage": round((ai_replies / incoming) * 100, 1) if incoming else 0.0,
+            "conversations": int(conversations),
+            "new_customers": int(leads),
+            "appointments": int(appointments),
+            "successful_automations": int(successful_automations),
+            "human_handoffs": int(handoffs),
+            "estimated_time_saved_minutes": estimated_minutes,
+            "estimate_method": "AI yanıtı başına 2 dk, randevu başına 6 dk, başarılı otomasyon başına 3 dk.",
+        }
+
 
 def get_analytics_service(db: Session) -> AnalyticsService:
     """Get analytics service instance."""

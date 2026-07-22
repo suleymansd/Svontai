@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 
 type CallRow = {
@@ -87,6 +88,7 @@ export default function CallsPage() {
   const [form, setForm] = useState<VoiceSettings>(defaultForm)
   const [testPhone, setTestPhone] = useState('')
   const [testName, setTestName] = useState('')
+  const [testConsent, setTestConsent] = useState(false)
 
   const settingsQuery = useQuery<VoiceSettings>({
     queryKey: ['voice-settings'],
@@ -144,10 +146,12 @@ export default function CallsPage() {
       customer_phone: testPhone,
       customer_name: testName || undefined,
       reason: 'Panelden oluşturulan test araması',
+      consent_confirmed: testConsent,
     }).then((res) => res.data),
     onSuccess: () => {
       setTestPhone('')
       setTestName('')
+      setTestConsent(false)
       queryClient.invalidateQueries({ queryKey: ['voice-intents'] })
       queryClient.invalidateQueries({ queryKey: ['voice-jobs'] })
       toast({ title: 'Test araması kuyruğa alındı' })
@@ -291,8 +295,8 @@ export default function CallsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Arayan numara</Label>
-              <Input disabled={!isVoiceLive} value={form.from_number || ''} onChange={(event) => setForm({ ...form, from_number: event.target.value })} placeholder="+905..." />
+              <Label htmlFor="voice-from-number">Arayan numara</Label>
+              <Input id="voice-from-number" disabled={!isVoiceLive} value={form.from_number || ''} onChange={(event) => setForm({ ...form, from_number: event.target.value })} placeholder="+905..." />
             </div>
             <div className="space-y-2">
               <Label>Arama koşulu</Label>
@@ -357,23 +361,27 @@ export default function CallsPage() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-2">
-              <Label>Telefon</Label>
-              <Input value={testPhone} onChange={(event) => setTestPhone(event.target.value)} placeholder="+905..." />
+              <Label htmlFor="voice-test-phone">Telefon</Label>
+              <Input id="voice-test-phone" value={testPhone} onChange={(event) => setTestPhone(event.target.value)} placeholder="+905..." />
             </div>
             <div className="space-y-2">
-              <Label>İsim</Label>
-              <Input value={testName} onChange={(event) => setTestName(event.target.value)} placeholder="Müşteri adı" />
+              <Label htmlFor="voice-test-name">İsim</Label>
+              <Input id="voice-test-name" value={testName} onChange={(event) => setTestName(event.target.value)} placeholder="Müşteri adı" />
             </div>
             <div className="flex items-end">
-              <Button variant="outline" onClick={() => testMutation.mutate()} disabled={!isVoiceLive || !testPhone || testMutation.isPending}>
+              <Button variant="outline" onClick={() => testMutation.mutate()} disabled={!isVoiceLive || !testPhone || !testConsent || testMutation.isPending}>
                 {isVoiceLive ? 'Test Oluştur' : 'Yakında'}
               </Button>
             </div>
+            <label htmlFor="voice-test-consent" className="flex items-start gap-3 md:col-span-3">
+              <Checkbox id="voice-test-consent" checked={testConsent} onCheckedChange={(checked) => setTestConsent(checked === true)} />
+              <span className="text-sm text-muted-foreground">Aranacak kişinin bu test aramasına izin verdiğini onaylıyorum.</span>
+            </label>
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
+        <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle className="text-xl">Otomatik arama niyetleri</CardTitle>
             </CardHeader>
@@ -401,11 +409,11 @@ export default function CallsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle className="text-xl">Arama kayıtları</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
               <DataTable
                 columns={columns}
                 data={callsQuery.data || []}

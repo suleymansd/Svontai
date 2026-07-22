@@ -50,6 +50,7 @@ from app.services.tool_seed_service import seed_initial_tools
 from app.services.audit_log_service import AuditLogService
 from app.services.autopilot_service import AutopilotService, DEFAULT_PROFILE_TITLE
 from app.services.system_event_service import SystemEventService
+from app.services.system_verification_service import SystemVerificationService
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -370,6 +371,18 @@ class AdminAutopilotRunResponse(BaseModel):
     status: str
     health_score: int
     required_user_actions: list[dict] = Field(default_factory=list)
+
+
+class AdminVerificationResponse(BaseModel):
+    tenant_id: str
+    status: str
+    ready_for_launch: bool
+    score: int
+    summary: str
+    failed_critical: list[str] = Field(default_factory=list)
+    warning_count: int
+    checks: list[dict] = Field(default_factory=list)
+    run_id: str
 
 
 def _launch_stage(profile_status: str, concierge_status: str, required_actions: list[str], health_score: int) -> str:
@@ -1218,6 +1231,19 @@ async def run_admin_tenant_autopilot(
     )
 
 
+@router.post("/tenants/{tenant_id}/verification/run", response_model=AdminVerificationResponse)
+async def run_admin_tenant_verification(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    payload = SystemVerificationService(db).run(tenant, admin)
+    return AdminVerificationResponse(tenant_id=str(tenant.id), **payload)
+
+
 @router.post("/tenants/{tenant_id}/launch", response_model=ConciergeActionResponse)
 async def launch_tenant_from_admin(
     tenant_id: UUID,
@@ -1228,6 +1254,17 @@ async def launch_tenant_from_admin(
     tenant = db.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    verification = SystemVerificationService(db).run(tenant, admin)
+    if not verification["ready_for_launch"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Kritik sistem kontrolleri tamamlanmadan müşteri yayına alınamaz.",
+                "failed_critical": verification["failed_critical"],
+                "score": verification["score"],
+            },
+        )
 
     settings_json = _tenant_settings(tenant)
     profile = dict(settings_json.get("business_profile") or {})
@@ -1245,6 +1282,13 @@ async def launch_tenant_from_admin(
         concierge["ticket_id"] = _ensure_concierge_ticket(db, tenant, admin, "Müşteri yayına alındı.")
     settings_json["business_profile"] = profile
     settings_json["concierge_enrichment"] = concierge
+    settings_json["production_verification"] = {
+        "status": "ready",
+        "score": verification["score"],
+        "run_id": verification["run_id"],
+        "verified_by": str(admin.id),
+        "verified_at": utc_now_naive().isoformat(),
+    }
     tenant.settings = settings_json
     _sync_profile_to_bot(db, tenant, profile)
     db.commit()

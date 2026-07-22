@@ -254,7 +254,7 @@ export const voiceAutomationApi = {
     api.get('/voice-automation/intents', { params }),
   listJobs: (params?: { status?: string; limit?: number }) =>
     api.get('/voice-automation/jobs', { params }),
-  testCall: (data: { customer_phone: string; customer_name?: string; reason?: string }) =>
+  testCall: (data: { customer_phone: string; customer_name?: string; reason?: string; consent_confirmed: boolean }) =>
     api.post('/voice-automation/test-call', data),
 }
 
@@ -309,6 +309,7 @@ export const adminApi = {
     status: 'customer_collected' | 'admin_enriched' | 'ready'
   }) => api.patch(`/admin/tenants/${tenantId}/business-profile`, data),
   runTenantAutopilot: (tenantId: string) => api.post(`/admin/tenants/${tenantId}/autopilot/run`),
+  runTenantVerification: (tenantId: string) => api.post(`/admin/tenants/${tenantId}/verification/run`),
   launchTenant: (tenantId: string) => api.post(`/admin/tenants/${tenantId}/launch`),
   updateTenantRealEstatePack: (id: string, data: {
     enabled: boolean
@@ -500,6 +501,7 @@ export const analyticsApi = {
   getUsageSummary: () => api.get('/analytics/usage-summary'),
   getOperationalReport: (period: 'today' | 'week' = 'today') =>
     api.get('/analytics/operational-report', { params: { period } }),
+  getCustomerSuccess: (days: number = 30) => api.get('/analytics/customer-success', { params: { days } }),
 }
 
 // Operator API
@@ -847,6 +849,7 @@ export const notificationsApi = {
 export const autopilotApi = {
   getStatus: () => api.get('/setup/autopilot/status'),
   run: () => api.post('/setup/autopilot/run'),
+  verify: () => api.post('/setup/autopilot/verify'),
 }
 
 export const agencyApi = {
@@ -882,6 +885,8 @@ export const ticketsApi = {
   get: (id: string) => api.get(`/tickets/${id}`),
   create: (data: { subject: string; priority: string; message: string }) =>
     api.post('/tickets', data),
+  createPrivacyRequest: (data: { request_type: 'export' | 'deletion' | 'correction'; consent_ack: boolean; note?: string }) =>
+    api.post('/tickets/privacy-requests', data),
   addMessage: (id: string, data: { body: string }) =>
     api.post(`/tickets/${id}/messages`, data),
   update: (id: string, data: Partial<{ status: string; priority: string; assigned_to?: string | null }>) =>

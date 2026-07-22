@@ -48,6 +48,7 @@ from app.models.automation import AutomationChannel, AutomationRunStatus
 from app.services.openwa_client import OpenWAClient, OpenWAError, openwa_client
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 from app.services.push_notification_service import send_tenant_push_notification
+from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
 
 
 logger = logging.getLogger(__name__)
@@ -445,6 +446,22 @@ async def process_whatsapp_reply_in_background(
                 conversation=conversation,
                 reply=reply,
             )
+        quality = AIResponseQualityService().assess(
+            reply=reply,
+            conversation=conversation,
+            knowledge_items=knowledge_items,
+            bot_settings=bot.settings,
+            appointment_confirmed=appointment is not None,
+        )
+        reply = quality.reply
+        handoff_ticket = None
+        if quality.requires_handoff:
+            selected_media = None
+            handoff_ticket = HumanHandoffService(db).escalate(
+                conversation,
+                str(tenant_id),
+                quality.reasons,
+            )
         if not reply.strip() and selected_media is None:
             logger.warning(
                 "whatsapp.direct_reply_empty tenant_id=%s message_id=%s",
@@ -512,6 +529,16 @@ async def process_whatsapp_reply_in_background(
                 tag="svontai-ai-appointment",
                 extra={"appointment_id": str(appointment.id)},
             )
+        if handoff_ticket is not None:
+            await send_tenant_push_notification(
+                tenant_id=tenant_id,
+                event_type="new_lead",
+                title="İnsan kontrolü gerekiyor",
+                body="Bir AI yanıtı güvenli şekilde durduruldu ve operatör kuyruğuna alındı.",
+                url="/dashboard/operator",
+                tag="svontai-ai-quality",
+                extra={"ticket_id": handoff_ticket.id, "conversation_id": str(conversation.id)},
+            )
         SystemEventService(db).log(
             tenant_id=str(tenant_id),
             source="whatsapp",
@@ -525,6 +552,9 @@ async def process_whatsapp_reply_in_background(
                 "outgoing_message_id": send_result.get("message_id"),
                 "media_message_id": media_message_id,
                 "fallback_from_n8n": bool(use_n8n),
+                "quality_passed": quality.passed,
+                "quality_reasons": list(quality.reasons),
+                "handoff_ticket_id": handoff_ticket.id if handoff_ticket else None,
             },
             correlation_id=correlation_id,
         )

@@ -39,6 +39,7 @@ from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
 from app.services.push_notification_service import send_tenant_push_notification
 from app.services.system_event_service import SystemEventService
+from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1/n8n", tags=["n8n Tools"])
@@ -279,6 +280,22 @@ async def generate_ai_reply(
             conversation=conversation,
             reply=reply,
         )
+    quality = AIResponseQualityService().assess(
+        reply=reply,
+        conversation=conversation,
+        knowledge_items=knowledge_items,
+        bot_settings=bot.settings,
+        appointment_confirmed=appointment is not None,
+    )
+    reply = quality.reply
+    handoff_ticket = None
+    if quality.requires_handoff:
+        selected_media = None
+        handoff_ticket = HumanHandoffService(db).escalate(
+            conversation,
+            str(tenant.id),
+            quality.reasons,
+        )
     if selected_media is not None and not reply.strip():
         reply = selected_media.caption or "İstediğiniz içeriği paylaşıyorum."
     if appointment is not None:
@@ -291,9 +308,20 @@ async def generate_ai_reply(
             tag="svontai-ai-appointment",
             extra={"appointment_id": str(appointment.id)},
         )
+    if handoff_ticket is not None:
+        await send_tenant_push_notification(
+            tenant_id=tenant.id,
+            event_type="new_lead",
+            title="İnsan kontrolü gerekiyor",
+            body="Bir AI yanıtı kalite kontrolünde durduruldu.",
+            url="/dashboard/operator",
+            tag="svontai-ai-quality",
+            extra={"ticket_id": handoff_ticket.id, "conversation_id": str(conversation.id)},
+        )
     return AIReplyResponse(
         shouldReply=bool(reply.strip() or selected_media),
         replyText=reply,
+        handoffRequired=quality.requires_handoff,
         appointmentCreated=appointment is not None,
         appointmentId=str(appointment.id) if appointment else None,
         mediaAction=(

@@ -29,9 +29,11 @@ from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.conversation import Conversation, ConversationSource
+from app.models.knowledge import BotKnowledgeItem
 from app.models.message import Message, MessageSender
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.services.assistant_media_service import AssistantMediaService
+from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
 
 logger = logging.getLogger(__name__)
 
@@ -191,13 +193,51 @@ async def send_whatsapp_message(
                 error=error_msg,
                 run_id=run_id
             )
+
+        outbound_text = body.text
+        conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
+        if conversation is not None:
+            knowledge_items = db.query(BotKnowledgeItem).filter(
+                BotKnowledgeItem.bot_id == conversation.bot_id
+            ).all()
+            meta = body.meta or {}
+            appointment_confirmed = bool(
+                meta.get("appointmentId")
+                or meta.get("appointment_id")
+                or meta.get("appointmentCreated")
+                or meta.get("appointment_created")
+            )
+            quality = AIResponseQualityService().assess(
+                reply=outbound_text,
+                conversation=conversation,
+                knowledge_items=knowledge_items,
+                bot_settings=conversation.bot.settings,
+                appointment_confirmed=appointment_confirmed,
+            )
+            outbound_text = quality.reply
+            if quality.requires_handoff:
+                handoff_ticket = HumanHandoffService(db).escalate(
+                    conversation,
+                    tenant_id,
+                    quality.reasons,
+                )
+                background_tasks.add_task(
+                    send_tenant_push_notification,
+                    tenant_id=uuid.UUID(tenant_id),
+                    event_type="new_lead",
+                    title="İnsan kontrolü gerekiyor",
+                    body="Bir otomasyon yanıtı gönderim öncesi güvenli moda alındı.",
+                    url="/dashboard/operator",
+                    tag="svontai-ai-quality",
+                    extra={"ticket_id": handoff_ticket.id, "conversation_id": str(conversation.id)},
+                )
         
         # Send through the tenant-selected provider.
         try:
             result = await whatsapp_gateway_service.send_text(
                 account,
                 to=body.to,
-                text=body.text
+                text=outbound_text
             )
             
             wa_message_id = result.get("message_id")
@@ -209,7 +249,7 @@ async def send_whatsapp_message(
             
             # Store message in conversation if we can find it
             await _store_bot_message(
-                db, tenant_id, body.to, body.text, wa_message_id
+                db, tenant_id, body.to, outbound_text, wa_message_id
             )
 
             # Billing-aware metering (outbound)
@@ -507,6 +547,32 @@ async def update_automation_status(
 # ===========================================
 # Helper Functions
 # ===========================================
+
+def _find_whatsapp_conversation(
+    db: Session,
+    tenant_id: str,
+    to_number: str,
+    bot_id: Optional[str] = None,
+) -> Optional[Conversation]:
+    try:
+        parsed_tenant_id = uuid.UUID(tenant_id)
+    except ValueError:
+        return None
+    digits = (to_number or "").strip().lstrip("+")
+    candidates = {value for value in (to_number.strip(), digits, f"+{digits}") if value}
+    if not candidates:
+        return None
+    query = db.query(Conversation).join(Bot, Conversation.bot_id == Bot.id).filter(
+        Bot.tenant_id == parsed_tenant_id,
+        Conversation.source == ConversationSource.WHATSAPP.value,
+        Conversation.external_user_id.in_(candidates),
+    )
+    if bot_id:
+        try:
+            query = query.filter(Bot.id == uuid.UUID(bot_id))
+        except ValueError:
+            return None
+    return query.order_by(Conversation.updated_at.desc()).first()
 
 async def _get_whatsapp_account(
     db: Session,

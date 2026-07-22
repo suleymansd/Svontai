@@ -181,3 +181,16 @@ async def get_operational_report(
     """Generate a real-data daily/weekly report for mobile sharing."""
     _ = current_user
     return AnalyticsService(db).get_operational_report(tenant, period)
+
+
+@router.get("/customer-success")
+async def get_customer_success(
+    days: int = Query(default=30, ge=1, le=90),
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+):
+    """Show measurable customer outcomes without demo or fabricated data."""
+    _ = current_user
+    return AnalyticsService(db).get_customer_success_summary(tenant.id, days)

@@ -99,7 +99,7 @@ def test_admin_launch_board_shows_concierge_pipeline(client):
     assert payload["pending_concierge"] >= 1
 
 
-def test_admin_can_enrich_run_autopilot_and_launch_tenant(client):
+def test_admin_can_enrich_run_autopilot_and_launch_tenant(client, monkeypatch):
     _, tenant_id = _register_login_and_create_tenant(client)
     admin_token = _create_and_login_super_admin(client)
     headers = {"Authorization": f"Bearer {admin_token}"}
@@ -133,6 +133,17 @@ def test_admin_can_enrich_run_autopilot_and_launch_tenant(client):
     assert autopilot.status_code == 200, autopilot.text
     assert autopilot.json()["tenant_id"] == tenant_id
     assert autopilot.json()["health_score"] >= 0
+
+    monkeypatch.setattr(
+        "app.api.routers.admin.SystemVerificationService.run",
+        lambda self, tenant, user: {
+            "ready_for_launch": True,
+            "status": "ready",
+            "score": 100,
+            "run_id": "test-verification-run",
+            "failed_critical": [],
+        },
+    )
 
     launch = client.post(f"/admin/tenants/{tenant_id}/launch", headers=headers)
     assert launch.status_code == 200, launch.text

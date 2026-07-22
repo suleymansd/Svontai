@@ -198,6 +198,11 @@ have expired or been re-encrypted.
 - The n8n service must also receive `SVONTAI_BACKEND_URL` and the same `N8N_ERROR_WEBHOOK_SECRET` as the backend.
 - Move n8n to queue mode with Redis and separate workers only when observed concurrent execution demand exceeds the regular-mode limit.
 
+## OpenWA capacity
+- `OPENWA_MAX_ACTIVE_SESSIONS` limits how many connected or connecting tenant sessions one gateway may own; default `75`.
+- Setup and repair endpoints reject new sessions at the ceiling instead of overloading the gateway.
+- Scale beyond the measured ceiling with another isolated gateway and persistent volume plus explicit tenant routing. Do not increase the limit without a load test.
+
 
 ## Rate limiting / Abuse protection
 - Built-in API rate limits protect global IP traffic, auth/register/login/refresh, email verification, password reset, WhatsApp webhooks, public chat, public lead capture, assistant/tool execution and voice test-call endpoints.

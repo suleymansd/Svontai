@@ -41,6 +41,9 @@ interface ConversationWithStatus {
   updated_at: string
   last_message: string | null
   message_count: number
+  customer_name: string | null
+  customer_phone: string | null
+  handoff_reason: string[]
 }
 
 interface Message {
@@ -210,6 +213,13 @@ export default function OperatorPage() {
       {/* Filters */}
       <div className="flex gap-2">
         <Button
+          variant={statusFilter === 'waiting' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setStatusFilter('waiting')}
+        >
+          Kontrol Bekleyen
+        </Button>
+        <Button
           variant={!statusFilter ? 'default' : 'outline'}
           size="sm"
           onClick={() => setStatusFilter(undefined)}
@@ -273,7 +283,7 @@ export default function OperatorPage() {
                           <Globe className="w-4 h-4 text-blue-600" />
                         )}
                         <span className="font-medium text-sm truncate max-w-[120px]">
-                          {conv.external_user_id}
+                          {conv.customer_name || conv.customer_phone || conv.external_user_id}
                         </span>
                       </div>
                       <Badge className={cn('text-xs', statusColors[conv.status])}>
@@ -285,6 +295,11 @@ export default function OperatorPage() {
                         {conv.last_message}
                       </p>
                     )}
+                    {conv.handoff_reason?.length > 0 ? (
+                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                        Kalite kontrolü: {conv.handoff_reason.join(', ')}
+                      </p>
+                    ) : null}
                     <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                       <span>{conv.message_count} mesaj</span>
                       {conv.has_lead && (
@@ -311,7 +326,7 @@ export default function OperatorPage() {
                       ) : (
                         <Globe className="w-5 h-5 text-blue-600" />
                       )}
-                      {selectedConv.external_user_id}
+                      {selectedConv.customer_name || selectedConv.customer_phone || selectedConv.external_user_id}
                     </CardTitle>
                     <CardDescription>
                       {selectedConv.message_count} mesaj • {selectedConv.source === 'whatsapp' ? 'WhatsApp' : 'Widget'}

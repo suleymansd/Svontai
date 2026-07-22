@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, RefreshCw, ShieldCheck, UserCheck, Wrench } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FlaskConical, RefreshCw, ShieldCheck, UserCheck, Wrench, XCircle } from 'lucide-react'
 import { autopilotApi, integrationsApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -39,6 +39,17 @@ export default function AutopilotPage() {
       queryClient.invalidateQueries({ queryKey: ['integration-diagnostics'] })
     },
   })
+  const verificationMutation = useMutation({
+    mutationFn: () => autopilotApi.verify().then((res) => res.data),
+    onSuccess: (data) => {
+      toast({
+        title: data.ready_for_launch ? 'Sistem testi başarılı' : 'Kontrol gereken noktalar var',
+        description: data.summary,
+        variant: data.ready_for_launch ? 'default' : 'destructive',
+      })
+      queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
+    },
+  })
 
   const status = statusQuery.data
   const diagnostics = diagnosticsQuery.data?.items || status?.diagnostics || []
@@ -46,6 +57,8 @@ export default function AutopilotPage() {
   const requiredActions = status?.required_user_actions || []
   const concierge = status?.concierge_enrichment
   const businessProfile = status?.business_profile
+  const verification = verificationMutation.data || status?.latest_verification
+  const verificationChecks = verification?.checks || []
 
   return (
     <ContentContainer>
@@ -92,6 +105,57 @@ export default function AutopilotPage() {
                 {concierge?.status || businessProfile?.status || 'otomatik'}
               </Badge>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <div>
+              <CardTitle>Tek Tık Sistem Testi</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ücretli arama veya mesaj göndermeden veritabanı, worker, AI, WhatsApp, bot ve işletme bilgisini birlikte doğrular.
+              </p>
+            </div>
+            <Button onClick={() => verificationMutation.mutate()} disabled={verificationMutation.isPending}>
+              <FlaskConical className="mr-2 h-4 w-4" />
+              {verificationMutation.isPending ? 'Test ediliyor...' : 'Sistemi Test Et'}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!verification ? (
+              <p className="text-sm text-muted-foreground">Henüz toplu sistem testi çalıştırılmadı.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
+                  {verification.ready_for_launch || verification.status === 'completed' ? (
+                    <CheckCircle2 className="h-5 w-5 text-success" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-warning" />
+                  )}
+                  <p className="font-medium">
+                    Skor: {verification.score}/100 · {verification.summary || (verification.status === 'completed' ? 'Test tamamlandı' : 'Kontrol gerekli')}
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {verificationChecks.map((check: any) => (
+                    <div key={check.key} className="flex items-start gap-3 rounded-lg border p-4">
+                      {check.status === 'passed' ? (
+                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+                      ) : check.status === 'warning' ? (
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium">{check.label}</p>
+                        <p className="text-sm text-muted-foreground">{check.message}</p>
+                        {check.action_url ? <a className="mt-2 inline-block text-sm text-primary hover:underline" href={check.action_url}>Düzelt</a> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

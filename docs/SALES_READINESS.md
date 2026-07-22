@@ -1,6 +1,6 @@
 # SvontAI Sales Readiness
 
-Last reviewed: 21 July 2026
+Last reviewed: 22 July 2026
 
 ## Launch scope
 
@@ -29,6 +29,15 @@ issues that require customer action.
 - Public/protected production smoke scripts and recurring GitHub uptime checks.
 - Mandatory super-admin 2FA with a password-gated, short-lived first-login enrollment flow.
 - Live Twilio calls with tenant limits plus platform daily/monthly caps, destination allowlist and call duration limit.
+- One-click tenant verification covering database, bot/profile readiness, AI, WhatsApp, worker, n8n,
+  Google, email, storage, voice and notification health before an admin can mark a customer live.
+- Deterministic AI delivery guard on direct, widget and n8n send paths; unsupported price or
+  appointment claims, repeated replies and internal prompt leakage trigger a deduplicated human handoff.
+- Customer-visible outcome metrics based on real messages, leads, appointments, automations and
+  handoffs; time-saved values use documented deterministic coefficients rather than demo data.
+- Auditable KVKK export, correction and deletion requests; destructive deletion is never performed
+  immediately from an unreviewed customer action.
+- Explicit consent recording for manually initiated test calls and a configurable OpenWA active-session ceiling.
 
 ## Deliberately unavailable at launch
 
@@ -38,7 +47,8 @@ issues that require customer action.
 
 ## External actions before the first paid customer
 
-1. Deploy the release and confirm API `/health/ready`, Worker, OpenWA, n8n and n8n-runners are all healthy.
+1. Deploy the release, run **Sistem Durumu > Sistemi Test Et** for the smoke tenant and confirm API
+   `/health/ready`, Worker, OpenWA, n8n and n8n-runners are all healthy.
 2. Scan a real WhatsApp QR and complete one no-charge inbound message test from another phone.
 3. Save the tenant working plan, then confirm the reply, real slot selection, appointment event, notification and daily report.
 4. Create a dedicated smoke customer and add its email/password to GitHub uptime secrets.
@@ -49,6 +59,8 @@ issues that require customer action.
 9. Set Railway workspace usage alert and hard limit from **Workspace > Usage > Set Usage Limits**. Choose a hard limit that can stop all services without interrupting an active paid customer unexpectedly.
 10. Enable Twilio balance/usage alerts and keep outbound geo permissions limited to sold markets. Application defaults allow only `+90`, 50 calls/day, 500 calls/month and 300 seconds/call.
 11. Complete the first super-admin login enrollment after `SUPER_ADMIN_REQUIRE_2FA=true` is deployed and store the authenticator recovery process in the company password vault.
+12. Keep `OPENWA_MAX_ACTIVE_SESSIONS` below measured single-gateway capacity. Add a second isolated
+    gateway and explicit tenant routing before onboarding beyond that ceiling; raising the number alone is not scaling.
 
 ## Release gate
 
