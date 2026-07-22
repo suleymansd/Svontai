@@ -66,7 +66,7 @@ def test_voice_settings_and_test_call_job_flow(client):
 
     intent_resp = client.post(
         "/voice-automation/test-call",
-        json={"customer_phone": "+905559998877", "customer_name": "Test Lead"},
+        json={"customer_phone": "+905559998877", "customer_name": "Test Lead", "consent_confirmed": True},
         headers=headers,
     )
     assert intent_resp.status_code == 200, intent_resp.text
@@ -111,7 +111,7 @@ def test_voice_live_twilio_job_uses_real_provider_contract(client, monkeypatch):
 
     intent_resp = client.post(
         "/voice-automation/test-call",
-        json={"customer_phone": "+905559998877", "customer_name": "Live Test Lead"},
+        json={"customer_phone": "+905559998877", "customer_name": "Live Test Lead", "consent_confirmed": True},
         headers=headers,
     )
     assert intent_resp.status_code == 200, intent_resp.text

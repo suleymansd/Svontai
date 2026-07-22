@@ -35,6 +35,7 @@ from app.services.appointment_availability_service import AppointmentAvailabilit
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.email_service import EmailService
 from app.services.system_event_service import SystemEventService
+from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
 from app.core.config import settings
 from app.core.time import utc_now_naive
 from app.core.rate_limit import (
@@ -321,12 +322,23 @@ async def send_chat_message(
             if tenant else None
         ),
     )
+    appointment = None
     if tenant and assistant_profile_service.capability_enabled(bot, "appointment_management"):
-        ai_response, _ = appointment_service.apply_ai_action(
+        ai_response, appointment = appointment_service.apply_ai_action(
             tenant=tenant,
             conversation=conversation,
             reply=ai_response,
         )
+    quality = AIResponseQualityService().assess(
+        reply=ai_response,
+        conversation=conversation,
+        knowledge_items=knowledge_items,
+        bot_settings=bot.settings,
+        appointment_confirmed=appointment is not None,
+    )
+    ai_response = quality.reply
+    if quality.requires_handoff and tenant:
+        HumanHandoffService(db).escalate(conversation, str(tenant.id), quality.reasons)
     
     # Save bot message
     bot_message = Message(

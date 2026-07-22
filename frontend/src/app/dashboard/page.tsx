@@ -7,6 +7,7 @@ import {
   Bot,
   CalendarCheck,
   CheckCircle2,
+  Clock3,
   LifeBuoy,
   MessageSquare,
   PhoneCall,
@@ -14,8 +15,9 @@ import {
   ShieldCheck,
   Smartphone,
   Users,
+  Workflow,
 } from 'lucide-react'
-import { autopilotApi, conversationApi, leadApi } from '@/lib/api'
+import { analyticsApi, autopilotApi, conversationApi, leadApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,6 +42,10 @@ export default function DashboardPage() {
   const { data: leads, isLoading: leadsLoading } = useQuery({
     queryKey: ['customer-dashboard-leads'],
     queryFn: () => leadApi.list({ limit: 5 }).then(res => res.data),
+  })
+  const { data: customerSuccess, isLoading: customerSuccessLoading } = useQuery({
+    queryKey: ['customer-success', 30],
+    queryFn: () => analyticsApi.getCustomerSuccess(30).then(res => res.data),
   })
   const runAutopilotMutation = useMutation({
     mutationFn: () => autopilotApi.run().then(res => res.data),
@@ -141,6 +147,37 @@ export default function DashboardPage() {
         </Card>
 
         <OperationalReportCard />
+
+        <Card className="border border-border/70 shadow-soft">
+          <CardHeader>
+            <CardTitle>Son 30 Günde Sağlanan Değer</CardTitle>
+            <p className="text-sm text-muted-foreground">Yalnızca gerçek mesaj, müşteri, randevu ve otomasyon kayıtlarından hesaplanır.</p>
+          </CardHeader>
+          <CardContent>
+            {customerSuccessLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <KPIStat label="Otomatik Yanıt" value={customerSuccess?.ai_replies || 0} icon={<MessageSquare className="h-5 w-5" />} />
+                <KPIStat label="Yeni Müşteri" value={customerSuccess?.new_customers || 0} icon={<Users className="h-5 w-5" />} />
+                <KPIStat label="Randevu" value={customerSuccess?.appointments || 0} icon={<CalendarCheck className="h-5 w-5" />} />
+                <KPIStat
+                  label="Tahmini Kazanılan Zaman"
+                  value={`${Math.round(Number(customerSuccess?.estimated_time_saved_minutes || 0) / 6) / 10} saat`}
+                  icon={<Clock3 className="h-5 w-5" />}
+                />
+              </div>
+            )}
+            {customerSuccess ? (
+              <div className="mt-4 flex flex-wrap items-center gap-4 border-t pt-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2"><Workflow className="h-4 w-4" /> {customerSuccess.successful_automations} başarılı otomasyon</span>
+                <span>Yanıt kapsamı: %{customerSuccess.response_coverage}</span>
+                <span>İnsan kontrolüne alınan: {customerSuccess.human_handoffs}</span>
+                <span title={customerSuccess.estimate_method}>Zaman değeri tahmini kullanım katsayılarıyla hesaplanır.</span>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border border-border/70 shadow-soft">

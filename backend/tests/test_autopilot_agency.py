@@ -62,6 +62,16 @@ def test_autopilot_run_is_idempotent_and_exposes_diagnostics(client):
     second_run = client.post("/setup/autopilot/run", headers=headers)
     assert second_run.status_code == 200, second_run.text
 
+    verification = client.post("/setup/autopilot/verify", headers=headers)
+    assert verification.status_code == 200, verification.text
+    assert verification.json()["status"] == "blocked"
+    assert "business_profile" in verification.json()["failed_critical"]
+    assert any(item["key"] == "database" for item in verification.json()["checks"])
+
+    status_after_verification = client.get("/setup/autopilot/status", headers=headers)
+    assert status_after_verification.status_code == 200, status_after_verification.text
+    assert status_after_verification.json()["latest_verification"]["score"] == verification.json()["score"]
+
     prepared_bots = client.get("/bots", headers=headers)
     assert prepared_bots.status_code == 200, prepared_bots.text
     assert prepared_bots.json()[0]["name"] == "Autopilot Tenant Asistanı"

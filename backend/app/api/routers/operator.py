@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
@@ -52,6 +52,9 @@ class ConversationWithStatus(BaseModel):
     updated_at: str
     last_message: Optional[str]
     message_count: int
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    handoff_reason: list[str] = Field(default_factory=list)
 
 
 # Endpoints
@@ -105,7 +108,10 @@ async def list_operator_conversations(
             last_message_subq.label("last_message"),
             message_count_subq.label("message_count")
         )
-        .order_by(Conversation.updated_at.desc())
+        .order_by(
+            Conversation.status.in_([ConversationStatus.WAITING.value, ConversationStatus.HUMAN_TAKEOVER.value]).desc(),
+            Conversation.updated_at.desc(),
+        )
         .offset(skip)
         .limit(limit)
         .all()
@@ -125,7 +131,10 @@ async def list_operator_conversations(
             created_at=conv.created_at.isoformat(),
             updated_at=conv.updated_at.isoformat(),
             last_message=last_message,
-            message_count=message_count or 0
+            message_count=message_count or 0,
+            customer_name=conv.customer_name,
+            customer_phone=conv.customer_phone,
+            handoff_reason=list((conv.extra_data or {}).get("handoff_reason") or []),
         )
         for conv, last_message, message_count in rows
     ]

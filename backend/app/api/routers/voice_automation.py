@@ -3,14 +3,15 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_tenant
+from app.dependencies.auth import get_current_tenant, get_current_user
 from app.dependencies.permissions import require_permissions
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.models.voice_automation import CallIntent, OutboundCallJob
 from app.services.voice_automation_service import VoiceAutomationService
 from app.core.rate_limit import rate_limit_key, require_rate_limit, voice_test_call_rate_limiter
@@ -101,6 +102,7 @@ class TestCallRequest(BaseModel):
     customer_phone: str = Field(..., min_length=6, max_length=60)
     customer_name: str | None = Field(default=None, max_length=255)
     reason: str = Field(default="Panel test araması", max_length=500)
+    consent_confirmed: bool = False
 
 
 class VoiceCapabilitiesResponse(BaseModel):
@@ -183,6 +185,7 @@ async def create_test_call_intent(
     payload: TestCallRequest,
     request: Request,
     current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["settings:write"])),
 ):
@@ -191,6 +194,11 @@ async def create_test_call_intent(
         rate_limit_key(request, "voice-test-call", current_tenant.id),
         "Çok fazla test araması isteği. Lütfen daha sonra tekrar deneyin.",
     )
+    if not payload.consent_confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Aranacak kişinin bu test aramasına izin verdiğini onaylamanız gerekir.",
+        )
     service = VoiceAutomationService(db)
     intent = CallIntent(
         tenant_id=current_tenant.id,
@@ -200,7 +208,11 @@ async def create_test_call_intent(
         reason=payload.reason,
         status="pending",
         confidence=100,
-        meta_json={"source": "panel_test"},
+        meta_json={
+            "source": "panel_test",
+            "consent_confirmed": True,
+            "consent_confirmed_by": str(current_user.id),
+        },
     )
     db.add(intent)
     db.commit()

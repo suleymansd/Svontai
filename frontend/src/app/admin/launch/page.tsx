@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Building2, CheckCircle2, LifeBuoy, Loader2, PlayCircle, Rocket, ShieldCheck, UserCheck } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, FlaskConical, LifeBuoy, Loader2, PlayCircle, Rocket, ShieldCheck, UserCheck } from 'lucide-react'
 import { adminApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -75,11 +75,32 @@ export default function LaunchBoardPage() {
     },
   })
 
+  const verificationMutation = useMutation({
+    mutationFn: (tenantId: string) => adminApi.runTenantVerification(tenantId),
+    onSuccess: (response) => {
+      refreshLaunchBoard()
+      const result = response.data
+      toast({
+        title: result.ready_for_launch ? 'Satış öncesi test başarılı' : 'Kritik kontroller eksik',
+        description: result.summary,
+        variant: result.ready_for_launch ? 'default' : 'destructive',
+      })
+    },
+  })
+
   const launchMutation = useMutation({
     mutationFn: (tenantId: string) => adminApi.launchTenant(tenantId),
     onSuccess: () => {
       refreshLaunchBoard()
       toast({ title: 'Müşteri yayına alındı', description: 'Concierge durumu launched olarak işaretlendi.' })
+    },
+    onError: (error: any) => {
+      const detail = error?.response?.data?.detail
+      toast({
+        title: 'Yayına alma durduruldu',
+        description: detail?.message || 'Önce kritik sistem kontrollerini tamamlayın.',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -153,6 +174,15 @@ export default function LaunchBoardPage() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={verificationMutation.isPending}
+                        onClick={() => verificationMutation.mutate(item.tenant_id)}
+                      >
+                        {verificationMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FlaskConical className="mr-2 h-4 w-4" />}
+                        Satış Testi
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"

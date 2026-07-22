@@ -180,6 +180,8 @@ class OnboardingService:
         account = self.get_whatsapp_account(tenant_id)
         if account and account.is_active and account.provider != "openwa":
             raise OpenWAError("Önce mevcut Meta WhatsApp bağlantısını kaldırın.")
+        if not account or not account.provider_session_id:
+            self._require_openwa_capacity(tenant_id)
 
         self.initialize_onboarding_steps(tenant_id)
         self.update_step_status(tenant_id, "start_setup", StepStatus.DONE)
@@ -251,6 +253,20 @@ class OnboardingService:
         )
         return self.openwa_status(account, started)
 
+    def _require_openwa_capacity(self, tenant_id: UUID) -> None:
+        sessions_in_use = self.db.query(WhatsAppAccount).filter(
+            WhatsAppAccount.provider == "openwa",
+            WhatsAppAccount.provider_session_id.isnot(None),
+            WhatsAppAccount.is_active.is_(True),
+            WhatsAppAccount.tenant_id != tenant_id,
+        ).count()
+        capacity = max(1, settings.OPENWA_MAX_ACTIVE_SESSIONS)
+        if sessions_in_use >= capacity:
+            raise OpenWAError(
+                "WhatsApp QR kapasitesi dolu. Yönetici yeni gateway kapasitesi açmalıdır.",
+                status_code=503,
+            )
+
     async def reconnect_openwa(
         self,
         tenant_id: UUID,
@@ -289,6 +305,8 @@ class OnboardingService:
                     raise
 
         if force_new_session or not session:
+            if not old_session_id:
+                self._require_openwa_capacity(tenant_id)
             session = await openwa_client.create_or_get_session(session_name)
 
         session_id = str(session.get("id") or old_session_id or "")

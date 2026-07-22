@@ -66,6 +66,7 @@ export default function DashboardLayout({
   const { user, tenant, isAuthenticated, logout } = useAuthStore()
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const [mounted, setMounted] = useState(false)
+  const [authHydrated, setAuthHydrated] = useState(false)
 
   // Fetch onboarding status
   const { data: onboardingStatus } = useQuery({
@@ -83,6 +84,16 @@ export default function DashboardLayout({
 
   useEffect(() => {
     setMounted(true)
+    setAuthHydrated(useAuthStore.persist.hasHydrated())
+    const unsubscribe = useAuthStore.persist.onFinishHydration(() => setAuthHydrated(true))
+    if (!useAuthStore.persist.hasHydrated()) {
+      void useAuthStore.persist.rehydrate()
+    }
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (!authHydrated) return
     if (!isAuthenticated) {
       router.push('/login')
       return
@@ -95,7 +106,7 @@ export default function DashboardLayout({
         router.push('/admin')
       }
     }
-  }, [isAuthenticated, user?.is_admin, router])
+  }, [authHydrated, isAuthenticated, user?.is_admin, router])
 
   useEffect(() => {
     if (!mounted || !isAuthenticated || !onboardingStatus) return
@@ -118,7 +129,7 @@ export default function DashboardLayout({
     router.push('/admin')
   }
 
-  if (!mounted || !isAuthenticated) {
+  if (!mounted || !authHydrated || !isAuthenticated) {
     return null
   }
 

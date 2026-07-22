@@ -22,7 +22,10 @@ import {
   Play,
   AlertCircle,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Download,
+  Trash2,
+  FilePenLine
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,7 +38,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useAuthStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
-import { apiKeysApi, authApi, automationApi, subscriptionApi } from '@/lib/api'
+import { apiKeysApi, authApi, automationApi, subscriptionApi, ticketsApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
@@ -72,6 +75,8 @@ export default function SettingsPage() {
   const [twoFactorEnableCode, setTwoFactorEnableCode] = useState('')
   const [twoFactorDisablePassword, setTwoFactorDisablePassword] = useState('')
   const [twoFactorDisableCode, setTwoFactorDisableCode] = useState('')
+  const [privacyRequestType, setPrivacyRequestType] = useState<'export' | 'deletion' | 'correction' | null>(null)
+  const [privacyNote, setPrivacyNote] = useState('')
 
   const [profileData, setProfileData] = useState({
     full_name: user?.full_name || '',
@@ -303,6 +308,26 @@ export default function SettingsPage() {
       toast({
         title: 'Hata',
         description: error.response?.data?.detail || '2FA kapatılamadı',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const privacyRequestMutation = useMutation({
+    mutationFn: (requestType: 'export' | 'deletion' | 'correction') => ticketsApi.createPrivacyRequest({
+      request_type: requestType,
+      consent_ack: true,
+      note: privacyNote || undefined,
+    }),
+    onSuccess: (response) => {
+      setPrivacyRequestType(null)
+      setPrivacyNote('')
+      toast({ title: 'Talebiniz kaydedildi', description: `Takip numarası: ${response.data?.id}` })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Talep oluşturulamadı',
+        description: error.response?.data?.detail || 'Lütfen tekrar deneyin.',
         variant: 'destructive',
       })
     },
@@ -864,6 +889,24 @@ export default function SettingsPage() {
                       )}
                     </div>
                   </div>
+
+                  <div className="space-y-4 border-t pt-6">
+                    <div>
+                      <p className="font-medium">Veri ve Gizlilik İşlemleri</p>
+                      <p className="text-sm text-muted-foreground">Talepler kayıt altına alınır ve kimlik doğrulaması sonrası güvenli şekilde işlenir.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => setPrivacyRequestType('export')}>
+                        <Download className="mr-2 h-4 w-4" /> Verilerimi İste
+                      </Button>
+                      <Button variant="outline" onClick={() => setPrivacyRequestType('correction')}>
+                        <FilePenLine className="mr-2 h-4 w-4" /> Düzeltme Talebi
+                      </Button>
+                      <Button variant="destructive" onClick={() => setPrivacyRequestType('deletion')}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Silme Talebi
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1185,6 +1228,50 @@ export default function SettingsPage() {
                     ) : (
                       '2FA Kapat'
                     )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={privacyRequestType !== null} onOpenChange={(open) => {
+              if (!open) {
+                setPrivacyRequestType(null)
+                setPrivacyNote('')
+              }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>
+                    {privacyRequestType === 'export'
+                      ? 'Veri dışa aktarma talebi'
+                      : privacyRequestType === 'correction'
+                        ? 'Veri düzeltme talebi'
+                        : 'Veri silme talebi'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {privacyRequestType === 'deletion'
+                      ? 'Bu talep hesabınızı hemen silmez. Yetkili ekip kimliğinizi ve yasal saklama yükümlülüklerini doğruladıktan sonra işlemi tamamlar.'
+                      : 'Talebiniz takip numarasıyla kayıt altına alınacak ve yetkili ekip tarafından güvenli şekilde işlenecek.'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label>Ek açıklama</Label>
+                  <Textarea
+                    value={privacyNote}
+                    onChange={(event) => setPrivacyNote(event.target.value)}
+                    maxLength={1000}
+                    placeholder="İşlenmesini istediğiniz kapsamı yazabilirsiniz."
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setPrivacyRequestType(null)}>Vazgeç</Button>
+                  <Button
+                    variant={privacyRequestType === 'deletion' ? 'destructive' : 'default'}
+                    disabled={!privacyRequestType || privacyRequestMutation.isPending}
+                    onClick={() => privacyRequestType && privacyRequestMutation.mutate(privacyRequestType)}
+                  >
+                    {privacyRequestMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Talebi Onayla
                   </Button>
                 </DialogFooter>
               </DialogContent>

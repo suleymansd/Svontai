@@ -205,6 +205,10 @@ class AutopilotService:
     def status(self, tenant: Tenant) -> dict:
         diagnostics = self.run_diagnostics(tenant)
         latest_run = self.db.query(SetupRun).filter(SetupRun.tenant_id == tenant.id).order_by(SetupRun.created_at.desc()).first()
+        latest_verification = self.db.query(SetupRun).filter(
+            SetupRun.tenant_id == tenant.id,
+            SetupRun.summary.like("SYSTEM_VERIFICATION:%"),
+        ).order_by(SetupRun.created_at.desc()).first()
         settings = dict(tenant.settings or {})
         concierge = dict(settings.get("concierge_enrichment") or {})
         profile = dict(settings.get("business_profile") or {})
@@ -239,6 +243,14 @@ class AutopilotService:
                 "created_at": latest_run.created_at.isoformat(),
                 "finished_at": latest_run.finished_at.isoformat() if latest_run.finished_at else None,
             } if latest_run else None,
+            "latest_verification": {
+                "id": str(latest_verification.id),
+                "status": latest_verification.status,
+                "summary": latest_verification.summary,
+                "score": int((latest_verification.summary or "0").rsplit(":", 1)[-1]),
+                "checks": latest_verification.actions_json or [],
+                "checked_at": latest_verification.finished_at.isoformat() if latest_verification.finished_at else latest_verification.created_at.isoformat(),
+            } if latest_verification else None,
             "diagnostics": diagnostics["items"],
         }
 
