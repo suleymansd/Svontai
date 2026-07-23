@@ -1,4 +1,9 @@
+import base64
+import hashlib
+import html
+import hmac
 import re
+from urllib.parse import urlsplit
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -16,6 +21,43 @@ def _auth_headers(access_token: str, tenant_id: str | None = None) -> dict[str, 
     if tenant_id:
         headers["X-Tenant-ID"] = tenant_id
     return headers
+
+
+def test_twilio_webhook_signature_verification():
+    from voice_gateway.security import verify_twilio_webhook_signature
+
+    url = "https://voice.example.com/twilio/voice/intent?tenantId=tenant-1"
+    items = [("CallSid", "CA123"), ("SpeechResult", "Randevu almak istiyorum")]
+    token = "test-auth-token"
+    signed_value = url + "CallSidCA123SpeechResultRandevu almak istiyorum"
+    signature = base64.b64encode(
+        hmac.new(token.encode(), signed_value.encode(), hashlib.sha1).digest()
+    ).decode()
+
+    assert verify_twilio_webhook_signature(url, items, signature, token) is True
+    assert verify_twilio_webhook_signature(url, items, "invalid", token) is False
+    assert verify_twilio_webhook_signature(url, items, signature, "") is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/twilio/voice/inbound",
+        "/twilio/voice/outbound?tenantId=tenant-1&jobId=job-1",
+        "/twilio/voice/intent?tenantId=tenant-1&callSid=CA123",
+        "/twilio/voice/status?tenantId=tenant-1&callSid=CA123",
+    ],
+)
+def test_twilio_webhooks_reject_unsigned_requests(monkeypatch, path):
+    from fastapi.testclient import TestClient
+    from voice_gateway.config import settings
+    from voice_gateway.main import app as voice_gateway_app
+
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "test-auth-token")
+    with TestClient(voice_gateway_app) as gateway_client:
+        response = gateway_client.post(path, data={"CallSid": "CA123"})
+
+    assert response.status_code == 403
 
 
 def _create_tenant_session(client, email: str = "voice@example.com") -> tuple[str, str]:
@@ -415,5 +457,101 @@ async def test_twilio_stream_fallback_uses_turkish_voice():
         ws_url="wss://voice.example.com/ws/twilio/media",
     )
 
-    assert settings.TWILIO_TTS_VOICE == "Polly.Burcu-Neural"
-    assert '<Say voice="Polly.Burcu-Neural" language="tr-TR">' in twiml
+    assert settings.TWILIO_TTS_VOICE == "Google.tr-TR-Wavenet-D"
+    assert '<Say voice="Google.tr-TR-Wavenet-D" language="tr-TR">' in twiml
+
+
+def test_turkish_voice_text_and_gather_are_normalized():
+    from voice_gateway.twiml import gather, normalize_spoken_text
+
+    assert normalize_spoken_text("SvontAI ile WhatsApp QR bağlantısı") == "Svont Ay ile Vatsap kare kod bağlantısı"
+    twiml = gather("WhatsApp randevusu", "/voice?turn=1&tenant=abc")
+    assert 'voice="Google.tr-TR-Wavenet-D"' in twiml
+    assert 'speechModel="googlev2_telephony_short"' in twiml
+    assert 'speechTimeout="1"' in twiml
+    assert 'actionOnEmptyResult="true"' in twiml
+    assert "Vatsap randevusu" in twiml
+    assert "&amp;tenant=abc" in twiml
+
+
+def test_conversation_relay_twiml_is_turkish_interruptible_and_signed(monkeypatch):
+    from voice_gateway.config import settings
+    from voice_gateway.main import _conversation_relay_twiml
+    from voice_gateway.security import verify_websocket_session
+
+    monkeypatch.setattr(settings, "VOICE_GATEWAY_PUBLIC_URL", "https://voice.example.com")
+    monkeypatch.setattr(settings, "VOICE_GATEWAY_TO_SVONTAI_SECRET", "relay-secret")
+    twiml = _conversation_relay_twiml(
+        tenant_id="tenant-1",
+        call_sid="CA-relay",
+        from_number="+905551112233",
+        to_number="+12404106113",
+        direction="inbound",
+    )
+    assert '<ConversationRelay url="wss://voice.example.com/ws/twilio/conversation?' in twiml
+    assert 'language="tr-TR"' in twiml
+    assert 'ttsProvider="Google"' in twiml
+    assert 'voice="tr-TR-Wavenet-D"' in twiml
+    assert 'interruptible="speech"' in twiml
+    assert 'reportInputDuringAgentSpeech="speech"' in twiml
+    url_match = re.search(r'<ConversationRelay url="([^"]+)"', twiml)
+    assert url_match
+    parsed = urlsplit(html.unescape(url_match.group(1)))
+    params = dict(item.split("=", 1) for item in parsed.query.split("&"))
+    from urllib.parse import unquote_plus
+    params = {key: unquote_plus(value) for key, value in params.items()}
+    payload = {
+        "tenant_id": params["tenant_id"],
+        "call_sid": params["call_sid"],
+        "from": params["from"],
+        "to": params["to"],
+        "direction": params["direction"],
+    }
+    assert verify_websocket_session(payload, params["sig"], int(params["ts"]), "relay-secret", 600)
+
+
+def test_conversation_relay_websocket_forwards_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+    from voice_gateway.config import settings
+    from voice_gateway import main as gateway
+
+    monkeypatch.setattr(settings, "VOICE_GATEWAY_PUBLIC_URL", "https://voice.example.com")
+    monkeypatch.setattr(settings, "VOICE_GATEWAY_TO_SVONTAI_SECRET", "relay-secret")
+    monkeypatch.setattr(settings, "TWILIO_AUTH_TOKEN", "twilio-auth-token")
+    post_intent = AsyncMock(return_value={
+        "responseText": "Tabii. Yarın saat iki uygun görünüyor. Onaylıyor musunuz?",
+        "endCall": False,
+    })
+    monkeypatch.setattr(gateway, "_svontai_post_voice_intent", post_intent)
+    ws_url = gateway._conversation_relay_ws_url(
+        tenant_id="tenant-1",
+        call_sid="CA-relay",
+        from_number="+905551112233",
+        to_number="+12404106113",
+        direction="inbound",
+    )
+    parsed = urlsplit(ws_url)
+    twilio_signature = base64.b64encode(
+        hmac.new(
+            b"twilio-auth-token",
+            ws_url.encode(),
+            hashlib.sha1,
+        ).digest()
+    ).decode()
+    with TestClient(gateway.app).websocket_connect(
+        f"{parsed.path}?{parsed.query}",
+        headers={"x-twilio-signature": twilio_signature},
+    ) as websocket:
+        websocket.send_json({"type": "setup", "callSid": "CA-relay"})
+        websocket.send_json({"type": "prompt", "voicePrompt": "Yarın randevu istiyorum", "last": True})
+        messages = []
+        while not messages or messages[-1]["last"] is not True:
+            messages.append(websocket.receive_json())
+
+    assert all(message["type"] == "text" for message in messages)
+    assert messages[0]["last"] is False
+    assert messages[-1]["last"] is True
+    assert messages[-1]["interruptible"] is True
+    payload = post_intent.await_args.args[0]
+    assert payload["metadata"] == {"turn": 1, "transport": "conversation_relay"}
+    assert payload["call"]["direction"] == "inbound"

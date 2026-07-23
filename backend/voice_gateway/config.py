@@ -17,6 +17,7 @@ class VoiceGatewaySettings(BaseSettings):
 
     # Shared secret (must match backend VOICE_GATEWAY_TO_SVONTAI_SECRET)
     VOICE_GATEWAY_TO_SVONTAI_SECRET: str = "change-this-to-a-secure-random-string-voice-gateway-to-svontai"
+    TWILIO_AUTH_TOKEN: str = ""
 
     # Resolve endpoint + ingest endpoint paths (backend)
     SVONTAI_TELEPHONY_RESOLVE_PATH: str = "/api/v1/telephony/resolve"
@@ -25,10 +26,23 @@ class VoiceGatewaySettings(BaseSettings):
 
     # Twilio voice mode:
     # - gather: IVR-style STT via Twilio <Gather input="speech"> (production friendly, low complexity)
-    # - stream: Media Streams websocket (skeleton exists; realtime STT/TTS will be added later)
+    # - conversation_relay: realtime STT/TTS with interruption support (Twilio onboarding required)
+    # - stream: legacy Media Streams websocket fallback
     TWILIO_VOICE_MODE: str = "gather"
-    TWILIO_TTS_VOICE: str = "Polly.Burcu-Neural"
+    TWILIO_TTS_VOICE: str = "Google.tr-TR-Wavenet-D"
     TWILIO_TTS_LANGUAGE: str = "tr-TR"
+    TWILIO_GATHER_SPEECH_MODEL: str = "googlev2_telephony_short"
+    TWILIO_GATHER_SPEECH_TIMEOUT: str = "1"
+    TWILIO_SPEECH_HINTS: str = "randevu,rezervasyon,fiyat,adres,çalışma saatleri,WhatsApp,evet,hayır"
+
+    # ConversationRelay accepts provider-specific voice IDs without the <Say> prefix.
+    TWILIO_RELAY_TTS_PROVIDER: str = "Google"
+    TWILIO_RELAY_TTS_VOICE: str = "tr-TR-Wavenet-D"
+    TWILIO_RELAY_TRANSCRIPTION_PROVIDER: str = "Google"
+    TWILIO_RELAY_SPEECH_MODEL: str = "long"
+    TWILIO_RELAY_SPEECH_TIMEOUT_MS: int = 800
+    TWILIO_RELAY_INTERRUPT_SENSITIVITY: str = "medium"
+    TWILIO_RELAY_WS_TOKEN_TTL_SECONDS: int = 600
 
 
 settings = VoiceGatewaySettings()

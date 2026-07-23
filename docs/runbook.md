@@ -139,6 +139,14 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Production startup must fail if JWT, n8n, or voice gateway secrets use insecure defaults.
 - `WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`, `JWT_SECRET_KEY`, `SVONTAI_TO_N8N_SECRET`, `N8N_TO_SVONTAI_SECRET`, `N8N_ERROR_WEBHOOK_SECRET`, and `VOICE_GATEWAY_TO_SVONTAI_SECRET` must be real secret values.
 
+## Turkish voice runtime
+
+- `gather` mode is the production fallback and uses Google Turkish WaveNet TTS plus the Google V2 telephony-short speech model.
+- `conversation_relay` mode adds realtime turn detection, caller interruption, and low-latency WebSocket dialogue. Enable it only after the Twilio account completes ConversationRelay onboarding and accepts Twilio's AI/ML addendum.
+- Twilio HTTP webhooks and the ConversationRelay handshake must pass `X-Twilio-Signature` validation. The WebSocket URL also carries a short-lived HMAC session signature. Never disable either check or expose the shared gateway secret in TwiML.
+- The opening sentence identifies the service as the business's digital assistant. Do not make the assistant claim to be a human.
+- After changing voice/provider settings, place an inbound and outbound Turkish test call. Verify pronunciation, interruptions, appointment confirmation, call transcript, duration, and provider cost before broad rollout.
+
 ## Manual Customer UI Smoke
 Run this as a real customer after automated smoke passes.
 

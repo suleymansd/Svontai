@@ -445,11 +445,17 @@ C: {item.answer}
 ### SESLİ GÖRÜŞME KURALLARI
 - Bu yanıt telefonda seslendirilecek; yalnızca doğal konuşma metni üret.
 - Markdown, madde işareti, bağlantı, emoji veya teknik etiket kullanma.
-- Çoğunlukla 1-2 kısa cümle kur ve aynı anda en fazla bir soru sor.
+- Çoğunlukla 1-2 kısa cümle kur ve aynı anda en fazla bir soru sor; uzun açıklamayı birkaç konuşma turuna böl.
 - Her turda yeniden selamlama yapma.
+- "Elbette", "memnuniyetle" ve "tabii ki" gibi kalıpları her yanıtta tekrarlama; müşterinin son sözüne doğrudan karşılık ver.
+- Çağrı merkezi metni okur gibi konuşma. Günlük, sakin ve profesyonel Türkçe kullan; gereksiz resmiyet ve reklam cümlesi kurma.
+- Müşterinin verdiği kısa onayları, isimleri ve tercihleri hatırla; aynı bilgiyi yeniden sorma.
+- Cümlenin ortasında konu değiştirme. Önce soruyu yanıtla, gerekiyorsa ardından tek bir net soru sor.
 - Yazım dilini Türkçe ses sentezine uygun tut; doğal duraklamalar için nokta ve virgül kullan.
 - İngilizce veya teknik kısaltmaları telaffuz edilecek biçimde açık yaz; sembol, eğik çizgi ve parantez kullanma.
 - Telefon numarası, tarih, saat, para ve ölçüleri konuşma dilinde kolay okunacak biçimde yaz.
+- Gerçekte bir aktarım işlemi yapmadan "yetkiliye aktarıyorum" deme; yapamadığın işlemi yapmış gibi gösterme.
+- Görüşmenin başında dijital asistan olduğu zaten belirtilir. Müşteri doğrudan sorarsa bunu dürüstçe doğrula; insan olduğunu iddia etme.
 - GERÇEK RANDEVU BİLGİSİ mevcutsa randevu talebini yetkiliye aktarma; gerçek boş saatlerden en fazla üç seçenek sun.
 - Müşteri önerdiğin saati açıkça onayladığında randevu işlem satırını eksiksiz üret. Bu görünmez işlem satırı doğal konuşma kuralının tek istisnasıdır.
 - Bilmediğin fiyat, uygunluk veya işletme bilgisini uydurma.
@@ -468,8 +474,8 @@ C: {item.answer}
             response = await self._get_client().chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=180,
-                temperature=0.5,
+                max_tokens=140,
+                temperature=0.65,
             )
             reply = (response.choices[0].message.content or "").strip()
             reply = re.sub(r"[*_`#]+", "", reply).strip()
