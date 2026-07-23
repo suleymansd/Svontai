@@ -154,7 +154,9 @@ have expired or been re-encrypted.
   - Configure Stripe webhook target: `<BACKEND_URL>/billing/stripe/webhook`.
 - Voice / Twilio:
   - Backend env: `VOICE_GATEWAY_TO_SVONTAI_SECRET`, `VOICE_GATEWAY_PUBLIC_URL`, `VOICE_OUTBOUND_MODE=live`, `VOICE_OUTBOUND_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`.
-  - Voice gateway env: `VOICE_GATEWAY_PUBLIC_URL`, `SVONTAI_BACKEND_URL`, `VOICE_GATEWAY_TO_SVONTAI_SECRET`.
+  - Voice gateway env: `VOICE_GATEWAY_PUBLIC_URL`, `SVONTAI_BACKEND_URL`, `VOICE_GATEWAY_TO_SVONTAI_SECRET`, `TWILIO_AUTH_TOKEN`. The auth token is required for Twilio HTTP and ConversationRelay WebSocket signature validation.
+  - Natural Turkish fallback: `TWILIO_TTS_VOICE=Google.tr-TR-Wavenet-D`, `TWILIO_GATHER_SPEECH_MODEL=googlev2_telephony_short`, `TWILIO_GATHER_SPEECH_TIMEOUT=1`.
+  - Realtime conversation: complete Twilio ConversationRelay onboarding first, then set `TWILIO_VOICE_MODE=conversation_relay`. Optional tuning envs are documented in `backend/voice_gateway/.env.example`.
   - Twilio inbound number voice webhook: `<VOICE_GATEWAY_PUBLIC_URL>/twilio/voice/inbound`.
   - Outbound calls are created by the worker through Twilio Calls API and receive TwiML from `<VOICE_GATEWAY_PUBLIC_URL>/twilio/voice/outbound`.
 - Admin smoke:
