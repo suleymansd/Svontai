@@ -78,28 +78,27 @@ export default function HomePage() {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-8 animate-fade-in-up">
               <Sparkles className="w-4 h-4 text-yellow-500" />
-              <span className="text-sm font-medium">Kurulumu Biz Üstleniyoruz, Sistem Otonom Çalışıyor</span>
+              <span className="text-sm font-medium">Mesaj, Müşteri ve Randevu Yönetimi Tek Yerde</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
             
             {/* Headline */}
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-8 animate-fade-in-up stagger-1">
-              WhatsApp AI Asistanınızı{' '}
-              <span className="gradient-text">Biz Kurup Çalıştırıyoruz</span>
+              WhatsApp Müşteri İletişiminiz{' '}
+              <span className="gradient-text">7/24 Çalışsın</span>
             </h1>
             
             {/* Subheadline */}
             <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
-              Uzun kurulum formlarıyla uğraşmayın. Ekibimiz işletme bilginizi işler,
-              botunuzu hazırlar, entegrasyonları izler ve sistem güvenli otonomiyle
-              WhatsApp müşteri akışınızı yürütür.
+              SvontAI gelen mesajları işletmenizin bilgileriyle yanıtlar, müşterileri
+              tanır, uygun saatleri kontrol eder ve onaylanan randevuları otomatik kaydeder.
             </p>
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-3">
               <Link href="/register">
                 <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-lg px-8 h-14 rounded-2xl shadow-2xl shadow-blue-500/30 btn-shine">
-                  Kurulumu Başlat
+                  Ücretsiz Deneyin
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
