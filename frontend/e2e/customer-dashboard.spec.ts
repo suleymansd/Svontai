@@ -82,6 +82,33 @@ async function mockBackend(page: Page) {
         generated_at: new Date().toISOString(),
         metrics: { incoming_messages: 12, ai_replies: 10, response_rate: 83.3, leads: 2, appointments: 1, failed_automations: 0 },
       }
+    } else if (path === '/bots/assistant-profile') {
+      body = {
+        assistant: {
+          id: 'bot-1',
+          name: 'Test İşletmesi Asistanı',
+          description: 'Müşteri sorularını işletme bilgileriyle yanıtlar.',
+          is_active: true,
+          primary_color: '#0891b2',
+        },
+        training: {
+          goal: 'mixed',
+          tone: 'professional',
+          response_length: 'balanced',
+          price_policy: 'known_only',
+          handoff_mode: 'automatic',
+          business_summary: 'Test işletmesi hafta içi 09:00-18:00 arasında hizmet verir.',
+        },
+        capabilities: [],
+        completion_percent: 100,
+      }
+    } else if (path === '/bots/bot-1/simulate' && request.method() === 'POST') {
+      body = {
+        reply: 'Hafta içi 09:00-18:00 arasında hizmet veriyoruz.',
+        safe_mode: 'simulation',
+        history_count: 1,
+        latency_ms: 35,
+      }
     } else if (path === '/conversations' || path === '/leads' || path === '/calls' || path === '/voice-automation/intents' || path === '/voice-automation/jobs') {
       body = []
     } else if (path === '/voice-automation/capabilities') {
@@ -188,9 +215,39 @@ test.beforeEach(async ({ page }) => {
 
 test('customer dashboard shows real outcomes without overflow', async ({ page }) => {
   await openAuthenticated(page, '/dashboard')
-  await expect(page.getByRole('heading', { name: 'SmartWA Ana Panel' })).toBeVisible()
-  await expect(page.getByText('Son 30 Günde Sağlanan Değer')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bugün' })).toBeVisible()
+  await expect(page.getByText('Müdahale gerekmiyor')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Son 30 gün' })).toBeVisible()
   await expect(page.getByText('2.4 saat')).toBeVisible()
+
+  if ((page.viewportSize()?.width || 0) < 1024) {
+    await page.getByRole('button', { name: 'Ana menüyü aç' }).click()
+  }
+  await expect(page.getByRole('link', { name: 'Bugün' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'WhatsApp Bağlantısı' })).toBeHidden()
+  await page.getByText('Yönetim ve Ayarlar').click()
+  await expect(page.getByRole('link', { name: 'WhatsApp Bağlantısı' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
+test('assistant simulator previews a reply without creating customer data', async ({ page }) => {
+  const mutatingPaths: string[] = []
+  page.on('request', (request) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) {
+      mutatingPaths.push(new URL(request.url()).pathname)
+    }
+  })
+
+  await openAuthenticated(page, '/dashboard/bots')
+  await page.getByRole('button', { name: 'Yanıtı Dene' }).click()
+  await expect(page.getByRole('heading', { name: 'Yayın Öncesi Mesaj Simülatörü' })).toBeVisible()
+  await expect(page.getByText('Bu ekran WhatsApp mesajı, müşteri veya randevu kaydı oluşturmaz.')).toBeVisible()
+
+  await page.getByPlaceholder('Müşterinin yazacağı mesaj...').fill('Çalışma saatleriniz nedir?')
+  await page.getByRole('button', { name: 'Mesajı dene' }).click()
+  await expect(page.getByText('Hafta içi 09:00-18:00 arasında hizmet veriyoruz.')).toBeVisible()
+
+  expect(mutatingPaths.filter((path) => !path.startsWith('/product-analytics/'))).toEqual(['/bots/bot-1/simulate'])
   await expectNoHorizontalOverflow(page)
 })
 

@@ -32,6 +32,7 @@ from app.services.push_notification_service import PushNotificationService
 from app.services.email_service import EmailService
 from app.services.google_calendar_service import GoogleCalendarService
 from app.services.database_backup_service import DatabaseBackupService
+from app.services.data_retention_service import DataRetentionService
 from app.services.openwa_client import OpenWAError, openwa_client
 from zoneinfo import ZoneInfo
 
@@ -610,6 +611,24 @@ def _run_database_backup() -> None:
         db.close()
 
 
+def _run_data_retention() -> None:
+    db = SessionLocal()
+    try:
+        with scheduled_job_lock(db, "tenant_data_retention", 86400, lock_seconds=3600) as job:
+            if job is None:
+                return
+            service = DataRetentionService(db)
+            tenants = db.query(Tenant.id).all()
+            completed = 0
+            for (tenant_id,) in tenants:
+                result = service.run(tenant_id)
+                if result.get("status") == "completed":
+                    completed += 1
+            logger.info("data_retention_cycle tenants=%s completed=%s", len(tenants), completed)
+    finally:
+        db.close()
+
+
 async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
@@ -624,6 +643,7 @@ async def main() -> None:
         asyncio.create_task(_run_every("daily_operational_report", 3600, _send_daily_operational_reports)),
         asyncio.create_task(_run_every("weekly_operational_push", 3600, _send_weekly_operational_reports)),
         asyncio.create_task(_run_every("encrypted_database_backup", 300, _run_database_backup)),
+        asyncio.create_task(_run_every("tenant_data_retention", 3600, _run_data_retention)),
     ]
     try:
         await asyncio.gather(*tasks)

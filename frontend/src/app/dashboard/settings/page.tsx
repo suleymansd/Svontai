@@ -25,7 +25,8 @@ import {
   Loader2,
   Download,
   Trash2,
-  FilePenLine
+  FilePenLine,
+  Database,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +39,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useAuthStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
-import { apiKeysApi, authApi, automationApi, subscriptionApi, ticketsApi } from '@/lib/api'
+import { apiKeysApi, authApi, automationApi, dataRetentionApi, DataRetentionPolicy, subscriptionApi, ticketsApi } from '@/lib/api'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
@@ -51,6 +52,7 @@ const tabs = [
   { id: 'automation', label: 'Otomasyon (n8n)', icon: Workflow },
   { id: 'notifications', label: 'Bildirimler', icon: Bell },
   { id: 'security', label: 'Güvenlik', icon: Shield },
+  { id: 'retention', label: 'Veri Saklama', icon: Database },
   { id: 'api', label: 'API Anahtarları', icon: Key },
 ]
 
@@ -77,6 +79,14 @@ export default function SettingsPage() {
   const [twoFactorDisableCode, setTwoFactorDisableCode] = useState('')
   const [privacyRequestType, setPrivacyRequestType] = useState<'export' | 'deletion' | 'correction' | null>(null)
   const [privacyNote, setPrivacyNote] = useState('')
+  const [retentionForm, setRetentionForm] = useState({
+    enabled: true,
+    message_content_days: 365,
+    raw_payload_days: 90,
+    product_analytics_days: 180,
+    usage_log_days: 730,
+    system_event_days: 730,
+  })
 
   const [profileData, setProfileData] = useState({
     full_name: user?.full_name || '',
@@ -141,6 +151,18 @@ export default function SettingsPage() {
     enabled: activeTab === 'security',
   })
 
+  const { data: retentionPolicy, isLoading: retentionLoading } = useQuery<DataRetentionPolicy>({
+    queryKey: ['data-retention-policy'],
+    queryFn: () => dataRetentionApi.get().then(res => res.data),
+    enabled: activeTab === 'retention',
+  })
+
+  const { data: retentionPreview } = useQuery({
+    queryKey: ['data-retention-preview'],
+    queryFn: () => dataRetentionApi.preview().then(res => res.data),
+    enabled: activeTab === 'retention',
+  })
+
   // Update automation data when settings are fetched
   useEffect(() => {
     if (automationSettings) {
@@ -154,6 +176,18 @@ export default function SettingsPage() {
       })
     }
   }, [automationSettings])
+
+  useEffect(() => {
+    if (!retentionPolicy) return
+    setRetentionForm({
+      enabled: retentionPolicy.enabled,
+      message_content_days: retentionPolicy.message_content_days,
+      raw_payload_days: retentionPolicy.raw_payload_days,
+      product_analytics_days: retentionPolicy.product_analytics_days,
+      usage_log_days: retentionPolicy.usage_log_days,
+      system_event_days: retentionPolicy.system_event_days,
+    })
+  }, [retentionPolicy])
 
   // Mutation for updating automation settings
   const updateAutomationMutation = useMutation({
@@ -331,6 +365,35 @@ export default function SettingsPage() {
         variant: 'destructive',
       })
     },
+  })
+
+  const retentionUpdateMutation = useMutation({
+    mutationFn: () => dataRetentionApi.update(retentionForm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['data-retention-policy'] })
+      queryClient.invalidateQueries({ queryKey: ['data-retention-preview'] })
+      toast({ title: 'Veri saklama politikası kaydedildi' })
+    },
+    onError: (error: any) => toast({
+      title: 'Politika kaydedilemedi',
+      description: error.response?.data?.detail || 'Lütfen değerleri kontrol edin.',
+      variant: 'destructive',
+    }),
+  })
+
+  const retentionRunMutation = useMutation({
+    mutationFn: () => dataRetentionApi.run(),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['data-retention-policy'] })
+      queryClient.invalidateQueries({ queryKey: ['data-retention-preview'] })
+      const removed = Object.values(response.data?.deleted || {}).reduce((sum: number, value) => sum + Number(value || 0), 0)
+      toast({ title: 'Veri temizliği tamamlandı', description: `${removed} kayıt veya ham veri alanı işlendi.` })
+    },
+    onError: (error: any) => toast({
+      title: 'Temizlik çalıştırılamadı',
+      description: error.response?.data?.detail || 'Lütfen tekrar deneyin.',
+      variant: 'destructive',
+    }),
   })
 
   const handleSaveAutomation = () => {
@@ -907,6 +970,110 @@ export default function SettingsPage() {
                       </Button>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeTab === 'retention' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Otomatik Veri Saklama</CardTitle>
+                  <CardDescription>
+                    Müşteri verilerinin ne kadar süre tutulacağını belirleyin. Süresi dolan kayıtlar worker tarafından günlük temizlenir.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {retentionLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Politika yükleniyor
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">Otomatik temizlik</p>
+                          <p className="text-sm text-muted-foreground">Varsayılan olarak her gün güvenli aralıklarla çalışır.</p>
+                        </div>
+                        <Switch
+                          checked={retentionForm.enabled}
+                          disabled={retentionPolicy?.legal_hold}
+                          onCheckedChange={(enabled) => setRetentionForm((current) => ({ ...current, enabled }))}
+                          aria-label="Otomatik veri temizliği"
+                        />
+                      </div>
+
+                      {retentionPolicy?.legal_hold && (
+                        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                          <Shield className="mt-0.5 h-5 w-5 shrink-0" />
+                          <div>
+                            <p className="font-medium">Hukukî saklama kilidi aktif</p>
+                            <p className="text-sm">İnceleme tamamlanana kadar otomatik silme yapılmaz.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {[
+                          ['message_content_days', 'Mesaj içerikleri', 30, 3650],
+                          ['raw_payload_days', 'Sağlayıcı ham verileri', 7, 365],
+                          ['product_analytics_days', 'Ürün kullanım olayları', 30, 730],
+                          ['usage_log_days', 'Kullanım kayıtları', 90, 3650],
+                          ['system_event_days', 'Sistem olayları', 90, 3650],
+                        ].map(([key, label, min, max]) => (
+                          <div key={String(key)} className="space-y-2">
+                            <Label htmlFor={`retention-${key}`}>{label}</Label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                id={`retention-${key}`}
+                                type="number"
+                                min={Number(min)}
+                                max={Number(max)}
+                                value={retentionForm[key as keyof typeof retentionForm] as number}
+                                onChange={(event) => setRetentionForm((current) => ({
+                                  ...current,
+                                  [key]: Number(event.target.value),
+                                }))}
+                              />
+                              <span className="text-sm text-muted-foreground">gün</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-lg bg-muted/50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium">Bir sonraki temizlikte işlenecek</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {Object.values(retentionPreview?.eligible_records || {}).reduce((sum: number, value) => sum + Number(value || 0), 0)} kayıt veya ham veri alanı
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            Son çalışma: {retentionPolicy?.last_run_at ? new Date(retentionPolicy.last_run_at).toLocaleString('tr-TR') : 'Henüz çalışmadı'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => retentionRunMutation.mutate()}
+                          disabled={!retentionForm.enabled || retentionPolicy?.legal_hold || retentionRunMutation.isPending}
+                        >
+                          {retentionRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                          Şimdi Temizle
+                        </Button>
+                        <Button
+                          onClick={() => retentionUpdateMutation.mutate()}
+                          disabled={retentionUpdateMutation.isPending}
+                        >
+                          {retentionUpdateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                          Politikayı Kaydet
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}

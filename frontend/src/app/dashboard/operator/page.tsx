@@ -26,6 +26,7 @@ import { operatorApi, subscriptionApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import Link from 'next/link'
+import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
 interface ConversationWithStatus {
   id: string
@@ -73,6 +74,13 @@ export default function OperatorPage() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [newMessage, setNewMessage] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  const { connected: realtimeConnected } = useRealtimeEvents((event) => {
+    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
+    queryClient.invalidateQueries({ queryKey: ['operator-conversations'] })
+    if (selectedConversation && event.conversation_id === selectedConversation) {
+      queryClient.invalidateQueries({ queryKey: ['operator-messages', selectedConversation] })
+    }
+  })
 
   // Check feature access
   const { data: usageStats, isLoading: usageLoading } = useQuery({
@@ -87,7 +95,6 @@ export default function OperatorPage() {
     queryKey: ['operator-conversations', statusFilter],
     queryFn: () => operatorApi.listConversations(statusFilter).then(res => res.data),
     enabled: hasFeature,
-    refetchInterval: 10000, // Refresh every 10 seconds
   })
 
   // Fetch messages for selected conversation
@@ -97,7 +104,6 @@ export default function OperatorPage() {
       ? operatorApi.getConversationMessages(selectedConversation).then(res => res.data)
       : Promise.resolve([]),
     enabled: !!selectedConversation && hasFeature,
-    refetchInterval: 5000,
   })
 
   // Takeover mutation
@@ -203,6 +209,9 @@ export default function OperatorPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Badge className={realtimeConnected ? statusColors.ai_active : statusColors.waiting}>
+            {realtimeConnected ? 'Canlı' : 'Bağlanıyor'}
+          </Badge>
           <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Yenile

@@ -30,6 +30,7 @@ import {
   BookOpen,
   Inbox,
   ReceiptText,
+  BarChart3,
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -45,6 +46,7 @@ const navigation = [
   { name: 'Araçlar', href: '/admin/tools', icon: Boxes },
   { name: 'Tickets', href: '/admin/tickets', icon: LifeBuoy },
   { name: 'Hata Merkezi', href: '/admin/errors', icon: AlertTriangle },
+  { name: 'Ürün İçgörüleri', href: '/admin/product-insights', icon: BarChart3 },
   { name: 'Kullanım Rehberi', href: '/admin/help', icon: BookOpen },
   { name: 'Incidents', href: '/admin/incidents', icon: Activity },
   { name: 'Audit Logs', href: '/admin/audit', icon: Shield },

@@ -2,7 +2,8 @@
 Bot management router.
 """
 
-from uuid import UUID
+from time import perf_counter
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
@@ -14,16 +15,22 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.bot_settings import BotSettings
+from app.models.conversation import Conversation, ConversationSource
+from app.models.knowledge import BotKnowledgeItem
+from app.models.message import Message, MessageSender
 from app.schemas.bot import (
     AssistantCapabilityUpdate,
     AssistantProfileResponse,
     AssistantTrainingUpdate,
+    AssistantSimulationRequest,
+    AssistantSimulationResponse,
     BotCreate,
     BotResponse,
     BotUpdate,
 )
 from app.services.audit_log_service import AuditLogService
 from app.services.assistant_profile_service import AssistantProfileService
+from app.services.ai_service import ai_service
 from app.core.rate_limit import (
     assistant_rate_limiter,
     rate_limit_key,
@@ -120,6 +127,68 @@ async def get_assistant_profile(
 ) -> dict:
     """Return the tenant's single primary assistant and guided configuration."""
     return AssistantProfileService(db).get_profile(current_tenant)
+
+
+@router.post("/{bot_id}/simulate", response_model=AssistantSimulationResponse)
+async def simulate_assistant_reply(
+    bot_id: UUID,
+    payload: AssistantSimulationRequest,
+    request: Request,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+) -> AssistantSimulationResponse:
+    """Preview a reply without writing conversations or triggering business actions."""
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant-simulator", current_tenant.id, current_user.id),
+        "Çok fazla simülasyon isteği. Lütfen kısa bir süre sonra tekrar deneyin.",
+    )
+    bot = db.query(Bot).filter(
+        Bot.id == bot_id,
+        Bot.tenant_id == current_tenant.id,
+    ).first()
+    if bot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot bulunamadı")
+
+    knowledge_items = db.query(BotKnowledgeItem).filter(
+        BotKnowledgeItem.bot_id == bot.id,
+    ).all()
+    bot_settings = db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
+    conversation = Conversation(
+        id=uuid4(),
+        bot_id=bot.id,
+        external_user_id="simulator",
+        source=ConversationSource.WEB_WIDGET.value,
+    )
+    conversation.messages = [
+        Message(
+            conversation_id=conversation.id,
+            sender=MessageSender.USER.value if turn.role == "customer" else MessageSender.BOT.value,
+            content=turn.content,
+        )
+        for turn in payload.history
+    ]
+    started_at = perf_counter()
+    reply = await ai_service.generate_reply(
+        bot=bot,
+        knowledge_items=knowledge_items,
+        conversation=conversation,
+        last_user_message=payload.message,
+        bot_settings=bot_settings,
+        runtime_context="""
+### SIMULASYON MODU
+Bu konuşma yayın öncesi güvenli önizlemedir. Dış sisteme mesaj gönderme, lead veya randevu
+oluşturma ve işlem yapılmış gibi konuşma. Gerçek işlem gerektiren talepte müşteriye canlı
+ortamda izleyeceğin doğal yanıtı göster, ancak işlemin bu önizlemede kaydedilmediğini belirtme.
+""",
+    )
+    return AssistantSimulationResponse(
+        reply=reply,
+        history_count=len(payload.history) + 2,
+        latency_ms=max(0, int((perf_counter() - started_at) * 1000)),
+    )
 
 
 @router.put("/assistant-profile/training", response_model=AssistantProfileResponse)

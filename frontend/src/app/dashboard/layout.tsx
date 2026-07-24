@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   Smartphone,
   CreditCard,
@@ -38,21 +39,22 @@ import { setupOnboardingApi, subscriptionApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { decodeJwtPayload } from '@/lib/jwt'
+import { trackProductEvent } from '@/lib/product-analytics'
 
 const sidebarItems = [
-  { name: 'Ana Panel', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Sistem Durumu', href: '/dashboard/autopilot', icon: ShieldCheck },
-  { name: 'AI Asistanım', href: '/dashboard/bots', icon: Bot },
-  { name: 'Medya', href: '/dashboard/media', icon: Images },
+  { name: 'Bugün', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Mesajlar', href: '/dashboard/conversations', icon: MessagesSquare },
-  { name: 'Aramalar', href: '/dashboard/calls', icon: PhoneCall },
-  { name: 'Müşteriler', href: '/dashboard/leads', icon: Users },
   { name: 'Randevular', href: '/dashboard/appointments', icon: CalendarCheck },
-  { name: 'Destek', href: '/dashboard/tickets', icon: LifeBuoy },
+  { name: 'Müşteriler', href: '/dashboard/leads', icon: Users },
+  { name: 'AI Asistanım', href: '/dashboard/bots', icon: Bot },
+  { name: 'Aramalar', href: '/dashboard/calls', icon: PhoneCall },
 ]
 
 const secondaryItems = [
+  { name: 'Sistem Durumu', href: '/dashboard/autopilot', icon: ShieldCheck },
   { name: 'WhatsApp Bağlantısı', href: '/dashboard/setup/whatsapp', icon: Smartphone },
+  { name: 'Medya', href: '/dashboard/media', icon: Images },
+  { name: 'Destek', href: '/dashboard/tickets', icon: LifeBuoy },
   { name: 'Abonelik', href: '/dashboard/billing', icon: CreditCard },
   { name: 'Hesap Ayarları', href: '/dashboard/settings', icon: Settings },
 ]
@@ -68,6 +70,9 @@ export default function DashboardLayout({
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const [mounted, setMounted] = useState(false)
   const [authHydrated, setAuthHydrated] = useState(false)
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(
+    secondaryItems.some((item) => pathname.startsWith(item.href))
+  )
 
   // Fetch onboarding status
   const { data: onboardingStatus } = useQuery({
@@ -120,6 +125,33 @@ export default function DashboardLayout({
     }
   }, [isAuthenticated, mounted, onboardingStatus, pathname, router])
 
+  useEffect(() => {
+    if (!mounted || !isAuthenticated) return
+    trackProductEvent(
+      pathname === '/dashboard' ? 'dashboard_viewed' : 'page_view',
+      { route: pathname },
+      pathname === '/dashboard' ? 'funnel' : 'navigation',
+      pathname,
+    )
+  }, [isAuthenticated, mounted, pathname])
+
+  useEffect(() => {
+    if (secondaryItems.some((item) => pathname.startsWith(item.href))) {
+      setSettingsMenuOpen(true)
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    if (!mounted || !isAuthenticated) return
+    const trackClick = (event: MouseEvent) => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-analytics]')
+      const action = target?.dataset.analytics
+      if (action) trackProductEvent('ui_action', { action }, 'action')
+    }
+    document.addEventListener('click', trackClick)
+    return () => document.removeEventListener('click', trackClick)
+  }, [isAuthenticated, mounted])
+
   const handleLogout = () => {
     logout()
     router.push('/login')
@@ -157,7 +189,13 @@ export default function DashboardLayout({
             <Link href="/dashboard" className="flex items-center">
               <Logo size="md" showText={true} animated={true} />
             </Link>
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              aria-label="Ana menüyü kapat"
+              onClick={() => setSidebarOpen(false)}
+            >
               <X className="w-5 h-5" />
             </Button>
           </div>
@@ -219,6 +257,7 @@ export default function DashboardLayout({
                 <Link
                   key={item.href}
                   href={item.href}
+                  data-analytics={`navigation_${item.href.replaceAll('/', '_')}`}
                   className={cn(
                     'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                     isActive
@@ -242,39 +281,37 @@ export default function DashboardLayout({
               )
             })}
 
-            <p className="px-3 py-2 mt-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-              Hesap
-            </p>
-            {secondaryItems.map((item) => {
-              const isActive = pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href))
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                    isActive
-                      ? 'nav-active-glow text-primary'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                  )}
-                >
-                  <Icon3DBadge
-                    icon={item.icon}
-                    size="sm"
-                    active
-                    from={isActive ? 'from-primary' : 'from-slate-200 dark:from-slate-800'}
-                    to={isActive ? 'to-violet-500' : 'to-slate-50 dark:to-slate-700'}
-                    className={cn(
-                      'shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition-transform duration-200 group-hover:-translate-y-0.5',
-                      isActive && 'ring-2 ring-primary/25'
-                    )}
-                  />
-                  <span>{item.name}</span>
-                </Link>
-              )
-            })}
+            <details
+              className="group/settings pt-3"
+              open={settingsMenuOpen}
+              onToggle={(event) => setSettingsMenuOpen(event.currentTarget.open)}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
+                Yönetim ve Ayarlar
+                <ChevronDown className="h-4 w-4 transition-transform group-open/settings:rotate-180" />
+              </summary>
+              <div className="space-y-1">
+                {secondaryItems.map((item) => {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      data-analytics={`navigation_${item.href.replaceAll('/', '_')}`}
+                      className={cn(
+                        'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                        isActive
+                          ? 'nav-active-glow text-primary'
+                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span>{item.name}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </details>
           </nav>
 
           {/* Upgrade Card */}
@@ -343,7 +380,13 @@ export default function DashboardLayout({
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 lg:px-8 bg-background/80 backdrop-blur-xl border-b border-border/70">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={toggleSidebar}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              aria-label="Ana menüyü aç"
+              onClick={toggleSidebar}
+            >
               <Menu className="w-5 h-5" />
             </Button>
 

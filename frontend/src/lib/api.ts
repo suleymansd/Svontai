@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 import { normalizeApiUrl } from './api-url'
+import { normalizeTrackedApiPath, trackProductEvent } from './product-analytics'
 
 export const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
 
@@ -66,6 +67,19 @@ api.interceptors.response.use(
       }
     }
 
+    const trackedPath = normalizeTrackedApiPath(requestUrl)
+    if (!trackedPath.startsWith('/product-analytics/')) {
+      trackProductEvent(
+        'api_error',
+        {
+          status: Number(error.response?.status || 0),
+          method: String(originalRequest?.method || 'get').toUpperCase(),
+          route: trackedPath,
+        },
+        'error',
+        trackedPath,
+      )
+    }
     return Promise.reject(error)
   }
 )
@@ -162,6 +176,10 @@ export const botApi = {
   updateAssistantCapability: (key: string, data: { enabled: boolean; config?: Record<string, unknown> }) =>
     api.patch(`/bots/assistant-profile/capabilities/${key}`, data),
   get: (id: string) => api.get(`/bots/${id}`),
+  simulate: (id: string, data: {
+    message: string
+    history: Array<{ role: 'customer' | 'assistant'; content: string }>
+  }) => api.post(`/bots/${id}/simulate`, data),
   create: (data: {
     name: string
     description?: string
@@ -511,6 +529,33 @@ export const analyticsApi = {
   getOperationalReport: (period: 'today' | 'week' = 'today') =>
     api.get('/analytics/operational-report', { params: { period } }),
   getCustomerSuccess: (days: number = 30) => api.get('/analytics/customer-success', { params: { days } }),
+}
+
+export const productAnalyticsApi = {
+  getFriction: (days: number = 30) => api.get('/product-analytics/friction', { params: { days } }),
+  getGlobalFriction: (days: number = 30) => api.get('/admin/product-analytics/friction', { params: { days } }),
+}
+
+export type DataRetentionPolicy = {
+  tenant_id: string
+  enabled: boolean
+  legal_hold: boolean
+  message_content_days: number
+  raw_payload_days: number
+  product_analytics_days: number
+  usage_log_days: number
+  system_event_days: number
+  last_run_at?: string | null
+  last_result: Record<string, number>
+  updated_at: string
+}
+
+export const dataRetentionApi = {
+  get: () => api.get<DataRetentionPolicy>('/data-retention'),
+  preview: () => api.get('/data-retention/preview'),
+  update: (data: Omit<DataRetentionPolicy, 'tenant_id' | 'legal_hold' | 'last_run_at' | 'last_result' | 'updated_at'>) =>
+    api.patch<DataRetentionPolicy>('/data-retention', data),
+  run: () => api.post('/data-retention/run'),
 }
 
 // Operator API
