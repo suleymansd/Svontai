@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { trackProductEvent } from '@/lib/product-analytics'
 import { OpenWAConnectDialog } from '@/components/whatsapp/openwa-connect-dialog'
 
 // Types
@@ -119,6 +120,10 @@ export default function WhatsAppSetupPage() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const popupRef = useRef<Window | null>(null)
   const popupCheckRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    trackProductEvent('whatsapp_setup_opened', {}, 'funnel')
+  }, [])
 
   // Fetch onboarding status
   const { data: status, isLoading, refetch } = useQuery<OnboardingStatus>({

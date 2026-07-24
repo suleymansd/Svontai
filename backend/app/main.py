@@ -64,6 +64,9 @@ from app.api.routers import (
     setup_autopilot_router,
     agency_router,
     media_router,
+    product_analytics_router,
+    data_retention_router,
+    realtime_router,
 )
 
 # Configure logging
@@ -450,6 +453,9 @@ app.include_router(billing_router)
 app.include_router(setup_autopilot_router)
 app.include_router(agency_router)
 app.include_router(media_router)
+app.include_router(product_analytics_router)
+app.include_router(data_retention_router)
+app.include_router(realtime_router)
 
 # Temporary debug endpoints (development only)
 if settings.ENVIRONMENT == "dev":

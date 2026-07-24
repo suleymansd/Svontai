@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare,
   Search,
@@ -24,11 +24,20 @@ import { PageHeader } from '@/components/shared/page-header'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
 export default function ConversationsPage() {
+  const queryClient = useQueryClient()
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const { connected: realtimeConnected } = useRealtimeEvents((event) => {
+    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
+    queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    if (selectedConversation && event.conversation_id === selectedConversation) {
+      queryClient.invalidateQueries({ queryKey: ['conversation', selectedConversation] })
+    }
+  })
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations'],
@@ -62,6 +71,11 @@ export default function ConversationsPage() {
           title="Konuşmalar"
           description="Müşteri konuşmalarını görüntüleyin ve yönetin."
           icon={<Icon3DBadge icon={MessageSquare} from="from-primary" to="to-violet-500" />}
+          actions={(
+            <Badge variant={realtimeConnected ? 'success' : 'secondary'}>
+              {realtimeConnected ? 'Canlı' : 'Bağlanıyor'}
+            </Badge>
+          )}
         />
 
         <div className="grid gap-4 sm:grid-cols-4">

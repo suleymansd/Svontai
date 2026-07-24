@@ -4,18 +4,13 @@ import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
-  Bot,
   CalendarCheck,
   CheckCircle2,
   Clock3,
-  LifeBuoy,
   MessageSquare,
-  PhoneCall,
   RefreshCw,
   ShieldCheck,
-  Smartphone,
   Users,
-  Workflow,
 } from 'lucide-react'
 import { analyticsApi, autopilotApi, conversationApi, leadApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
@@ -28,9 +23,15 @@ import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { KPIStat } from '@/components/shared/kpi-stat'
 import { PageHeader } from '@/components/shared/page-header'
 import { OperationalReportCard } from '@/components/dashboard/operational-report-card'
+import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
 export default function DashboardPage() {
   const queryClient = useQueryClient()
+  useRealtimeEvents((event) => {
+    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
+    queryClient.invalidateQueries({ queryKey: ['customer-dashboard-conversations'] })
+    queryClient.invalidateQueries({ queryKey: ['customer-success'] })
+  })
   const { data: autopilotStatus, isLoading: autopilotLoading } = useQuery({
     queryKey: ['autopilot-status'],
     queryFn: () => autopilotApi.getStatus().then(res => res.data),
@@ -59,7 +60,6 @@ export default function DashboardPage() {
   const requiredActions = autopilotStatus?.required_user_actions || []
   const healthScore = Number(autopilotStatus?.health_score || 0)
   const isReady = autopilotStatus?.status === 'ready'
-  const businessProfileReady = autopilotStatus?.business_profile?.status === 'ready'
   const latestConversations = Array.isArray(conversations) ? conversations.slice(0, 3) : []
   const latestLeads = Array.isArray(leads) ? leads.slice(0, 3) : []
 
@@ -67,210 +67,79 @@ export default function DashboardPage() {
     <ContentContainer>
       <div className="space-y-8">
         <PageHeader
-          title="SmartWA Ana Panel"
-          description="Sistem müşterilerinizle WhatsApp üzerinden ilgilenir; siz sadece gerekiyorsa izinleri tamamlarsınız."
+          title="Bugün"
+          description="Müşteri hareketleri ve yalnızca sizin müdahalenizi gerektiren işler."
           icon={<Icon3DBadge icon={ShieldCheck} from="from-primary" to="to-violet-500" />}
           actions={(
-            <Button onClick={() => runAutopilotMutation.mutate()} disabled={runAutopilotMutation.isPending}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {runAutopilotMutation.isPending ? 'Kontrol ediliyor...' : 'Sistemi Kontrol Et'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={isReady ? 'success' : 'warning'}>
+                {isReady ? `Sistem çalışıyor • ${healthScore}/100` : `Kontrol gerekiyor • ${healthScore}/100`}
+              </Badge>
+              <Button
+                variant="outline"
+                data-analytics="dashboard_system_check"
+                onClick={() => runAutopilotMutation.mutate()}
+                disabled={runAutopilotMutation.isPending}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${runAutopilotMutation.isPending ? 'animate-spin' : ''}`} />
+                Kontrol Et
+              </Button>
+            </div>
           )}
         />
 
-        <Card className="border border-border/70 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <div>
-              <CardTitle>Sistem Durumu</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                SmartWA kurulum, sağlık kontrolü ve otomatik onarımları arka planda yürütür.
-              </p>
+        {autopilotLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : requiredActions.length > 0 ? (
+          <section className="border-y border-warning/40 bg-warning-subtle/20 py-5">
+            <div className="mb-4 flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
+              <div>
+                <h2 className="font-semibold">Müdahaleniz gereken {requiredActions.length} işlem var</h2>
+                <p className="text-sm text-muted-foreground">İzin veya bağlantıyı tamamladığınızda sistem otomatik devam eder.</p>
+              </div>
             </div>
-            <Badge variant={isReady ? 'success' : 'warning'}>
-              {isReady ? 'Çalışıyor' : 'İzin Bekliyor'}
-            </Badge>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {autopilotLoading ? (
-              <Skeleton className="h-24 w-full" />
-            ) : (
-              <>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <KPIStat label="Genel Sağlık" value={`${healthScore}/100`} icon={<ShieldCheck className="h-5 w-5" />} />
-                  <KPIStat label="İşletme Bilgisi" value={businessProfileReady ? 'Hazır' : 'Ekibimizde'} icon={<CheckCircle2 className="h-5 w-5" />} />
-                  <KPIStat label="Sizden Beklenen" value={requiredActions.length} icon={<AlertTriangle className="h-5 w-5" />} />
+            <div className="grid gap-3 md:grid-cols-2">
+              {requiredActions.slice(0, 4).map((action: any) => (
+                <div key={action.key} className="flex items-center justify-between gap-3 border bg-background p-4">
+                  <p className="text-sm font-medium">{action.label}</p>
+                  {action.url ? <Button asChild size="sm"><Link href={action.url}>Tamamla</Link></Button> : null}
                 </div>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="flex items-start gap-3 border-y border-success/30 bg-success-subtle/20 py-4">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
+            <div>
+              <h2 className="font-semibold">Müdahale gerekmiyor</h2>
+              <p className="text-sm text-muted-foreground">Mesajlar ve otomasyonlar arka planda çalışıyor.</p>
+            </div>
+          </section>
+        )}
 
-                {requiredActions.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="rounded-xl border border-warning/40 bg-warning-subtle/30 p-4">
-                      <div className="flex items-start gap-3">
-                        <AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
-                        <div>
-                          <h3 className="font-semibold">Devam etmek için izin gerekiyor</h3>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Meta WhatsApp veya ödeme gibi güvenliğiniz için sizin onayınız gereken adımlar var.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {requiredActions.slice(0, 3).map((action: any) => (
-                      <div key={action.key} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-medium">{action.label}</p>
-                          <p className="text-sm text-muted-foreground">Bu tamamlanınca sistem otomatik devam eder.</p>
-                        </div>
-                        {action.url ? (
-                          <Button asChild>
-                            <Link href={action.url}>Tamamla</Link>
-                          </Button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-success/30 bg-success-subtle/30 p-4">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
-                      <div>
-                        <h3 className="font-semibold">Sizden bekleyen zorunlu işlem yok</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          SmartWA müşteri mesajları, sağlık kontrolleri ve otomatik toparlama akışlarını sürdürüyor.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Son 30 gün</h2>
+            <p className="text-sm text-muted-foreground">Gerçek müşteri ve işlem kayıtlarından hesaplanır.</p>
+          </div>
+          {customerSuccessLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KPIStat label="Otomatik Yanıt" value={customerSuccess?.ai_replies || 0} icon={<MessageSquare className="h-5 w-5" />} />
+              <KPIStat label="Yeni Müşteri" value={customerSuccess?.new_customers || 0} icon={<Users className="h-5 w-5" />} />
+              <KPIStat label="Randevu" value={customerSuccess?.appointments || 0} icon={<CalendarCheck className="h-5 w-5" />} />
+              <KPIStat
+                label="Kazanılan Zaman"
+                value={`${Math.round(Number(customerSuccess?.estimated_time_saved_minutes || 0) / 6) / 10} saat`}
+                icon={<Clock3 className="h-5 w-5" />}
+              />
+            </div>
+          )}
+        </section>
 
         <OperationalReportCard />
-
-        <Card className="border border-border/70 shadow-soft">
-          <CardHeader>
-            <CardTitle>Son 30 Günde Sağlanan Değer</CardTitle>
-            <p className="text-sm text-muted-foreground">Yalnızca gerçek mesaj, müşteri, randevu ve otomasyon kayıtlarından hesaplanır.</p>
-          </CardHeader>
-          <CardContent>
-            {customerSuccessLoading ? (
-              <Skeleton className="h-24 w-full" />
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <KPIStat label="Otomatik Yanıt" value={customerSuccess?.ai_replies || 0} icon={<MessageSquare className="h-5 w-5" />} />
-                <KPIStat label="Yeni Müşteri" value={customerSuccess?.new_customers || 0} icon={<Users className="h-5 w-5" />} />
-                <KPIStat label="Randevu" value={customerSuccess?.appointments || 0} icon={<CalendarCheck className="h-5 w-5" />} />
-                <KPIStat
-                  label="Tahmini Kazanılan Zaman"
-                  value={`${Math.round(Number(customerSuccess?.estimated_time_saved_minutes || 0) / 6) / 10} saat`}
-                  icon={<Clock3 className="h-5 w-5" />}
-                />
-              </div>
-            )}
-            {customerSuccess ? (
-              <div className="mt-4 flex flex-wrap items-center gap-4 border-t pt-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-2"><Workflow className="h-4 w-4" /> {customerSuccess.successful_automations} başarılı otomasyon</span>
-                <span>Yanıt kapsamı: %{customerSuccess.response_coverage}</span>
-                <span>İnsan kontrolüne alınan: {customerSuccess.human_handoffs}</span>
-                <span title={customerSuccess.estimate_method}>Zaman değeri tahmini kullanım katsayılarıyla hesaplanır.</span>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10">
-                <Bot className="h-6 w-6 text-violet-500" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Botlarım</h3>
-                <p className="text-sm text-muted-foreground">Yanıtları ve bilgileri özelleştirin.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/bots">Botları Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <Smartphone className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold">WhatsApp Bağlantısı</h3>
-                <p className="text-sm text-muted-foreground">Numaranızı bağlayın, sistem devam etsin.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/setup/whatsapp">Bağlantıyı Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10">
-                <MessageSquare className="h-6 w-6 text-info" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Müşteri Mesajları</h3>
-                <p className="text-sm text-muted-foreground">Gelen konuşmaları tek yerden izleyin.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/conversations">Mesajları Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10">
-                <PhoneCall className="h-6 w-6 text-warning" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Aramalar</h3>
-                <p className="text-sm text-muted-foreground">Çağrı kayıtlarını ve özetleri görün.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/calls">Aramaları Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
-                <CalendarCheck className="h-6 w-6 text-emerald-500" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Randevular</h3>
-                <p className="text-sm text-muted-foreground">Alınan randevuları ve hatırlatmaları izleyin.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/appointments">Randevuları Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border/70 shadow-soft">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
-                <LifeBuoy className="h-6 w-6 text-success" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Destek</h3>
-                <p className="text-sm text-muted-foreground">Bir şey gerektiğinde ekibimize yazın.</p>
-                <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/dashboard/tickets">Destek Aç</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="border border-border/70 shadow-soft">

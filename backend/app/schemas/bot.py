@@ -122,3 +122,20 @@ class AssistantProfileResponse(BaseModel):
     training: AssistantTraining
     capabilities: list[AssistantCapabilityResponse]
     completion_percent: int
+
+
+class AssistantSimulationTurn(BaseModel):
+    role: Literal["customer", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class AssistantSimulationRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[AssistantSimulationTurn] = Field(default_factory=list, max_length=20)
+
+
+class AssistantSimulationResponse(BaseModel):
+    reply: str
+    safe_mode: Literal["simulation"] = "simulation"
+    history_count: int
+    latency_ms: int

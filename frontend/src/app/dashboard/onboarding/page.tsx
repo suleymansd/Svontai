@@ -29,6 +29,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
 import { OpenWAConnectDialog } from '@/components/whatsapp/openwa-connect-dialog'
+import { trackProductEvent } from '@/lib/product-analytics'
 
 const industries = [
   { value: 'real_estate', label: 'Emlak' },
@@ -68,6 +69,7 @@ export default function OnboardingPage() {
   const { toast } = useToast()
   const popupRef = useRef<Window | null>(null)
   const hydratedFromStatusRef = useRef(false)
+  const completionTrackedRef = useRef(false)
   const [step, setStep] = useState(0)
   const [form, setForm] = useState({
     setup_mode: 'concierge' as 'concierge' | 'self_serve',
@@ -135,6 +137,7 @@ export default function OnboardingPage() {
       queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
       queryClient.invalidateQueries({ queryKey: ['bots'] })
       setStep(5)
+      trackProductEvent('onboarding_completed', { mode: form.setup_mode }, 'funnel')
     },
     onError: (error: any) => {
       toast({
@@ -166,6 +169,10 @@ export default function OnboardingPage() {
     if (!statusQuery.data) return
     if (statusQuery.data.is_completed) {
       setStep(5)
+      if (!completionTrackedRef.current) {
+        completionTrackedRef.current = true
+        trackProductEvent('onboarding_completed', { mode: form.setup_mode }, 'funnel')
+      }
       return
     }
     if (hydratedFromStatusRef.current) return
@@ -182,7 +189,7 @@ export default function OnboardingPage() {
     if (current && current in nextStepByKey) {
       setStep(nextStepByKey[current])
     }
-  }, [statusQuery.data])
+  }, [form.setup_mode, statusQuery.data])
 
   return (
     <ContentContainer>

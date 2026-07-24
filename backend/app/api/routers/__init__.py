@@ -46,6 +46,9 @@ from app.api.routers.agency import router as agency_router
 from app.api.routers.debug import router as debug_router
 from app.api.routers.notifications import router as notifications_router
 from app.api.routers.media import router as media_router
+from app.api.routers.product_analytics import router as product_analytics_router
+from app.api.routers.data_retention import router as data_retention_router
+from app.api.routers.realtime import router as realtime_router
 
 __all__ = [
     "auth_router",
@@ -95,4 +98,7 @@ __all__ = [
     "debug_router",
     "notifications_router",
     "media_router",
+    "product_analytics_router",
+    "data_retention_router",
+    "realtime_router",
 ]

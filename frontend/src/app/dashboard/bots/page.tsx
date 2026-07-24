@@ -40,6 +40,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { autopilotApi, botApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { useToast } from '@/components/ui/use-toast'
+import { AssistantSimulator } from '@/components/bots/assistant-simulator'
 
 type Training = {
   goal: 'support' | 'sales' | 'appointments' | 'mixed'
@@ -219,10 +220,13 @@ export default function BotsPage() {
           description="Tek ana asistanınız, işletme bilginizi ve uzman yetenekleri birlikte kullanır."
           icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-cyan-500" />}
           actions={(
-            <Button variant="outline" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
-              {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              İşletme Bilgilerini Yenile
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <AssistantSimulator botId={profile.assistant.id} />
+              <Button variant="outline" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
+                {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                İşletme Bilgilerini Yenile
+              </Button>
+            </div>
           )}
         />
 
