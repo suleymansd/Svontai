@@ -1161,7 +1161,7 @@ async def handle_incoming_message(
         try:
             from app.services.voice_automation_service import VoiceAutomationService
 
-            VoiceAutomationService(db).evaluate_whatsapp_message(
+            await VoiceAutomationService(db).evaluate_whatsapp_message(
                 tenant_id=tenant_uuid,
                 bot_id=bot_id,
                 conversation_id=conversation_id,

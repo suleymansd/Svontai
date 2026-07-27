@@ -44,6 +44,8 @@ def _voice_intent_action_url(
     from_number: str,
     to_number: str,
     turn: int,
+    direction: str = "inbound",
+    job_id: str = "",
 ) -> str:
     query = urlencode(
         {
@@ -52,6 +54,8 @@ def _voice_intent_action_url(
             "from": str(from_number).strip(),
             "to": str(to_number).strip(),
             "turn": turn,
+            "direction": direction,
+            "jobId": str(job_id).strip(),
         },
         quote_via=quote,
     )
@@ -272,6 +276,7 @@ async def twilio_inbound_voice(request: Request) -> Response:
             from_number=from_number,
             to_number=to_number,
             turn=1,
+            direction="inbound",
         )
         status_cb = f"/twilio/voice/status?tenantId={tenant_id}&callSid={call_sid}&from={from_number}&to={to_number}"
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -360,6 +365,8 @@ async def twilio_outbound_voice(request: Request) -> Response:
         from_number=from_number,
         to_number=to_number,
         turn=1,
+        direction="outbound",
+        job_id=job_id,
     )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -381,6 +388,8 @@ async def twilio_voice_intent(request: Request) -> Response:
     turn = int(params.get("turn", "1") or "1")
     from_number = params.get("from", "")
     to_number = params.get("to", "")
+    direction = params.get("direction", "inbound")
+    job_id = params.get("jobId", "")
 
     form = await request.form()
     _require_twilio_signature(request, form)
@@ -398,6 +407,8 @@ async def twilio_voice_intent(request: Request) -> Response:
             from_number=from_number,
             to_number=to_number,
             turn=next_turn,
+            direction=direction,
+            job_id=job_id,
         )
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -413,14 +424,14 @@ async def twilio_voice_intent(request: Request) -> Response:
         "call": {
             "provider": "twilio",
             "provider_call_id": call_sid,
-            "direction": "inbound",
+            "direction": direction,
             "status": "in_progress",
         },
         "from": f"tel:{from_number}",
         "to": f"tel:{to_number}",
         "text": speech,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "metadata": {"turn": turn},
+        "metadata": {"turn": turn, "outbound_job_id": job_id or None},
     }
 
     try:
@@ -431,6 +442,18 @@ async def twilio_voice_intent(request: Request) -> Response:
 
     response_text = str(result.get("responseText") or result.get("response_text") or "Anladım. Devam edelim.").strip()
     end_call = bool(result.get("endCall") or result.get("end_call") or False)
+    transfer_to = str(result.get("transferTo") or result.get("transfer_to") or "").strip()
+
+    if transfer_to:
+        transfer_caller_id = from_number if direction == "outbound" else to_number
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  {_twilio_say(response_text)}
+  <Dial timeout="25" callerId="{_xml_attr(transfer_caller_id)}">{_xml_text(transfer_to)}</Dial>
+  {_twilio_say("Şu anda yetkiliye ulaşılamadı. Lütfen daha sonra tekrar deneyin.")}
+  <Hangup />
+</Response>"""
+        return Response(content=twiml, media_type="application/xml")
 
     if end_call:
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -447,6 +470,8 @@ async def twilio_voice_intent(request: Request) -> Response:
         from_number=from_number,
         to_number=to_number,
         turn=next_turn,
+        direction=direction,
+        job_id=job_id,
     )
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -476,18 +501,32 @@ async def twilio_voice_status(request: Request) -> Response:
     if not to_number:
         to_number = str(form.get("To") or "").strip()
     direction = params.get("direction", "inbound")
+    job_id = params.get("jobId", "")
 
     try:
         duration_seconds = int(call_duration) if call_duration else 0
     except Exception:
         duration_seconds = 0
 
-    if tenant_id and call_sid and call_status in {"completed", "busy", "no-answer", "failed", "canceled"}:
+    supported_statuses = {
+        "queued",
+        "initiated",
+        "ringing",
+        "answered",
+        "in-progress",
+        "completed",
+        "busy",
+        "no-answer",
+        "failed",
+        "canceled",
+    }
+    if tenant_id and call_sid and call_status in supported_statuses:
         now = datetime.now(timezone.utc).isoformat()
+        terminal = call_status in {"completed", "busy", "no-answer", "failed", "canceled"}
         await _svontai_post_voice_event(
             {
                 "tenantId": str(tenant_id),
-                "eventType": "voice_call_completed",
+                "eventType": "voice_call_completed" if terminal else "voice_call_status",
                 "eventId": f"twilio:{call_sid}:status:{call_status}",
                 "from": f"tel:{from_number}",
                 "to": f"tel:{to_number}",
@@ -500,6 +539,7 @@ async def twilio_voice_status(request: Request) -> Response:
                     "ended_at": now,
                     "duration_seconds": duration_seconds,
                 },
+                "metadata": {"outbound_job_id": job_id or None},
             }
         )
 

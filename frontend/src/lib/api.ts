@@ -281,6 +281,19 @@ export const voiceAutomationApi = {
     api.get('/voice-automation/intents', { params }),
   listJobs: (params?: { status?: string; limit?: number }) =>
     api.get('/voice-automation/jobs', { params }),
+  cancelJob: (jobId: string) =>
+    api.post(`/voice-automation/jobs/${jobId}/cancel`),
+  retryJob: (jobId: string, nextAttemptAt?: string) =>
+    api.post(`/voice-automation/jobs/${jobId}/retry`, {
+      next_attempt_at: nextAttemptAt || null,
+    }),
+  listContactPolicies: (params?: { status?: 'allowed' | 'do_not_call'; limit?: number }) =>
+    api.get('/voice-automation/contact-policies', { params }),
+  updateContactPolicy: (data: {
+    phone_number: string
+    status: 'allowed' | 'do_not_call'
+    reason?: string
+  }) => api.put('/voice-automation/contact-policies', data),
   testCall: (data: { customer_phone: string; customer_name?: string; reason?: string; consent_confirmed: boolean }) =>
     api.post('/voice-automation/test-call', data),
 }

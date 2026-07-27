@@ -40,6 +40,7 @@ from app.models.voice_automation import (
     OutboundCallJob,
     OutboundCallJobStatus,
     TenantVoiceSettings,
+    VoiceContactPolicy,
 )
 from app.models.lead_note import LeadNote
 from app.models.usage_counter import TenantUsageCounter

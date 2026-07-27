@@ -3,6 +3,7 @@ import hashlib
 import html
 import hmac
 import re
+from datetime import datetime
 from urllib.parse import urlsplit
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -136,6 +137,154 @@ def test_voice_settings_and_test_call_job_flow(client):
     assert len(calls) == 1
     assert calls[0]["direction"] == "outbound"
     assert calls[0]["provider"] == "vapi"
+
+
+def test_voice_business_hours_and_do_not_call_policy(client):
+    from app.db.session import SessionLocal
+    from app.models.voice_automation import TenantVoiceSettings
+    from app.services.voice_automation_service import VoiceAutomationService
+
+    access_token, tenant_id = _create_tenant_session(client, email="voice-policy@example.com")
+    headers = _auth_headers(access_token, tenant_id)
+    update_resp = client.patch(
+        "/voice-automation/settings",
+        json={
+            "enabled": True,
+            "provider": "twilio",
+            "from_number": "+15005550006",
+            "transfer_number": "+905551112233",
+            "business_hours_json": {
+                "timezone": "Europe/Istanbul",
+                "days": [1, 2, 3, 4, 5],
+                "start": "09:00",
+                "end": "18:00",
+            },
+        },
+        headers=headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["transfer_number"] == "+905551112233"
+
+    settings = TenantVoiceSettings(
+        tenant_id=UUID(tenant_id),
+        business_hours_json={
+            "timezone": "Europe/Istanbul",
+            "days": [1, 2, 3, 4, 5],
+            "start": "09:00",
+            "end": "18:00",
+        },
+    )
+    monday_before_open_utc = datetime(2026, 7, 27, 5, 0)
+    assert VoiceAutomationService.next_business_opening(
+        settings,
+        monday_before_open_utc,
+    ) == datetime(2026, 7, 27, 6, 0)
+
+    block_resp = client.put(
+        "/voice-automation/contact-policies",
+        json={
+            "phone_number": "+905559998877",
+            "status": "do_not_call",
+            "reason": "Müşteri arama istemiyor",
+        },
+        headers=headers,
+    )
+    assert block_resp.status_code == 200, block_resp.text
+    policies_resp = client.get(
+        "/voice-automation/contact-policies?status=do_not_call",
+        headers=headers,
+    )
+    assert policies_resp.status_code == 200, policies_resp.text
+    assert [item["phone_number"] for item in policies_resp.json()] == ["+905559998877"]
+
+    db = SessionLocal()
+    try:
+        assert VoiceAutomationService(db).is_contact_blocked(
+            UUID(tenant_id),
+            "+90 555 999 88 77",
+        )
+    finally:
+        db.close()
+
+
+def test_provider_status_sync_retries_and_creates_fallback_summary(client):
+    from app.db.session import SessionLocal
+    from app.models.call import Call
+    from app.models.voice_automation import CallIntent, OutboundCallJob
+    from app.services.voice_automation_service import VoiceAutomationService
+
+    _access_token, tenant_id = _create_tenant_session(client, email="voice-status@example.com")
+    tenant_uuid = UUID(tenant_id)
+    db = SessionLocal()
+    try:
+        intent = CallIntent(
+            tenant_id=tenant_uuid,
+            customer_phone="+905559998877",
+            trigger="manual_test",
+            reason="status test",
+            status="queued",
+        )
+        db.add(intent)
+        db.flush()
+        job = OutboundCallJob(
+            tenant_id=tenant_uuid,
+            call_intent_id=intent.id,
+            provider="twilio",
+            from_number="+15005550006",
+            to_number="+905559998877",
+            status="running",
+            attempts=1,
+            max_attempts=2,
+            provider_call_id="CA-retry-1",
+        )
+        call = Call(
+            tenant_id=tenant_uuid,
+            provider="twilio",
+            provider_call_id="CA-retry-1",
+            direction="outbound",
+            status="started",
+            from_number="+15005550006",
+            to_number="+905559998877",
+            duration_seconds=0,
+        )
+        db.add_all([job, call])
+        db.commit()
+        db.refresh(job)
+        db.refresh(call)
+
+        service = VoiceAutomationService(db)
+        service.handle_provider_event(
+            call=call,
+            provider_status="no-answer",
+            metadata={"outbound_job_id": str(job.id)},
+        )
+        db.refresh(job)
+        db.refresh(intent)
+        assert call.status == "no_answer"
+        assert job.status == "pending"
+        assert job.next_attempt_at is not None
+        assert intent.status == "queued"
+
+        job.status = "running"
+        job.attempts = 2
+        job.provider_call_id = "CA-complete-2"
+        call.provider_call_id = "CA-complete-2"
+        call.status = "in_progress"
+        call.duration_seconds = 42
+        db.commit()
+        service.handle_provider_event(
+            call=call,
+            provider_status="completed",
+            metadata={"outbound_job_id": str(job.id)},
+        )
+        db.refresh(job)
+        db.refresh(intent)
+        assert job.status == "completed"
+        assert intent.status == "completed"
+        assert call.summary is not None
+        assert "42 saniye" in call.summary.summary
+    finally:
+        db.close()
 
 
 def test_voice_live_twilio_job_uses_real_provider_contract(client, monkeypatch):

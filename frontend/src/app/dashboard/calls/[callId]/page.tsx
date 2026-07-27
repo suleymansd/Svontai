@@ -22,6 +22,7 @@ type CallRow = {
   from_number: string
   to_number: string
   duration_seconds: number
+  cost_estimate?: number | null
   created_at: string
 }
 
@@ -96,7 +97,7 @@ export default function CallDetailPage() {
               <FileText className="h-5 w-5 text-muted-foreground" />
               Özet
             </CardTitle>
-            <CardDescription>n8n call workflow summary callback ile dolar.</CardDescription>
+            <CardDescription>Görüşme sonucu otomatik hazırlanır; bağlı otomasyon varsa daha ayrıntılı hale getirilir.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {callLoading ? (
@@ -107,6 +108,9 @@ export default function CallDetailPage() {
                 <Badge variant="outline">{call.direction}</Badge>
                 <Badge variant={call.status === 'completed' ? 'success' : 'secondary'}>{call.status}</Badge>
                 <Badge variant="outline">{durationLabel}</Badge>
+                {call.cost_estimate != null && (
+                  <Badge variant="outline">${Number(call.cost_estimate).toFixed(4)}</Badge>
+                )}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">Çağrı bulunamadı.</div>
@@ -126,7 +130,7 @@ export default function CallDetailPage() {
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">
-                Özet henüz yok (workflow callback bekleniyor).
+                Görüşme tamamlandığında özet otomatik hazırlanacak.
               </div>
             )}
           </CardContent>
@@ -165,4 +169,3 @@ export default function CallDetailPage() {
     </ContentContainer>
   )
 }
-

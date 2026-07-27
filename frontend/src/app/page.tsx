@@ -78,20 +78,21 @@ export default function HomePage() {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-8 animate-fade-in-up">
               <Sparkles className="w-4 h-4 text-yellow-500" />
-              <span className="text-sm font-medium">Mesaj, Müşteri ve Randevu Yönetimi Tek Yerde</span>
+              <span className="text-sm font-medium">İşletmeler İçin Otonom WhatsApp Operasyon Sistemi</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
             
             {/* Headline */}
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-8 animate-fade-in-up stagger-1">
-              WhatsApp Müşteri İletişiminiz{' '}
-              <span className="gradient-text">7/24 Çalışsın</span>
+              WhatsApp Operasyonunuzu Yöneten{' '}
+              <span className="gradient-text">Otonom Yapay Zekâ</span>
             </h1>
             
             {/* Subheadline */}
             <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
-              SvontAI gelen mesajları işletmenizin bilgileriyle yanıtlar, müşterileri
-              tanır, uygun saatleri kontrol eder ve onaylanan randevuları otomatik kaydeder.
+              SvontAI müşteri görüşmelerini işletmenizin bilgileriyle yürütür; talepleri
+              analiz eder, satış fırsatlarını takip eder, uygun randevuları takviminize
+              işler ve yalnızca gerektiğinde sizi devreye alır.
             </p>
             
             {/* CTA Buttons */}

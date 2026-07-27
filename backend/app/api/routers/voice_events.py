@@ -22,6 +22,8 @@ from app.models.tenant import Tenant
 from app.services.audit_log_service import AuditLogService
 from app.services.n8n_client import N8NClient
 from app.services.usage_counter_service import UsageCounterService
+from app.services.voice_automation_service import VoiceAutomationService
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,7 @@ async def ingest_voice_event(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
     call_payload = body.call or {}
+    voice_service = VoiceAutomationService(db)
     provider = str(call_payload.get("provider") or "unknown").strip()[:50]
     provider_call_id = str(call_payload.get("provider_call_id") or call_payload.get("providerCallId") or "").strip()
 
@@ -85,16 +88,24 @@ async def ingest_voice_event(
                 provider=provider,
                 provider_call_id=provider_call_id,
                 direction=str(call_payload.get("direction") or CallDirection.INBOUND.value),
-                status=str(call_payload.get("status") or CallStatus.STARTED.value),
+                status=voice_service.normalize_provider_status(
+                    str(call_payload.get("status") or CallStatus.STARTED.value)
+                ),
                 from_number=body.from_id,
                 to_number=body.to_id or "",
-                meta_json={"call": call_payload},
+                meta_json={"call": call_payload, **(body.metadata or {})},
             )
             db.add(call_row)
         else:
             # update minimal state
-            call_row.status = str(call_payload.get("status") or call_row.status)
-            call_row.meta_json = {**(call_row.meta_json or {}), "call": call_payload}
+            call_row.status = voice_service.normalize_provider_status(
+                str(call_payload.get("status") or call_row.status)
+            )
+            call_row.meta_json = {
+                **(call_row.meta_json or {}),
+                "call": call_payload,
+                **(body.metadata or {}),
+            }
 
         duration_seconds = call_payload.get("duration_seconds") or call_payload.get("durationSeconds")
         try:
@@ -117,9 +128,38 @@ async def ingest_voice_event(
             except Exception:
                 pass
 
+        recording_url = call_payload.get("recording_url") or call_payload.get("recordingUrl")
+        if recording_url:
+            call_row.recording_url = str(recording_url)[:4000]
+        if call_row.duration_seconds and call_row.status in {
+            CallStatus.COMPLETED.value,
+            CallStatus.FAILED.value,
+            CallStatus.NO_ANSWER.value,
+            CallStatus.BUSY.value,
+            CallStatus.CANCELLED.value,
+        }:
+            billed_minutes = max(1, (int(call_row.duration_seconds) + 59) // 60)
+            call_row.cost_estimate = round(
+                billed_minutes * float(settings.VOICE_ESTIMATED_COST_PER_MINUTE_USD),
+                4,
+            )
+
         # Persist call row changes
         db.commit()
         db.refresh(call_row)
+        if call_row.status in {
+            CallStatus.COMPLETED.value,
+            CallStatus.FAILED.value,
+            CallStatus.NO_ANSWER.value,
+            CallStatus.BUSY.value,
+            CallStatus.CANCELLED.value,
+        }:
+            voice_service.enrich_twilio_call_cost(call_row)
+        voice_service.handle_provider_event(
+            call=call_row,
+            provider_status=call_row.status,
+            metadata=body.metadata or {},
+        )
 
         AuditLogService(db).safe_log(
             action="voice.event.ingest",

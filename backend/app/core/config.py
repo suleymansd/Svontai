@@ -234,6 +234,7 @@ class Settings(BaseSettings):
     VOICE_GLOBAL_MONTHLY_CALL_LIMIT: int = 500
     VOICE_MAX_CALL_DURATION_SECONDS: int = 300
     VOICE_ALLOWED_DESTINATION_PREFIXES: str = "+90"
+    VOICE_ESTIMATED_COST_PER_MINUTE_USD: float = 0.03
     
     # Default workflow ID for incoming WhatsApp messages
     N8N_INCOMING_WORKFLOW_ID: str = ""
