@@ -7,9 +7,9 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
 ### İlk kurulum
 1. Kayıt ol, e-posta doğrulamasını tamamla.
 2. Giriş yap ve tenant bilgilerini kontrol et.
-3. `Botlarım` ekranından ilk botu oluştur.
-4. `Tool Kataloğu`ndan gerekli toolları seç.
-5. `WhatsApp Kurulum` adımlarını tamamla.
+3. Kurulum Merkezi sorularını yanıtla; SvontAI temel botu ve işletme profilini otomatik hazırlar.
+4. WhatsApp QR veya resmi Meta bağlantısını tamamla.
+5. `Botlarım` ekranından otomatik hazırlanan temel botu test et; yalnızca gerekiyorsa ek uzman bot oluştur.
 
 ### Günlük operasyon
 1. `Konuşmalar` ekranından mesajları takip et.
@@ -17,6 +17,14 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
 3. Tool sayfalarından (entegrasyon + iç düzenleme) işlemleri yönet.
 4. `Analitikler` ve `Kullanım` ekranlarından performans/limit takibi yap.
 5. `Ayarlar` altında güvenlik ve bildirimleri düzenli kontrol et.
+
+### AI arama asistanı
+1. `Aramalar` ekranında arayan numara, çalışma günleri/saatleri ve günlük limiti belirle.
+2. Canlı aktarım kullanılacaksa yetkili telefonunu `Canlı aktarım numarası` alanına ekle.
+3. Test aramasında kişinin iznini onayla; sistem izni kalıcı kayıt altına alır.
+4. WhatsApp üzerinden “beni arama” diyen kişiler otomatik olarak `Aranmayacak numaralar` listesine alınır.
+5. Cevapsız veya meşgul aramalar çalışma saatleri içinde sınırlı sayıda tekrar denenir. Sonucu belirsiz provider istekleri mükerrer ücret oluşmaması için otomatik tekrar edilmez.
+6. Tamamlanan çağrıda görüşme özeti ve maliyet çağrı detayında görünür. Twilio kesin fiyatı gecikirse geçici dakika tahmini gösterilir.
 
 ## 2) Super Admin Paneli (Şirket Yönetimi)
 
@@ -59,6 +67,7 @@ Bu rehber, **kullanıcı paneli** ve **super admin paneli** için standart kulla
     - `VOICE_GLOBAL_MONTHLY_CALL_LIMIT=500`
     - `VOICE_MAX_CALL_DURATION_SECONDS=300`
     - `VOICE_ALLOWED_DESTINATION_PREFIXES=+90`
+    - `VOICE_ESTIMATED_COST_PER_MINUTE_USD=0.03`
 - Vercel:
   - `NEXT_PUBLIC_BACKEND_URL`
 - Güvenlik:

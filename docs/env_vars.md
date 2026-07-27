@@ -79,6 +79,7 @@
 - `VOICE_GLOBAL_MONTHLY_CALL_LIMIT` (default: `500`)
 - `VOICE_MAX_CALL_DURATION_SECONDS` (default: `300`)
 - `VOICE_ALLOWED_DESTINATION_PREFIXES` (comma-separated E.164 prefixes, default: `+90`)
+- `VOICE_ESTIMATED_COST_PER_MINUTE_USD` (Twilio kesin fiyatı oluşana kadar gösterilecek dakika tahmini, default: `0.03`)
 - `BILLING_MODE` (`manual` | `stripe`, default: `manual`)
 - `PAYMENTS_ENABLED`
 - `SALES_CONTACT_EMAIL`

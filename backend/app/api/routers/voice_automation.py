@@ -12,7 +12,7 @@ from app.dependencies.auth import get_current_tenant, get_current_user
 from app.dependencies.permissions import require_permissions
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.models.voice_automation import CallIntent, OutboundCallJob
+from app.models.voice_automation import CallIntent, OutboundCallJob, VoiceContactPolicy
 from app.services.voice_automation_service import VoiceAutomationService
 from app.core.rate_limit import rate_limit_key, require_rate_limit, voice_test_call_rate_limiter
 from app.core.config import settings
@@ -29,6 +29,7 @@ class VoiceSettingsResponse(BaseModel):
     enabled: bool
     provider: str
     from_number: str | None = None
+    transfer_number: str | None = None
     allow_appointment_booking: bool
     require_explicit_call_request: bool
     business_hours_json: dict
@@ -46,6 +47,7 @@ class VoiceSettingsUpdate(BaseModel):
     enabled: bool | None = None
     provider: str | None = Field(default=None, max_length=40)
     from_number: str | None = Field(default=None, max_length=60)
+    transfer_number: str | None = Field(default=None, max_length=60)
     allow_appointment_booking: bool | None = None
     require_explicit_call_request: bool | None = None
     business_hours_json: dict | None = None
@@ -112,6 +114,32 @@ class VoiceCapabilitiesResponse(BaseModel):
     supported_providers: list[str]
 
 
+class VoiceContactPolicyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    phone_number: str
+    status: str
+    source: str
+    reference: str | None = None
+    consent_at: datetime | None = None
+    opted_out_at: datetime | None = None
+    reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VoiceContactPolicyUpdate(BaseModel):
+    phone_number: str = Field(..., min_length=6, max_length=60)
+    status: str = Field(..., pattern="^(allowed|do_not_call)$")
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class VoiceJobRetryRequest(BaseModel):
+    next_attempt_at: datetime | None = None
+
+
 @router.get("/settings", response_model=VoiceSettingsResponse)
 async def get_voice_settings(
     current_tenant: Tenant = Depends(get_current_tenant),
@@ -146,10 +174,16 @@ async def update_voice_settings(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["settings:write"])),
 ):
-    return VoiceAutomationService(db).update_settings(
-        current_tenant.id,
-        payload.model_dump(exclude_unset=True),
-    )
+    try:
+        return VoiceAutomationService(db).update_settings(
+            current_tenant.id,
+            payload.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/intents", response_model=list[CallIntentResponse])
@@ -178,6 +212,73 @@ async def list_outbound_jobs(
     if status:
         query = query.filter(OutboundCallJob.status == status)
     return query.order_by(OutboundCallJob.created_at.desc()).limit(limit).all()
+
+
+@router.get("/contact-policies", response_model=list[VoiceContactPolicyResponse])
+async def list_contact_policies(
+    status: str | None = Query(default=None, pattern="^(allowed|do_not_call)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+):
+    query = db.query(VoiceContactPolicy).filter(
+        VoiceContactPolicy.tenant_id == current_tenant.id,
+    )
+    if status:
+        query = query.filter(VoiceContactPolicy.status == status)
+    return query.order_by(VoiceContactPolicy.updated_at.desc()).limit(limit).all()
+
+
+@router.put("/contact-policies", response_model=VoiceContactPolicyResponse)
+async def update_contact_policy(
+    payload: VoiceContactPolicyUpdate,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+):
+    return VoiceAutomationService(db).set_contact_policy(
+        tenant_id=current_tenant.id,
+        phone_number=payload.phone_number,
+        status=payload.status,
+        source="customer_panel",
+        reason=payload.reason,
+    )
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=OutboundCallJobResponse)
+async def cancel_outbound_job(
+    job_id: UUID,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+):
+    try:
+        return VoiceAutomationService(db).cancel_job(current_tenant.id, job_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/jobs/{job_id}/retry", response_model=OutboundCallJobResponse)
+async def retry_outbound_job(
+    job_id: UUID,
+    payload: VoiceJobRetryRequest,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["settings:write"])),
+):
+    try:
+        return VoiceAutomationService(db).retry_job(
+            current_tenant.id,
+            job_id,
+            next_attempt_at=payload.next_attempt_at,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/test-call", response_model=CallIntentResponse)
@@ -217,6 +318,14 @@ async def create_test_call_intent(
     db.add(intent)
     db.commit()
     db.refresh(intent)
+    service.set_contact_policy(
+        tenant_id=current_tenant.id,
+        phone_number=payload.customer_phone,
+        status="allowed",
+        source="panel_test",
+        reference=str(intent.id),
+        reason="Panel test araması için kullanıcı tarafından izin onaylandı.",
+    )
     service.enqueue_intent(intent)
     db.refresh(intent)
     return intent

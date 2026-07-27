@@ -26,6 +26,7 @@ from app.services.audit_log_service import AuditLogService
 from app.services.n8n_client import N8NClient
 from app.services.push_notification_service import send_tenant_push_notification
 from app.services.voice_appointment_service import VoiceAppointmentService
+from app.services.voice_automation_service import VoiceAutomationService
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class VoiceIntentResponse(BaseModel):
     run_id: str | None = Field(default=None, alias="runId")
     response_text: str = Field(..., alias="responseText")
     end_call: bool = Field(default=False, alias="endCall")
+    transfer_to: str | None = Field(default=None, alias="transferTo")
     raw: dict | None = None
 
 
@@ -136,9 +138,35 @@ async def voice_intent(
             ).order_by(CallTranscript.segment_index.desc()).limit(12).all()
             segments = [(row.speaker, row.text) for row in reversed(rows)]
         appointment = None
-        appointment_enabled = profile_service.capability_enabled(bot, "appointment_management")
+        voice_settings = VoiceAutomationService(db).get_or_create_settings(body.tenant_id)
+        appointment_enabled = (
+            voice_settings.allow_appointment_booking
+            and profile_service.capability_enabled(bot, "appointment_management")
+        )
+        human_request = any(
+            phrase in body.text.casefold()
+            for phrase in (
+                "insanla konuş",
+                "yetkiliyle görüş",
+                "müşteri temsilcisi",
+                "birine bağla",
+                "yetkiliye bağla",
+            )
+        )
+        transfer_to = (
+            str(voice_settings.transfer_number or "").strip()
+            if human_request
+            else ""
+        )
         booking_result = None
-        if call_row is not None and appointment_enabled:
+        if transfer_to:
+            response_text = "Sizi şimdi bir yetkiliye bağlıyorum."
+        elif human_request:
+            response_text = (
+                "Şu anda canlı aktarım numarası tanımlı değil. "
+                "İşletmeyle Vatsap üzerinden iletişime geçebilirsiniz."
+            )
+        elif call_row is not None and appointment_enabled:
             booking_result = VoiceAppointmentService(db).handle_turn(
                 tenant=tenant,
                 call=call_row,
@@ -204,6 +232,7 @@ async def voice_intent(
             "provider": ai_service.provider,
             "appointmentCreated": appointment is not None,
             "appointmentId": str(appointment.id) if appointment is not None else None,
+            "transferTo": transfer_to or None,
         }
         run.mark_success(response_data)
         db.commit()
@@ -217,6 +246,7 @@ async def voice_intent(
     if not response_text:
         response_text = "Anladım. Devam edelim."
     end_call = bool(response_data.get("endCall") or response_data.get("end_call") or False)
+    transfer_to = str(response_data.get("transferTo") or response_data.get("transfer_to") or "").strip() or None
 
     # Transcript write (agent turn) best-effort.
     if call_row is not None and response_text:
@@ -239,4 +269,11 @@ async def voice_intent(
             )
             db.commit()
 
-    return VoiceIntentResponse(ok=True, runId=str(run.id), responseText=response_text, endCall=end_call, raw=response_data)
+    return VoiceIntentResponse(
+        ok=True,
+        runId=str(run.id),
+        responseText=response_text,
+        endCall=end_call,
+        transferTo=transfer_to,
+        raw=response_data,
+    )

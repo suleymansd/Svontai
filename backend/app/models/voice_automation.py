@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.time import utc_now_naive
@@ -45,6 +45,7 @@ class TenantVoiceSettings(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False, default="vapi")
     from_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    transfer_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     allow_appointment_booking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     require_explicit_call_request: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -59,6 +60,38 @@ class TenantVoiceSettings(Base):
     meta_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class VoiceContactPolicy(Base):
+    """Persistent tenant-level consent and do-not-call preference."""
+
+    __tablename__ = "voice_contact_policies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "phone_number", name="uq_voice_contact_policy_tenant_phone"),
+        Index("ix_voice_contact_policies_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    phone_number: Mapped[str] = mapped_column(String(60), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="allowed")
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="customer_message")
+    reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    opted_out_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
+        nullable=False,
+    )
 
 
 class CallIntent(Base):
