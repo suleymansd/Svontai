@@ -21,6 +21,14 @@ import {
   MessageSquare
 } from 'lucide-react'
 
+const customerBrands = [
+  'Tahmis Efendi',
+  'RE/MAX Gate',
+  'ibremax.com',
+  'adayos.com',
+  'CalorAI',
+]
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background overflow-hidden">
@@ -95,8 +103,36 @@ export default function HomePage() {
               işler ve yalnızca gerektiğinde sizi devreye alır.
             </p>
             
+            {/* Customer brands */}
+            <div
+              className="mx-auto mb-10 max-w-3xl animate-fade-in-up stagger-3"
+              aria-label="Birlikte çalıştığımız markalar"
+            >
+              <p className="mb-3 text-[11px] font-semibold uppercase text-muted-foreground">
+                Birlikte çalıştığımız markalar
+              </p>
+              <div className="brand-marquee border-y border-slate-200/80 py-3 dark:border-slate-800">
+                <div className="brand-marquee-track">
+                  {[false, true].map((duplicate) => (
+                    <div
+                      key={String(duplicate)}
+                      className="brand-marquee-group"
+                      aria-hidden={duplicate}
+                    >
+                      {customerBrands.map((brand) => (
+                        <div key={brand} className="brand-marquee-item">
+                          <span className="brand-marquee-mark" aria-hidden="true" />
+                          <span>{brand}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-3">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-4">
               <Link href="/register">
                 <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-lg px-8 h-14 rounded-2xl shadow-2xl shadow-blue-500/30 btn-shine">
                   Ücretsiz Deneyin
@@ -115,7 +151,7 @@ export default function HomePage() {
             </div>
 
             {/* Trust Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-12 animate-fade-in-up stagger-4">
+            <div className="flex flex-wrap items-center justify-center gap-6 mt-12 animate-fade-in-up stagger-5">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4 text-green-500" />
                 <span>KVKK Odaklı</span>
