@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Logo, LogoIcon } from '@/components/Logo'
@@ -21,12 +22,13 @@ import {
   MessageSquare
 } from 'lucide-react'
 
-const customerBrands = [
-  'Tahmis Efendi',
-  'RE/MAX Gate',
-  'ibremax.com',
-  'adayos.com',
-  'CalorAI',
+const customerBrands: Array<{ name: string; logo?: string; logoClassName?: string }> = [
+  { name: 'Tahmis Efendi', logo: '/brands/tahmis-efendi.png', logoClassName: 'brand-marquee-logo--tahmis' },
+  { name: 'RE/MAX Gate', logo: '/brands/remax-gate.png', logoClassName: 'brand-marquee-logo--remax' },
+  { name: 'ibremax.com' },
+  { name: 'adayos.com' },
+  { name: 'CalorAI' },
+  { name: 'WantedOS', logo: '/brands/wantedos.png', logoClassName: 'brand-marquee-logo--wantedos' },
 ]
 
 export default function HomePage() {
@@ -120,9 +122,21 @@ export default function HomePage() {
                       aria-hidden={duplicate}
                     >
                       {customerBrands.map((brand) => (
-                        <div key={brand} className="brand-marquee-item">
-                          <span className="brand-marquee-mark" aria-hidden="true" />
-                          <span>{brand}</span>
+                        <div key={brand.name} className="brand-marquee-item">
+                          {brand.logo ? (
+                            <Image
+                              src={brand.logo}
+                              alt={brand.name}
+                              width={80}
+                              height={60}
+                              className={['brand-marquee-logo', brand.logoClassName].filter(Boolean).join(' ')}
+                            />
+                          ) : (
+                            <>
+                              <span className="brand-marquee-mark" aria-hidden="true" />
+                              <span>{brand.name}</span>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
