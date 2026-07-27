@@ -491,12 +491,31 @@
 
 .brand-marquee-item {
   display: flex;
+  min-height: 2rem;
   align-items: center;
   gap: 0.65rem;
   white-space: nowrap;
   color: hsl(var(--foreground) / 0.68);
   font-size: 0.92rem;
   font-weight: 650;
+}
+
+.brand-marquee-logo {
+  width: auto;
+  height: 2rem;
+  object-fit: contain;
+}
+
+.brand-marquee-logo--tahmis {
+  height: 1.75rem;
+}
+
+.brand-marquee-logo--remax {
+  height: 2.5rem;
+}
+
+.brand-marquee-logo--wantedos {
+  height: 1.35rem;
 }
 
 .brand-marquee-mark {
