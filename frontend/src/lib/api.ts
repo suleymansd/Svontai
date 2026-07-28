@@ -44,16 +44,14 @@ api.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        const refreshToken = localStorage.getItem('refresh_token')
         const response = await axios.post(
-          `${API_URL}/auth/refresh`,
-          refreshToken ? { refresh_token: refreshToken } : {},
+          '/api/auth/refresh',
+          {},
           { withCredentials: true }
         )
 
         const { access_token } = response.data
         localStorage.setItem('access_token', access_token)
-        localStorage.removeItem('refresh_token')
 
         originalRequest.headers.Authorization = `Bearer ${access_token}`
         return api(originalRequest)
@@ -105,12 +103,21 @@ export const authApi = {
     portal?: 'tenant' | 'super_admin'
     admin_session_note?: string
   }) =>
-    api.post('/auth/login', data),
+    axios.post('/api/auth/login', data, { withCredentials: true }),
   
-  refresh: (refresh_token: string) =>
-    api.post('/auth/refresh', { refresh_token }),
-  refreshWithCookie: () => api.post('/auth/refresh', {}),
-  logout: () => api.post('/auth/logout'),
+  refresh: () => axios.post('/api/auth/refresh', {}, { withCredentials: true }),
+  refreshWithCookie: () => axios.post('/api/auth/refresh', {}, { withCredentials: true }),
+  logout: () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+    return axios.post(
+      '/api/auth/logout',
+      {},
+      {
+        withCredentials: true,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    )
+  },
 
   requestPasswordReset: (email: string) =>
     api.post('/auth/password-reset/request', { email }),

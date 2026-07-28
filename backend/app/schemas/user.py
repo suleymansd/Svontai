@@ -5,9 +5,10 @@ Pydantic schemas for User model.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, ConfigDict, model_validator
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator, model_validator
 
 from app.core.legal import KVKK_NOTICE_VERSION, PRIVACY_NOTICE_VERSION, TERMS_VERSION
+from app.core.password_policy import validate_password_strength
 
 
 class UserBase(BaseModel):
@@ -24,6 +25,11 @@ class UserCreate(UserBase):
     terms_version: str
     privacy_version: str
     kvkk_notice_version: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value)
 
     @model_validator(mode="after")
     def validate_legal_acknowledgements(self):

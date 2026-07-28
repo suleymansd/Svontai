@@ -4,32 +4,22 @@ Pydantic schemas for authentication.
 
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.core.password_policy import validate_password_strength
 
 
 class LoginRequest(BaseModel):
     """Schema for login request."""
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
     two_factor_code: str | None = None
     portal: Literal["tenant", "super_admin"] = "tenant"
     admin_session_note: str | None = None
 
 
-class TokenResponse(BaseModel):
-    """Schema for token response."""
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class RefreshTokenRequest(BaseModel):
-    """Schema for refresh token request."""
-    refresh_token: str | None = None
-
-
 class AccessTokenResponse(BaseModel):
-    """Schema for access token response only."""
+    """Access token response; refresh credentials stay in an HttpOnly cookie."""
     access_token: str
     token_type: str = "bearer"
 
@@ -38,6 +28,11 @@ class ChangePasswordRequest(BaseModel):
     """Schema for authenticated password change."""
     current_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password_strength(value)
 
 
 class TwoFactorSetupRequest(BaseModel):

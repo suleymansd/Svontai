@@ -3,6 +3,7 @@
 from collections import defaultdict, deque
 from datetime import timedelta
 import hashlib
+import ipaddress
 import logging
 from threading import Lock
 from typing import Iterable
@@ -48,6 +49,8 @@ class RateLimiter:
             redis_result = self._allow_redis(key)
             if redis_result is not None:
                 return redis_result
+            if settings.RATE_LIMIT_FAIL_CLOSED:
+                return False
 
         return self._allow_memory(key)
 
@@ -81,7 +84,8 @@ class RateLimiter:
         if self._redis_warning_logged:
             return
         self._redis_warning_logged = True
-        logger.error("Redis rate limiter unavailable; using memory fallback (%s)", reason)
+        behavior = "rejecting requests" if settings.RATE_LIMIT_FAIL_CLOSED else "using memory fallback"
+        logger.error("Redis rate limiter unavailable; %s (%s)", behavior, reason)
 
     def _allow_memory(self, key: str) -> bool:
         now = utc_now_naive()
@@ -106,7 +110,47 @@ class RateLimiter:
 
 
 def client_ip(request: Request) -> str:
-    """Return the best-effort public client IP behind trusted platform proxies."""
+    """Return a client IP without trusting attacker-supplied forwarding headers."""
+    peer = request.client.host if request.client else "unknown"
+
+    if settings.ENVIRONMENT == "prod":
+        try:
+            peer_address = ipaddress.ip_address(peer)
+        except ValueError:
+            return "unknown"
+
+        trusted_networks = []
+        for value in settings.TRUSTED_PROXY_CIDRS.split(","):
+            try:
+                trusted_networks.append(ipaddress.ip_network(value.strip(), strict=False))
+            except ValueError:
+                continue
+
+        def is_trusted(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+            return any(address in network for network in trusted_networks)
+
+        if not is_trusted(peer_address):
+            return str(peer_address)
+
+        forwarded_addresses = []
+        for value in request.headers.get("X-Forwarded-For", "").split(",")[-20:]:
+            try:
+                forwarded_addresses.append(ipaddress.ip_address(value.strip()))
+            except ValueError:
+                continue
+        for address in reversed(forwarded_addresses):
+            if not is_trusted(address):
+                return str(address)
+
+        real_ip = (request.headers.get("X-Real-IP") or "").strip()
+        try:
+            real_address = ipaddress.ip_address(real_ip)
+            if not is_trusted(real_address):
+                return str(real_address)
+        except ValueError:
+            pass
+        return str(peer_address)
+
     forwarded_for = request.headers.get("X-Forwarded-For", "")
     if forwarded_for:
         return forwarded_for.split(",", 1)[0].strip() or "unknown"

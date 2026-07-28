@@ -3,7 +3,9 @@
 ## Backend (`backend/app/core/config.py`)
 - `DATABASE_URL` (default: `sqlite:///./smartwa.db`)
 - `JWT_SECRET_KEY`
-- `JWT_ALGORITHM`
+- `JWT_ALGORITHM` (production requires `HS256`)
+- `API_KEY_HASH_SECRET` (production requires a separate random value of at least 32 characters)
+- `SUPER_ADMIN_REQUIRE_2FA` (production requires `true`)
 - `ACCESS_TOKEN_EXPIRE_MINUTES`
 - `REFRESH_TOKEN_EXPIRE_DAYS`
 - `AI_PROVIDER` (`openai` | `gemini`, default: `openai`)
@@ -48,7 +50,9 @@
 - `ENVIRONMENT` (`dev` | `prod`)
 - `REDIS_URL`
 - `RATE_LIMIT_BACKEND` (`memory` | `redis`; production requires `redis`)
+- `RATE_LIMIT_FAIL_CLOSED` (production requires `true`; rejects traffic if Redis protection is unavailable)
 - `RATE_LIMIT_REDIS_PREFIX`
+- `TRUSTED_PROXY_CIDRS` (only these immediate proxy networks may supply client IP forwarding headers)
 - `SENTRY_DSN`
 - `SENTRY_TRACES_SAMPLE_RATE`
 - `INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS` (production minimum `300`, default `900`)
@@ -210,7 +214,7 @@ have expired or been re-encrypted.
 ## Rate limiting / Abuse protection
 - Built-in API rate limits protect global IP traffic, auth/register/login/refresh, email verification, password reset, WhatsApp webhooks, public chat, public lead capture, assistant/tool execution and voice test-call endpoints.
 - Production uses the Railway Redis service with `RATE_LIMIT_BACKEND=redis`; hashed keys and counters are shared across all API instances.
-- If Redis is briefly unavailable, the limiter logs the failure and falls back to process-local protection instead of dropping all traffic.
+- In production, Redis failure closes the limiter and rejects protected traffic. Development may use the process-local fallback.
 - In production, Meta webhook POST requests require a valid `X-Hub-Signature-256`; missing or invalid signatures are rejected.
 
 ## Production smoke

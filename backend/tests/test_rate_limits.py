@@ -43,11 +43,28 @@ def test_redis_failure_falls_back_to_memory(monkeypatch):
             raise ConnectionError("offline")
 
     monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_BACKEND", "redis")
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_FAIL_CLOSED", False)
     monkeypatch.setattr(rate_limit_module, "redis", object())
     limiter = RateLimiter(1, 60, "fallback-test")
     limiter._redis_client = _UnavailableRedis()
 
     assert limiter.allow("same-key") is True
+    assert limiter.allow("same-key") is False
+
+
+def test_redis_failure_rejects_requests_when_fail_closed(monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+
+    class _UnavailableRedis:
+        def eval(self, *_args):
+            raise ConnectionError("offline")
+
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_BACKEND", "redis")
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_FAIL_CLOSED", True)
+    monkeypatch.setattr(rate_limit_module, "redis", object())
+    limiter = RateLimiter(10, 60, "fail-closed-test")
+    limiter._redis_client = _UnavailableRedis()
+
     assert limiter.allow("same-key") is False
 
 
@@ -89,6 +106,47 @@ def test_client_ip_prefers_forwarded_for(client):
     resp = client.get("/_test/client-ip", headers={"X-Forwarded-For": "198.51.100.20, 10.0.0.1"})
     assert resp.status_code == 200
     assert resp.json()["ip"] == "198.51.100.20"
+
+
+def test_client_ip_ignores_spoofed_forwarding_from_untrusted_peer(monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+
+    monkeypatch.setattr(rate_limit_module.settings, "ENVIRONMENT", "prod")
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-forwarded-for", b"1.2.3.4")],
+        "client": ("198.51.100.50", 443),
+    })
+
+    assert client_ip(request) == "198.51.100.50"
+
+
+def test_client_ip_uses_rightmost_public_address_behind_trusted_proxy(monkeypatch):
+    from app.core import rate_limit as rate_limit_module
+
+    monkeypatch.setattr(rate_limit_module.settings, "ENVIRONMENT", "prod")
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-forwarded-for", b"1.2.3.4, 203.0.113.9")],
+        "client": ("10.0.0.5", 443),
+    })
+
+    assert client_ip(request) == "203.0.113.9"
+
+
+def test_api_security_headers_and_request_id(client):
+    request_id = "security-test-123"
+    response = client.get("/health", headers={"X-Request-ID": request_id})
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == request_id
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
 
 
 def test_global_rate_limit_returns_429_without_500(client):

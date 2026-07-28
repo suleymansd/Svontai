@@ -19,6 +19,9 @@ def _prod_real_service_settings(**overrides):
     data = {
         "ENVIRONMENT": "prod",
         "JWT_SECRET_KEY": "secure-jwt-key-32-chars-minimum!",
+        "JWT_ALGORITHM": "HS256",
+        "API_KEY_HASH_SECRET": "separate-api-key-hash-secret-32-chars!",
+        "SUPER_ADMIN_REQUIRE_2FA": True,
         "VOICE_GATEWAY_TO_SVONTAI_SECRET": "secure-voice-gateway-secret!",
         "OPENAI_API_KEY": "sk-prod-test-key",
         "WEBHOOK_USERNAME": "prod-webhook-user",
@@ -46,6 +49,7 @@ def _prod_real_service_settings(**overrides):
         "SUPABASE_STORAGE_BUCKET": "svontai-artifacts",
         "ARTIFACT_SIGNING_SECRET": "secure-artifact-signing-secret!",
         "RATE_LIMIT_BACKEND": "redis",
+        "RATE_LIMIT_FAIL_CLOSED": True,
         "REDIS_URL": "redis://redis.internal:6379/0",
         "SENTRY_DSN": "https://public@example.ingest.sentry.io/1",
         "WEBHOOK_PUBLIC_URL": "https://api.svontai.com",

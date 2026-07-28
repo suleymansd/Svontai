@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -52,8 +52,7 @@ from app.schemas.auth import (
     TwoFactorSetupRequest,
     TwoFactorSetupResponse,
     TwoFactorStatusResponse,
-    TokenResponse,
-    RefreshTokenRequest
+    AccessTokenResponse,
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.password_reset import (
@@ -97,6 +96,16 @@ def _clear_refresh_cookie(response: Response) -> None:
         samesite="lax",
         path="/",
     )
+
+
+def _require_allowed_refresh_origin(request: Request) -> None:
+    """Block cross-site browser refresh attempts while allowing non-browser clients."""
+    origin = (request.headers.get("Origin") or "").strip().rstrip("/")
+    if origin and origin != settings.FRONTEND_URL.strip().rstrip("/"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="İstek kaynağına izin verilmiyor",
+        )
 
 
 def _hash_reset_code(email: str, code: str) -> str:
@@ -275,22 +284,22 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=AccessTokenResponse)
 async def login(
     credentials: LoginRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db)
-) -> TokenResponse:
+) -> AccessTokenResponse:
     """
-    Login and get access/refresh tokens.
+    Login and return a short-lived access token. Refresh stays in an HttpOnly cookie.
     
     Args:
         credentials: Login credentials.
         db: Database session.
     
     Returns:
-        Access and refresh tokens.
+        Access token.
     """
     normalized_email = credentials.email.strip().lower()
     require_rate_limit(
@@ -463,10 +472,7 @@ async def login(
     db.commit()
     _set_refresh_cookie(response, refresh_token)
     
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token
-    )
+    return AccessTokenResponse(access_token=access_token)
 
 
 @router.post("/admin/2fa/enable")
@@ -529,19 +535,17 @@ async def enable_super_admin_two_factor(
     return {"enabled": True}
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh", response_model=AccessTokenResponse)
 async def refresh_token(
     request: Request,
     response: Response,
-    token_data: RefreshTokenRequest | None = Body(default=None),
     cookie_refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
     db: Session = Depends(get_db)
-) -> TokenResponse:
+) -> AccessTokenResponse:
     """
     Refresh access token using refresh token.
     
     Args:
-        token_data: Refresh token request.
         db: Database session.
     
     Returns:
@@ -552,11 +556,8 @@ async def refresh_token(
         rate_limit_key(request, "refresh"),
         "Çok fazla token yenileme denemesi. Lütfen daha sonra tekrar deneyin.",
     )
-    incoming_refresh_token = (
-        token_data.refresh_token
-        if token_data and token_data.refresh_token
-        else cookie_refresh_token
-    )
+    _require_allowed_refresh_origin(request)
+    incoming_refresh_token = cookie_refresh_token
     if not incoming_refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -660,7 +661,7 @@ async def refresh_token(
     )
     
     _set_refresh_cookie(response, refresh_token_value)
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token_value)
+    return AccessTokenResponse(access_token=access_token)
 
 
 @router.post("/logout")
@@ -689,11 +690,6 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Mevcut şifre hatalı"
-        )
-    if len(payload.new_password) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Yeni şifre en az 8 karakter olmalıdır"
         )
     if verify_password(payload.new_password, current_user.password_hash):
         raise HTTPException(

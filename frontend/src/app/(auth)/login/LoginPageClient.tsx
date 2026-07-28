@@ -45,10 +45,9 @@ export default function LoginPageClient() {
         portal: 'tenant',
         two_factor_code: twoFactorRequired ? twoFactorCode : undefined,
       })
-      const { access_token, refresh_token } = loginResponse.data
+      const { access_token } = loginResponse.data
 
       localStorage.setItem('access_token', access_token)
-      localStorage.removeItem('refresh_token')
 
       const contextResponse = await meApi.getContext()
       const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data

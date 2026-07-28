@@ -47,9 +47,8 @@ export default function RegisterPage() {
       password: pendingCredentials.password,
     })
 
-    const { access_token, refresh_token } = loginResponse.data
+    const { access_token } = loginResponse.data
     localStorage.setItem('access_token', access_token)
-    localStorage.removeItem('refresh_token')
 
     const tenantResponse = await tenantApi.createTenant({
       name: pendingCredentials.company_name || pendingCredentials.full_name + "'in İşletmesi",
