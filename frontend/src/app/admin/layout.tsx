@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
-import { userApi } from '@/lib/api'
+import { authApi, userApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { decodeJwtPayload } from '@/lib/jwt'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
@@ -112,11 +112,15 @@ export default function AdminLayout({
     return () => window.removeEventListener('storage', syncTenantContext)
   }, [isLoginRoute])
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    clearAdminTenantContext()
-    router.push('/admin/login')
+  const handleLogout = async () => {
+    try {
+      await authApi.logout()
+    } finally {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      clearAdminTenantContext()
+      router.push('/admin/login')
+    }
   }
 
   const handleOpenCustomerPanel = () => {

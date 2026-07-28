@@ -32,15 +32,21 @@ async function mockBackend(page: Page) {
     localStorage.setItem('ui-storage', JSON.stringify({ state: { sidebarOpen: false, theme: 'light' }, version: 0 }))
   })
 
+  await page.route('**/api/auth/login', async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ access_token: 'test-access-token', token_type: 'bearer' }),
+    })
+  })
+
   await page.route(localBackendPattern, async (route: Route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
     let body: unknown = {}
 
-    if (path === '/auth/login') {
-      body = { access_token: 'test-access-token', token_type: 'bearer' }
-    } else if (path === '/api/me') {
+    if (path === '/api/me') {
       body = {
         user: { id: 'user-1', email: 'customer@example.com', full_name: 'Test Müşteri', is_admin: false },
         tenant: { id: 'tenant-1', name: 'Test İşletmesi' },

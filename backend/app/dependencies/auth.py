@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.security import decode_token
 from app.core.config import settings
+from app.models.session import UserSession
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
@@ -81,9 +82,16 @@ async def get_current_user(
     token = credentials.credentials
 
     payload = _decode_and_validate_access_token(token)
-    user_id = payload["sub"]
-    
-    user = db.query(User).filter(User.id == UUID(user_id)).first()
+    try:
+        user_id = UUID(str(payload["sub"]))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token'da kullanıcı bilgisi geçersiz",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
     
     if user is None:
         raise HTTPException(
@@ -96,6 +104,35 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hesap devre dışı bırakılmış"
+        )
+
+    session_id = payload.get("sid")
+    if session_id:
+        try:
+            session_uuid = UUID(str(session_id))
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Oturum geçersiz",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        active_session = db.query(UserSession).filter(
+            UserSession.id == session_uuid,
+            UserSession.user_id == user.id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > utc_now_naive(),
+        ).first()
+        if active_session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Oturum sonlandırılmış veya süresi dolmuş",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    elif settings.ENVIRONMENT == "prod":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Oturum bilgisi bulunmayan token kabul edilmedi",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if user.is_admin and settings.SUPER_ADMIN_REQUIRE_2FA and (

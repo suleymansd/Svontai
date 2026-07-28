@@ -16,6 +16,25 @@ def _auth_headers(access_token: str, tenant_id: str | None = None) -> dict[str, 
     return headers
 
 
+def test_registration_rejects_weak_password(client):
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "weak-password@example.com",
+            "password": "short",
+            "full_name": "Weak Password",
+            "terms_accepted": True,
+            "privacy_notice_acknowledged": True,
+            "terms_version": "2026-07-22",
+            "privacy_version": "2026-07-22",
+            "kvkk_notice_version": "2026-07-22",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "12 karakter" in response.text
+
+
 def test_smoke_register_verify_login_and_core_resources(client):
     email = "user1@example.com"
     password = "Password123!"
@@ -66,6 +85,8 @@ def test_smoke_register_verify_login_and_core_resources(client):
     login_resp = client.post("/auth/login", json={"email": email, "password": password})
     assert login_resp.status_code == 200, login_resp.text
     token_payload = login_resp.json()
+    assert "refresh_token" not in token_payload
+    assert "httponly" in login_resp.headers["set-cookie"].lower()
     access_token = token_payload["access_token"]
 
     tenant_resp = client.post(
@@ -231,6 +252,34 @@ def test_smoke_register_verify_login_and_core_resources(client):
         headers=_auth_headers(access_token, tenant_id),
     )
     assert ticket_resp.status_code == 201, ticket_resp.text
+
+    refresh_resp = client.post("/auth/refresh", json={})
+    assert refresh_resp.status_code == 200, refresh_resp.text
+    assert "refresh_token" not in refresh_resp.json()
+    refreshed_access_token = refresh_resp.json()["access_token"]
+
+    blocked_origin = client.post(
+        "/auth/refresh",
+        json={},
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert blocked_origin.status_code == 403
+
+    logout_resp = client.post(
+        "/auth/logout",
+        headers=_auth_headers(refreshed_access_token, tenant_id),
+    )
+    assert logout_resp.status_code == 200, logout_resp.text
+    revoked_session = client.get(
+        "/api/me",
+        headers=_auth_headers(refreshed_access_token, tenant_id),
+    )
+    assert revoked_session.status_code == 401
+    body_token_fallback = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "legacy-body-token-must-not-be-accepted"},
+    )
+    assert body_token_fallback.status_code == 401
 
 
 def test_smoke_password_reset_flow(client):

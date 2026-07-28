@@ -5,6 +5,8 @@ Main FastAPI application entry point.
 
 import logging
 import asyncio
+import re
+from uuid import uuid4
 from contextlib import asynccontextmanager, suppress
 
 from sqlalchemy import func, inspect, text
@@ -77,6 +79,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 configure_observability("api")
 
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 
 def _ensure_leads_schema_compatibility() -> None:
     """
@@ -357,6 +360,27 @@ app = FastAPI(
 
 
 @app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    supplied_request_id = (request.headers.get("X-Request-ID") or "").strip()
+    request_id = supplied_request_id if _SAFE_REQUEST_ID.fullmatch(supplied_request_id) else str(uuid4())
+    request.state.request_id = request_id
+
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith("/auth/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    if settings.ENVIRONMENT == "prod":
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return response
+
+
+@app.middleware("http")
 async def global_rate_limit_middleware(request: Request, call_next):
     if request.url.path not in {"/", "/health", "/health/live", "/health/ready"} and not global_ip_rate_limiter.allow(rate_limit_key(request, "global")):
         return JSONResponse(
@@ -388,11 +412,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Configure CORS - Allow all origins in development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "dev" else [settings.FRONTEND_URL],
+    allow_origins=["*"] if settings.ENVIRONMENT == "dev" else [settings.FRONTEND_URL.rstrip("/")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "X-Request-ID",
+        "X-Tenant-ID",
+    ],
+    expose_headers=["Retry-After", "X-Request-ID"],
+    max_age=600,
 )
 
 

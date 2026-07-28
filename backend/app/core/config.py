@@ -185,6 +185,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
     RATE_LIMIT_REDIS_PREFIX: str = "svontai:rate-limit"
+    RATE_LIMIT_FAIL_CLOSED: bool = False
+    TRUSTED_PROXY_CIDRS: str = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
 
     # External error tracking (Sentry free tier is sufficient for launch).
     SENTRY_DSN: str = ""
@@ -450,6 +452,19 @@ class Settings(BaseSettings):
                 missing_real_time_config.append("ARTIFACT_STORAGE_PROVIDER=r2, railway_volume or supabase")
         if self.RATE_LIMIT_BACKEND != "redis" or not self.REDIS_URL.strip():
             missing_real_time_config.append("RATE_LIMIT_BACKEND=redis/REDIS_URL")
+        if self.SERVICE_ROLE == "api" and not self.RATE_LIMIT_FAIL_CLOSED:
+            missing_real_time_config.append("RATE_LIMIT_FAIL_CLOSED=true")
+        if self.SERVICE_ROLE == "api" and not self.SUPER_ADMIN_REQUIRE_2FA:
+            missing_real_time_config.append("SUPER_ADMIN_REQUIRE_2FA=true")
+        if self.JWT_ALGORITHM != "HS256":
+            missing_real_time_config.append("JWT_ALGORITHM=HS256")
+        if len(self.JWT_SECRET_KEY.strip()) < 32:
+            missing_real_time_config.append("JWT_SECRET_KEY with at least 32 characters")
+        if (
+            len(self.API_KEY_HASH_SECRET.strip()) < 32
+            or self.API_KEY_HASH_SECRET == self.JWT_SECRET_KEY
+        ):
+            missing_real_time_config.append("separate API_KEY_HASH_SECRET with at least 32 characters")
         if not self.SENTRY_DSN.strip():
             missing_real_time_config.append("SENTRY_DSN")
         if self.DATABASE_BACKUP_ENABLED:

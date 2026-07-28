@@ -35,7 +35,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { cn, maskEmail } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
-import { setupOnboardingApi, subscriptionApi } from '@/lib/api'
+import { authApi, setupOnboardingApi, subscriptionApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { decodeJwtPayload } from '@/lib/jwt'
@@ -152,9 +152,13 @@ export default function DashboardLayout({
     return () => document.removeEventListener('click', trackClick)
   }, [isAuthenticated, mounted])
 
-  const handleLogout = () => {
-    logout()
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await authApi.logout()
+    } finally {
+      logout()
+      router.push('/login')
+    }
   }
 
   const handleExitAdminContext = () => {
