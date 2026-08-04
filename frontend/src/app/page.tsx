@@ -564,6 +564,7 @@ export default function HomePage() {
                 <li><Link href="/privacy" className="hover:text-foreground transition-colors">Gizlilik Politikası</Link></li>
                 <li><Link href="/terms" className="hover:text-foreground transition-colors">Kullanım Koşulları</Link></li>
                 <li><Link href="/kvkk" className="hover:text-foreground transition-colors">KVKK Aydınlatma</Link></li>
+                <li><Link href="/data-processing-agreement" className="hover:text-foreground transition-colors">Veri İşleme Protokolü</Link></li>
                 <li><Link href="/service-agreement" className="hover:text-foreground transition-colors">Hizmet Sözleşmesi</Link></li>
                 <li><Link href="/security" className="hover:text-foreground transition-colors">KVKK ve Güvenlik</Link></li>
               </ul>
@@ -572,7 +573,7 @@ export default function HomePage() {
           
           <div className="pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2024 SvontAi. Tüm hakları saklıdır.
+              © 2026 SvontAI. Tüm hakları saklıdır.
             </p>
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">Türkiye'de ❤️ ile yapıldı</span>

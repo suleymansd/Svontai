@@ -82,6 +82,7 @@ export function MarketingShell({ children, className }: MarketingShellProps) {
               <div className="space-y-2 text-sm text-muted-foreground">
                 <Link href="/kvkk" className="block hover:text-foreground">KVKK Aydınlatma</Link>
                 <Link href="/privacy" className="block hover:text-foreground">Gizlilik Politikası</Link>
+                <Link href="/data-processing-agreement" className="block hover:text-foreground">Veri İşleme Protokolü</Link>
                 <Link href="/terms" className="block hover:text-foreground">Kullanım Koşulları</Link>
                 <Link href="/service-agreement" className="block hover:text-foreground">Hizmet Sözleşmesi</Link>
                 <Link href="/manual-payment" className="block hover:text-foreground">Ödeme ve Faturalandırma</Link>

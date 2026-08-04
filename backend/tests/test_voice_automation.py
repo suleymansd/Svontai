@@ -65,7 +65,7 @@ def _create_tenant_session(client, email: str = "voice@example.com") -> tuple[st
     password = "Password123!"
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Voice User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+        json={"email": email, "password": password, "full_name": "Voice User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"},
     )
     assert register_resp.status_code == 201, register_resp.text
 

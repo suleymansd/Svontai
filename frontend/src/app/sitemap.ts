@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '/docs',
     '/kvkk',
     '/privacy',
+    '/data-processing-agreement',
     '/terms',
     '/openwa-consent',
     '/service-agreement',

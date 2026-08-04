@@ -20,7 +20,7 @@ def _create_tenant(client, email: str) -> tuple[str, str]:
     password = "Password123!"
     assert client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Media User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+        json={"email": email, "password": password, "full_name": "Media User", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"},
     ).status_code == 201
     code_message = client.post("/auth/email-verification/request", json={"email": email}).json()["message"]
     code = re.search(r"(\d{6})", code_message).group(1)

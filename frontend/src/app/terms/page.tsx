@@ -5,7 +5,7 @@ export default function TermsPage() {
   return (
     <LegalDocument
       title="Kullanım Koşulları"
-      updatedAt="22 Temmuz 2026"
+      updatedAt="4 Ağustos 2026"
       introduction={<p>Bu koşullar SvontAI hesabı, self-serve ve concierge kurulum, WhatsApp asistanı, randevu, lead, arama, medya ve operasyon özelliklerinin kullanımını düzenler. Ücretli hizmette ayrıca <Link href="/service-agreement" className="text-primary underline">Müşteri Hizmet Sözleşmesi</Link> ve imzalı sipariş formu uygulanır.</p>}
       sections={[
         { title: 'Hizmet kapsamı', content: <p>SvontAI işletmeler için yapay zeka asistanı, bot ve medya yönetimi, mesaj/lead/randevu takibi, sesli arama, entegrasyon sağlık kontrolü, raporlama ve concierge operasyon araçları sağlar. Özellikler kullanım hakkı, sağlayıcı bağlantısı ve müşteri onayına göre açılır.</p> },
@@ -16,7 +16,7 @@ export default function TermsPage() {
         { title: 'Ücret, plan ve limitler', content: <p>Uygulama içinde kartla ödeme alınmaz. Plan, fiyat, vergi, süre ve limitler yazılı teklif/sipariş formunda belirlenir. <Link href="/manual-payment" className="text-primary underline">Manuel ödeme ve faturalandırma süreci</Link> tamamlanmadan ücretli plan etkinleştirilmez.</p> },
         { title: 'Fikri haklar ve müşteri içeriği', content: <p>Platform yazılımı ve markası üzerindeki haklar hizmet sağlayıcıya aittir. Müşteri yüklediği içerik üzerindeki haklarını korur ve hizmetin çalışması için gerekli sınırlı işleme iznini verir; içeriği kullanmaya yetkili olduğunu taahhüt eder.</p> },
         { title: 'Süreklilik, askıya alma ve fesih', content: <p>Bakım, güvenlik veya sağlayıcı kesintileri geçici aksamalara neden olabilir. Kötüye kullanım, güvenlik riski, ödeme ihlali veya yasal zorunluluk halinde özellikler sınırlandırılabilir. Fesih ve veri çıkışı imzalı sözleşmeye göre yürütülür.</p> },
-        { title: 'Gizlilik ve kişisel veriler', content: <p>Veri işleme ayrıntıları <Link href="/privacy" className="text-primary underline">Gizlilik Politikası</Link> ve <Link href="/kvkk" className="text-primary underline">KVKK Aydınlatma Metni</Link> içinde açıklanır. İşletme, kendi müşterilerine karşı aydınlatma ve ileti izinlerinden sorumludur.</p> },
+        { title: 'Gizlilik ve kişisel veriler', content: <p>Veri işleme ayrıntıları <Link href="/privacy" className="text-primary underline">Gizlilik Politikası</Link>, <Link href="/kvkk" className="text-primary underline">KVKK Aydınlatma Metni</Link> ve müşteri verileri bakımından <Link href="/data-processing-agreement" className="text-primary underline">Veri İşleme Ek Protokolü</Link> içinde açıklanır. İşletme, kendi müşterilerine karşı aydınlatma, ileti izinleri ve hukuki sebebi sağlamakla sorumludur.</p> },
         { title: 'Değişiklik ve iletişim', content: <p>Esaslı koşul değişiklikleri yürürlüğe girmeden önce bildirilir. Sorular ve itirazlar paneldeki Destek alanından veya support@svontai.com adresinden iletilebilir.</p> },
       ]}
     />
