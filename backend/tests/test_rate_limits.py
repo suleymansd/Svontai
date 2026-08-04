@@ -69,7 +69,7 @@ def test_redis_failure_rejects_requests_when_fail_closed(monkeypatch):
 
 
 def test_register_rate_limit_blocks_repeated_attempts(client):
-    payload = {"email": "ratelimit@example.com", "password": "Password123!", "full_name": "Rate Limit", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"}
+    payload = {"email": "ratelimit@example.com", "password": "Password123!", "full_name": "Rate Limit", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"}
     headers = {"X-Forwarded-For": "203.0.113.10"}
 
     statuses = [client.post("/auth/register", json=payload, headers=headers).status_code for _ in range(6)]

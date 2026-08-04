@@ -26,9 +26,9 @@ def _tenant_session(client, email: str) -> tuple[str, str]:
             "full_name": "Product User",
             "terms_accepted": True,
             "privacy_notice_acknowledged": True,
-            "terms_version": "2026-07-22",
-            "privacy_version": "2026-07-22",
-            "kvkk_notice_version": "2026-07-22",
+            "terms_version": "2026-08-04",
+            "privacy_version": "2026-08-04",
+            "kvkk_notice_version": "2026-08-04",
         },
     ).status_code == 201
     code_message = client.post("/auth/email-verification/request", json={"email": email}).json()["message"]

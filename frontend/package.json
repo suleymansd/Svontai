@@ -45,16 +45,17 @@
     "autoprefixer": "^10.4.17",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.2.11",
-    "postcss": "^8.4.33",
+    "postcss": "8.5.25",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3"
   },
   "overrides": {
-    "brace-expansion@>=5.0.0": "5.0.8",
+    "brace-expansion@>=5.0.0": "5.0.9",
+    "fast-uri": "3.1.5",
     "form-data": "^4.0.6",
     "sharp": "0.35.3",
     "next": {
-      "postcss": "^8.5.10"
+      "postcss": "8.5.25"
     }
   }
 }

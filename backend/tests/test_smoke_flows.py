@@ -25,9 +25,9 @@ def test_registration_rejects_weak_password(client):
             "full_name": "Weak Password",
             "terms_accepted": True,
             "privacy_notice_acknowledged": True,
-            "terms_version": "2026-07-22",
-            "privacy_version": "2026-07-22",
-            "kvkk_notice_version": "2026-07-22",
+            "terms_version": "2026-08-04",
+            "privacy_version": "2026-08-04",
+            "kvkk_notice_version": "2026-08-04",
         },
     )
 
@@ -48,7 +48,7 @@ def test_smoke_register_verify_login_and_core_resources(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"},
     )
     assert register_resp.status_code == 201, register_resp.text
 
@@ -60,8 +60,8 @@ def test_smoke_register_verify_login_and_core_resources(client):
         legal_acceptance = db.query(AuditLog).filter(
             AuditLog.action == "legal.registration.accepted"
         ).one()
-        assert legal_acceptance.payload_json["terms_version"] == "2026-07-22"
-        assert legal_acceptance.payload_json["kvkk_notice_version"] == "2026-07-22"
+        assert legal_acceptance.payload_json["terms_version"] == "2026-08-04"
+        assert legal_acceptance.payload_json["kvkk_notice_version"] == "2026-08-04"
     finally:
         db.close()
 
@@ -289,7 +289,7 @@ def test_smoke_password_reset_flow(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+        json={"email": email, "password": password, "full_name": full_name, "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"},
     )
     assert register_resp.status_code == 201, register_resp.text
 
@@ -326,7 +326,7 @@ def test_login_context_auto_provisions_missing_tenant(client):
 
     register_resp = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "full_name": "Missing Tenant", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-07-22", "privacy_version": "2026-07-22", "kvkk_notice_version": "2026-07-22"},
+        json={"email": email, "password": password, "full_name": "Missing Tenant", "terms_accepted": True, "privacy_notice_acknowledged": True, "terms_version": "2026-08-04", "privacy_version": "2026-08-04", "kvkk_notice_version": "2026-08-04"},
     )
     assert register_resp.status_code == 201, register_resp.text
 

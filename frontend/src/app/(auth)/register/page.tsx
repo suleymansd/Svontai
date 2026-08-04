@@ -337,7 +337,7 @@ export default function RegisterPage() {
                   />
                   <Label htmlFor="privacy-acknowledged" className="text-xs font-normal leading-5">
                     <Link href="/kvkk" target="_blank" className="text-primary underline">KVKK Aydınlatma Metni</Link>
-                    {' '}ve <Link href="/privacy" target="_blank" className="text-primary underline">Gizlilik Politikası&apos;nı</Link> okudum.
+                    {' '}ve <Link href="/privacy" target="_blank" className="text-primary underline">Gizlilik Politikası</Link> hakkında bilgilendirildim. Bu beyan açık rıza değildir.
                   </Label>
                 </div>
               </div>
