@@ -3,6 +3,7 @@ Analytics API router for dashboard statistics and insights.
 """
 
 from uuid import UUID
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -62,6 +63,34 @@ class SourceBreakdownResponse(BaseModel):
     total: int
     whatsapp_percent: float
     widget_percent: float
+
+
+class ActionCenterItemResponse(BaseModel):
+    id: str
+    kind: str
+    severity: str
+    title: str
+    description: str
+    href: str
+    cta_label: str
+    occurred_at: datetime
+
+
+class UpcomingAppointmentResponse(BaseModel):
+    id: str
+    customer_name: str
+    subject: str
+    starts_at: datetime
+    duration_minutes: int
+    href: str
+
+
+class ActionCenterResponse(BaseModel):
+    generated_at: datetime
+    window_hours: int
+    required_count: int
+    items: list[ActionCenterItemResponse]
+    upcoming_appointments: list[UpcomingAppointmentResponse]
 
 
 # Endpoints
@@ -194,3 +223,16 @@ async def get_customer_success(
     """Show measurable customer outcomes without demo or fabricated data."""
     _ = current_user
     return AnalyticsService(db).get_customer_success_summary(tenant.id, days)
+
+
+@router.get("/action-center", response_model=ActionCenterResponse)
+async def get_action_center(
+    window_hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+):
+    """Return current tenant actions and upcoming appointments for the home screen."""
+    _ = current_user
+    return AnalyticsService(db).get_action_center(tenant.id, window_hours)

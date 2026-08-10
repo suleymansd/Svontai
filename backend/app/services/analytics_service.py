@@ -19,6 +19,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message, MessageSender
 from app.models.lead import Lead
 from app.models.tenant import Tenant
+from app.models.voice_automation import OutboundCallJob, OutboundCallJobStatus
 
 
 class AnalyticsService:
@@ -485,6 +486,138 @@ class AnalyticsService:
             "human_handoffs": int(handoffs),
             "estimated_time_saved_minutes": estimated_minutes,
             "estimate_method": "AI yanıtı başına 2 dk, randevu başına 6 dk, başarılı otomasyon başına 3 dk.",
+        }
+
+    def get_action_center(self, tenant_id: uuid.UUID, window_hours: int = 24) -> dict:
+        """Return tenant-scoped work that needs attention plus the next appointments."""
+        now = utc_now_naive()
+        recent_at = now - timedelta(hours=window_hours)
+        upcoming_until = now + timedelta(hours=24)
+        items: list[dict] = []
+
+        handoff_query = self.db.query(Conversation).join(Bot).filter(
+            Bot.tenant_id == tenant_id,
+            Conversation.status.in_(["waiting", "human_takeover"]),
+        )
+        handoff_count = handoff_query.count()
+        handoffs = handoff_query.order_by(Conversation.updated_at.desc()).limit(5).all()
+        for conversation in handoffs:
+            customer = conversation.customer_name or conversation.customer_phone or "Müşteri"
+            reasons = list((conversation.extra_data or {}).get("handoff_reason") or [])
+            description = (
+                f"{customer} insan desteği bekliyor."
+                if not reasons
+                else f"{customer} için AI güvenli şekilde konuşmayı ekibinize devretti."
+            )
+            items.append({
+                "id": f"handoff:{conversation.id}",
+                "kind": "human_handoff",
+                "severity": "high",
+                "title": "Müşteri yanıt bekliyor",
+                "description": description,
+                "href": f"/dashboard/operator?conversation={conversation.id}",
+                "cta_label": "Konuşmayı Aç",
+                "occurred_at": conversation.updated_at,
+            })
+
+        automation_runs = self.db.query(AutomationRun).filter(
+            AutomationRun.tenant_id == str(tenant_id),
+            AutomationRun.created_at >= recent_at,
+            AutomationRun.status.in_([
+                AutomationRunStatus.SUCCESS.value,
+                AutomationRunStatus.FAILED.value,
+                AutomationRunStatus.TIMEOUT.value,
+            ]),
+        ).order_by(AutomationRun.created_at.asc()).all()
+        latest_success_by_workflow: dict[tuple[str, str], datetime] = {}
+        for run in automation_runs:
+            if run.status == AutomationRunStatus.SUCCESS.value:
+                latest_success_by_workflow[(run.n8n_workflow_id or "default", run.channel)] = run.created_at
+        unresolved_automation_runs = [
+            run
+            for run in automation_runs
+            if run.status in {AutomationRunStatus.FAILED.value, AutomationRunStatus.TIMEOUT.value}
+            and run.created_at > latest_success_by_workflow.get(
+                (run.n8n_workflow_id or "default", run.channel),
+                datetime.min,
+            )
+        ]
+        if unresolved_automation_runs:
+            latest_run = max(unresolved_automation_runs, key=lambda run: run.created_at)
+            items.append({
+                "id": "automation:unresolved",
+                "kind": "automation_failure",
+                "severity": "high",
+                "title": "Otomasyon kontrolü gerekiyor",
+                "description": f"Son {window_hours} saatte düzelmemiş {len(unresolved_automation_runs)} otomasyon işlemi var.",
+                "href": "/dashboard/errors",
+                "cta_label": "Durumu İncele",
+                "occurred_at": latest_run.created_at,
+            })
+
+        failed_call_query = self.db.query(OutboundCallJob).filter(
+            OutboundCallJob.tenant_id == tenant_id,
+            OutboundCallJob.status == OutboundCallJobStatus.FAILED.value,
+            OutboundCallJob.updated_at >= recent_at,
+        )
+        failed_call_count = failed_call_query.count()
+        latest_failed_call = failed_call_query.order_by(OutboundCallJob.updated_at.desc()).first()
+        if latest_failed_call:
+            items.append({
+                "id": "voice:failed",
+                "kind": "voice_failure",
+                "severity": "medium",
+                "title": "Tamamlanamayan arama var",
+                "description": f"Son {window_hours} saatte {failed_call_count} arama tamamlanamadı.",
+                "href": "/dashboard/calls",
+                "cta_label": "Aramaları Aç",
+                "occurred_at": latest_failed_call.updated_at,
+            })
+
+        calendar_failure_query = self.db.query(Appointment).filter(
+            Appointment.tenant_id == tenant_id,
+            Appointment.status == "scheduled",
+            Appointment.calendar_sync_status == "failed",
+        )
+        calendar_failure_count = calendar_failure_query.count()
+        latest_calendar_failure = calendar_failure_query.order_by(Appointment.updated_at.desc()).first()
+        if latest_calendar_failure:
+            items.append({
+                "id": "calendar:sync-failed",
+                "kind": "calendar_sync_failure",
+                "severity": "medium",
+                "title": "Takvime aktarılamayan randevu var",
+                "description": f"{calendar_failure_count} randevu SvontAI'da kayıtlı ancak Google Takvim'e aktarılamadı.",
+                "href": "/dashboard/appointments",
+                "cta_label": "Randevuları Aç",
+                "occurred_at": latest_calendar_failure.updated_at,
+            })
+
+        appointments = self.db.query(Appointment).filter(
+            Appointment.tenant_id == tenant_id,
+            Appointment.status == "scheduled",
+            Appointment.starts_at >= now,
+            Appointment.starts_at <= upcoming_until,
+        ).order_by(Appointment.starts_at.asc()).limit(5).all()
+
+        severity_order = {"high": 0, "medium": 1, "low": 2}
+        items.sort(key=lambda item: (severity_order.get(item["severity"], 9), -(item["occurred_at"].timestamp())))
+        return {
+            "generated_at": now,
+            "window_hours": window_hours,
+            "required_count": handoff_count + len(unresolved_automation_runs) + failed_call_count + calendar_failure_count,
+            "items": items,
+            "upcoming_appointments": [
+                {
+                    "id": str(appointment.id),
+                    "customer_name": appointment.customer_name,
+                    "subject": appointment.subject,
+                    "starts_at": appointment.starts_at,
+                    "duration_minutes": appointment.duration_minutes,
+                    "href": "/dashboard/appointments",
+                }
+                for appointment in appointments
+            ],
         }
 
 
