@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare,
@@ -74,6 +74,11 @@ export default function OperatorPage() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [newMessage, setNewMessage] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    const conversationId = new URLSearchParams(window.location.search).get('conversation')
+    if (conversationId) setSelectedConversation(conversationId)
+  }, [])
   const { connected: realtimeConnected } = useRealtimeEvents((event) => {
     if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
     queryClient.invalidateQueries({ queryKey: ['operator-conversations'] })

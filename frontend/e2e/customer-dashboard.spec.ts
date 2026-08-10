@@ -79,6 +79,30 @@ async function mockBackend(page: Page) {
         estimated_time_saved_minutes: 145,
         estimate_method: 'Test katsayısı',
       }
+    } else if (path === '/analytics/action-center') {
+      body = {
+        generated_at: new Date().toISOString(),
+        window_hours: 24,
+        required_count: 1,
+        items: [{
+          id: 'handoff:conversation-1',
+          kind: 'human_handoff',
+          severity: 'high',
+          title: 'Müşteri yanıt bekliyor',
+          description: 'Ayşe Yılmaz insan desteği bekliyor.',
+          href: '/dashboard/operator?conversation=conversation-1',
+          cta_label: 'Konuşmayı Aç',
+          occurred_at: new Date().toISOString(),
+        }],
+        upcoming_appointments: [{
+          id: 'appointment-1',
+          customer_name: 'Mehmet Kaya',
+          subject: 'Tanışma görüşmesi',
+          starts_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          duration_minutes: 30,
+          href: '/dashboard/appointments',
+        }],
+      }
     } else if (path === '/analytics/operational-report') {
       body = {
         period: 'today',
@@ -222,7 +246,14 @@ test.beforeEach(async ({ page }) => {
 test('customer dashboard shows real outcomes without overflow', async ({ page }) => {
   await openAuthenticated(page, '/dashboard')
   await expect(page.getByRole('heading', { name: 'Bugün' })).toBeVisible()
-  await expect(page.getByText('Müdahale gerekmiyor')).toBeVisible()
+  await expect(page.getByText('Müdahaleniz gereken 1 işlem var')).toBeVisible()
+  await expect(page.getByText('Ayşe Yılmaz insan desteği bekliyor.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Konuşmayı Aç' })).toHaveAttribute(
+    'href',
+    '/dashboard/operator?conversation=conversation-1',
+  )
+  await expect(page.getByRole('heading', { name: 'Önümüzdeki 24 saat' })).toBeVisible()
+  await expect(page.getByText('Mehmet Kaya')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Son 30 gün' })).toBeVisible()
   await expect(page.getByText('2.4 saat')).toBeVisible()
 

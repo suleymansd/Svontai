@@ -54,6 +54,16 @@
 - `POST /automation/test`
 - `GET /automation/status`
 
+### Customer Analytics
+- `GET /analytics/dashboard`
+- `GET /analytics/customer-success`
+- `GET /analytics/operational-report`
+- `GET /analytics/action-center?window_hours=24`
+
+`/analytics/action-center` is tenant scoped. It returns unresolved handoffs and
+operational failures without exposing provider error payloads, together with the
+next 24 hours of scheduled appointments.
+
 ### Observability
 - `GET /system-events`
 - `GET /incidents`

@@ -4,13 +4,17 @@ import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarCheck,
   CheckCircle2,
   Clock3,
+  Headphones,
   MessageSquare,
+  PhoneOff,
   RefreshCw,
   ShieldCheck,
   Users,
+  Workflow,
 } from 'lucide-react'
 import { analyticsApi, autopilotApi, conversationApi, leadApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
@@ -25,12 +29,52 @@ import { PageHeader } from '@/components/shared/page-header'
 import { OperationalReportCard } from '@/components/dashboard/operational-report-card'
 import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
+type ActionCenterItem = {
+  id: string
+  kind: 'human_handoff' | 'automation_failure' | 'voice_failure' | 'calendar_sync_failure' | string
+  severity: 'high' | 'medium' | 'low' | string
+  title: string
+  description: string
+  href: string
+  cta_label: string
+  occurred_at: string
+}
+
+type UpcomingAppointment = {
+  id: string
+  customer_name: string
+  subject: string
+  starts_at: string
+  duration_minutes: number
+  href: string
+}
+
+type ActionCenter = {
+  generated_at: string
+  window_hours: number
+  required_count: number
+  items: ActionCenterItem[]
+  upcoming_appointments: UpcomingAppointment[]
+}
+
+const actionIcons = {
+  human_handoff: Headphones,
+  automation_failure: Workflow,
+  voice_failure: PhoneOff,
+  calendar_sync_failure: CalendarCheck,
+}
+
 export default function DashboardPage() {
   const queryClient = useQueryClient()
   useRealtimeEvents((event) => {
-    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
-    queryClient.invalidateQueries({ queryKey: ['customer-dashboard-conversations'] })
-    queryClient.invalidateQueries({ queryKey: ['customer-success'] })
+    const affectsDailyWork = ['message.', 'conversation.', 'automation.', 'appointment.', 'voice.']
+      .some((prefix) => event.type.startsWith(prefix))
+    if (!affectsDailyWork) return
+    queryClient.invalidateQueries({ queryKey: ['customer-action-center'] })
+    if (event.type.startsWith('message.') || event.type.startsWith('conversation.')) {
+      queryClient.invalidateQueries({ queryKey: ['customer-dashboard-conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-success'] })
+    }
   })
   const { data: autopilotStatus, isLoading: autopilotLoading } = useQuery({
     queryKey: ['autopilot-status'],
@@ -48,18 +92,29 @@ export default function DashboardPage() {
     queryKey: ['customer-success', 30],
     queryFn: () => analyticsApi.getCustomerSuccess(30).then(res => res.data),
   })
+  const { data: actionCenter, isLoading: actionCenterLoading, isError: actionCenterError } = useQuery<ActionCenter>({
+    queryKey: ['customer-action-center', 24],
+    queryFn: () => analyticsApi.getActionCenter(24).then(res => res.data),
+  })
   const runAutopilotMutation = useMutation({
     mutationFn: () => autopilotApi.run().then(res => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['autopilot-status'] })
       queryClient.invalidateQueries({ queryKey: ['customer-dashboard-conversations'] })
       queryClient.invalidateQueries({ queryKey: ['customer-dashboard-leads'] })
+      queryClient.invalidateQueries({ queryKey: ['customer-action-center'] })
     },
   })
 
   const requiredActions = autopilotStatus?.required_user_actions || []
   const healthScore = Number(autopilotStatus?.health_score || 0)
   const isReady = autopilotStatus?.status === 'ready'
+  const operationalItems = Array.isArray(actionCenter?.items) ? actionCenter.items : []
+  const upcomingAppointments = Array.isArray(actionCenter?.upcoming_appointments)
+    ? actionCenter.upcoming_appointments
+    : []
+  const attentionCount = requiredActions.length + Number(actionCenter?.required_count || 0)
+  const systemNeedsAttention = attentionCount > 0 || actionCenterError
   const latestConversations = Array.isArray(conversations) ? conversations.slice(0, 3) : []
   const latestLeads = Array.isArray(leads) ? leads.slice(0, 3) : []
 
@@ -72,8 +127,8 @@ export default function DashboardPage() {
           icon={<Icon3DBadge icon={ShieldCheck} from="from-primary" to="to-violet-500" />}
           actions={(
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={isReady ? 'success' : 'warning'}>
-                {isReady ? `Sistem çalışıyor • ${healthScore}/100` : `Kontrol gerekiyor • ${healthScore}/100`}
+              <Badge variant={isReady && !systemNeedsAttention ? 'success' : 'warning'}>
+                {isReady && !systemNeedsAttention ? `Sistem çalışıyor • ${healthScore}/100` : `Kontrol gerekiyor • ${healthScore}/100`}
               </Badge>
               <Button
                 variant="outline"
@@ -88,24 +143,62 @@ export default function DashboardPage() {
           )}
         />
 
-        {autopilotLoading ? (
+        {autopilotLoading || actionCenterLoading ? (
           <Skeleton className="h-24 w-full" />
-        ) : requiredActions.length > 0 ? (
+        ) : systemNeedsAttention ? (
           <section className="border-y border-warning/40 bg-warning-subtle/20 py-5">
             <div className="mb-4 flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
               <div>
-                <h2 className="font-semibold">Müdahaleniz gereken {requiredActions.length} işlem var</h2>
-                <p className="text-sm text-muted-foreground">İzin veya bağlantıyı tamamladığınızda sistem otomatik devam eder.</p>
+                <h2 className="font-semibold">
+                  {actionCenterError ? 'Günlük işler kontrol edilemedi' : `Müdahaleniz gereken ${attentionCount} işlem var`}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {actionCenterError
+                    ? 'Veriler yeniden alınırken diğer otomasyonlar çalışmaya devam eder.'
+                    : 'Öncelikli işlemi açın; güvenli otomasyonlar arka planda çalışmaya devam eder.'}
+                </p>
               </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="divide-y border-y bg-background">
               {requiredActions.slice(0, 4).map((action: any) => (
-                <div key={action.key} className="flex items-center justify-between gap-3 border bg-background p-4">
-                  <p className="text-sm font-medium">{action.label}</p>
+                <div key={`setup:${action.key}`} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Badge variant="outline" className="mb-2">Kurulum</Badge>
+                    <p className="text-sm font-medium">{action.label}</p>
+                  </div>
                   {action.url ? <Button asChild size="sm"><Link href={action.url}>Tamamla</Link></Button> : null}
                 </div>
               ))}
+              {operationalItems.map((action) => {
+                const ActionIcon = actionIcons[action.kind as keyof typeof actionIcons] || AlertTriangle
+                return (
+                  <div key={action.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <ActionIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+                      <div className="min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold">{action.title}</p>
+                          <Badge variant={action.severity === 'high' ? 'destructive' : 'warning'}>
+                            {action.severity === 'high' ? 'Öncelikli' : 'Kontrol'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{action.description}</p>
+                      </div>
+                    </div>
+                    <Button asChild size="sm" variant="outline" className="shrink-0">
+                      <Link href={action.href}>{action.cta_label}<ArrowRight className="ml-2 h-4 w-4" /></Link>
+                    </Button>
+                  </div>
+                )
+              })}
+              {actionCenterError ? (
+                <div className="flex justify-end p-4">
+                  <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ['customer-action-center'] })}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Yeniden Dene
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : (
@@ -117,6 +210,43 @@ export default function DashboardPage() {
             </div>
           </section>
         )}
+
+        {upcomingAppointments.length > 0 ? (
+          <section className="space-y-3">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Önümüzdeki 24 saat</h2>
+                <p className="text-sm text-muted-foreground">Yaklaşan müşteri randevuları.</p>
+              </div>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/dashboard/appointments">Takvimi Aç<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            </div>
+            <div className="divide-y border-y">
+              {upcomingAppointments.slice(0, 3).map((appointment) => (
+                <Link
+                  key={appointment.id}
+                  href={appointment.href}
+                  className="flex flex-col gap-1 py-3 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:px-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">{appointment.customer_name}</p>
+                    <p className="text-sm text-muted-foreground">{appointment.subject}</p>
+                  </div>
+                  <div className="text-sm font-medium">
+                    {new Date(appointment.starts_at).toLocaleString('tr-TR', {
+                      day: '2-digit',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    <span className="ml-2 text-muted-foreground">{appointment.duration_minutes} dk</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="space-y-4">
           <div>

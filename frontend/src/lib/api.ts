@@ -549,6 +549,8 @@ export const analyticsApi = {
   getOperationalReport: (period: 'today' | 'week' = 'today') =>
     api.get('/analytics/operational-report', { params: { period } }),
   getCustomerSuccess: (days: number = 30) => api.get('/analytics/customer-success', { params: { days } }),
+  getActionCenter: (windowHours: number = 24) =>
+    api.get('/analytics/action-center', { params: { window_hours: windowHours } }),
 }
 
 export const productAnalyticsApi = {
