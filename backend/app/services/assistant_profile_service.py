@@ -32,7 +32,7 @@ CAPABILITY_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "human_handoff": {
         "name": "İnsan Desteğine Devir",
-        "description": "Şikayet, belirsizlik veya açık temsilci talebinde konuşmayı ekibe devreder.",
+        "description": "Açık temsilci talebinde veya gerçek güvenlik gereksiniminde konuşmayı ekibe devreder.",
         "default_enabled": True,
     },
     "media_catalog": {
@@ -240,7 +240,19 @@ class AssistantProfileService:
         if self.capability_enabled(bot, "lead_qualification"):
             lines.append("Satın alma niyeti varsa ihtiyacı doğal sorularla netleştir; aynı anda tek soru sor.")
         if self.capability_enabled(bot, "human_handoff"):
-            lines.append("Müşteri insan istediğinde, şikayet ettiğinde veya güvenilir bilgi yoksa insan desteği öner.")
+            if training.handoff_mode == "automatic":
+                lines.append(
+                    "Yalnızca müşteri açıkça insan/temsilci istediğinde veya güvenlik nedeniyle insan kararı "
+                    "zorunlu olduğunda devir isteği oluştur. Bilgi eksikliğinde önce açıklayıcı soru sor."
+                )
+            elif training.handoff_mode == "suggest":
+                lines.append(
+                    "İnsan desteği yararlı görünürse önce müşteriye sor; onay almadan aktarıldığını söyleme."
+                )
+            else:
+                lines.append(
+                    "Kendiliğinden insan desteğine devir yapma veya aktarıldığını söyleme; konuşmayı sürdür."
+                )
         return "\n".join(lines)
 
     def build_runtime_context(self, tenant: Tenant, bot: Bot) -> str:

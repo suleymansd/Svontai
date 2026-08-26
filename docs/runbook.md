@@ -113,10 +113,10 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Railway backend should use private Cloudflare R2 with `ARTIFACT_STORAGE_PROVIDER=r2`. Keep the old Railway volume mounted while old `railway_volume` artifact rows exist.
 - R2 public access must remain disabled. Artifact download URLs are signed and should expire in 300 seconds.
 - Railway health check path is `/health/ready`; `/health/live` only confirms that the process is running.
-- `/health/ready` exposes non-secret deployment evidence. Production smoke must confirm the API and Worker commit hashes match, the Worker heartbeat is newer than two minutes, and the database reports migration head `050`.
+- `/health/ready` exposes non-secret deployment evidence. Production smoke must confirm the API and Worker commit hashes match, the Worker heartbeat is newer than two minutes, and the database reports migration head `051`.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
-- Alembic head must include revision `050`.
+- Alembic head must include revision `051`.
 
 ### n8n runtime
 

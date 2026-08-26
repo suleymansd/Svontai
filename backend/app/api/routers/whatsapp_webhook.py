@@ -444,6 +444,7 @@ async def process_whatsapp_reply_in_background(
             knowledge_items=knowledge_items,
             bot_settings=bot.settings,
             appointment_confirmed=appointment is not None,
+            user_message=message_content,
         )
         reply = quality.reply
         handoff_ticket = None

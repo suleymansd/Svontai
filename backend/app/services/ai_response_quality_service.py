@@ -15,6 +15,7 @@ from app.models.knowledge import BotKnowledgeItem
 from app.models.message import MessageSender
 from app.models.ticket import Ticket, TicketMessage
 from app.services.system_event_service import SystemEventService
+from app.services.conversation_policy import requests_human_support
 
 
 @dataclass(frozen=True)
@@ -58,15 +59,40 @@ class AIResponseQualityService:
         knowledge_items: list[BotKnowledgeItem],
         bot_settings: BotSettings | None,
         appointment_confirmed: bool,
+        user_message: str | None = None,
     ) -> QualityAssessment:
         cleaned = self._remove_repeated_greeting((reply or "").strip(), conversation)
         reasons: list[str] = []
 
+        if user_message is None:
+            user_message = next(
+                (
+                    message.content
+                    for message in reversed(conversation.messages or [])
+                    if message.sender == MessageSender.USER.value and message.content
+                ),
+                "",
+            )
+        if (
+            bot_settings
+            and bot_settings.human_handoff_enabled
+            and requests_human_support(user_message)
+        ):
+            return QualityAssessment(
+                reply=(
+                    bot_settings.human_handoff_message
+                    or "Talebinizi ekibimize aktardım. Mümkün olan en kısa sürede sizinle ilgilenecekler."
+                ),
+                passed=True,
+                requires_handoff=True,
+                reasons=("human_requested",),
+            )
+
         if not cleaned:
             return QualityAssessment(
-                reply="Talebinizi aldım. Ekibimiz kısa süre içinde sizinle ilgilenecek.",
+                reply="Mesajınızı aldım ancak yanıtımı oluşturamadım. Sorunuzu bir kez daha yazar mısınız?",
                 passed=False,
-                requires_handoff=True,
+                requires_handoff=False,
                 reasons=("empty_reply",),
             )
 
@@ -90,9 +116,12 @@ class AIResponseQualityService:
         reply_amounts = {match.group(1).replace(" ", "") for match in self.CURRENCY_RE.finditer(cleaned)}
         if reply_amounts - trusted_amounts:
             return QualityAssessment(
-                reply="Güncel fiyatı doğrulamadan yanlış bilgi vermek istemem. Talebinizi ekibimize aktardım.",
+                reply=(
+                    "Güncel fiyat bilgisi kayıtlarımda görünmüyor. Hangi ürün veya hizmet için fiyat "
+                    "istediğinizi söylerseniz mevcut bilgilerden kontrol edeyim."
+                ),
                 passed=False,
-                requires_handoff=True,
+                requires_handoff=False,
                 reasons=("unverified_price",),
             )
 
@@ -104,9 +133,12 @@ class AIResponseQualityService:
         )
         if not appointment_confirmed and any(claim in lowered for claim in booking_claims):
             return QualityAssessment(
-                reply="Randevuyu kesinleştirmeden önce uygunluğu yeniden kontrol etmem gerekiyor. Talebinizi ekibimize aktardım.",
+                reply=(
+                    "Randevuyu henüz kesinleştirmedim. Uygun gün ve saat tercihinizi alıp takvimden "
+                    "kontrol edebilirim."
+                ),
                 passed=False,
-                requires_handoff=True,
+                requires_handoff=False,
                 reasons=("unverified_appointment",),
             )
 
@@ -119,23 +151,20 @@ class AIResponseQualityService:
         for previous in previous_bot_messages:
             similarity = SequenceMatcher(None, normalized, self._normalize(previous)).ratio()
             if len(normalized) >= 24 and similarity >= 0.92:
-                handoff_message = (
-                    bot_settings.human_handoff_message
-                    if bot_settings and bot_settings.human_handoff_message
-                    else "Talebinizi ekibimize aktardım; aynı yanıtı tekrarlamadan sizinle ilgilenecekler."
-                )
                 return QualityAssessment(
-                    reply=handoff_message,
+                    reply=(
+                        "Aynı yanıtı tekrarlamak istemem. İhtiyacınızı biraz daha ayrıntılı anlatır mısınız?"
+                    ),
                     passed=False,
-                    requires_handoff=True,
+                    requires_handoff=False,
                     reasons=("duplicate_reply",),
                 )
 
         if re.search(r"([!?.,])\1{4,}", cleaned) or re.search(r"\b(\w{2,})\s+\1\s+\1\b", lowered):
             return QualityAssessment(
-                reply="Mesajınızı aldım. Sağlıklı bir yanıt için talebinizi ekibimize aktardım.",
+                reply="Yanıtımı düzgün oluşturamadım. Sorunuzu bir kez daha yazar mısınız?",
                 passed=False,
-                requires_handoff=True,
+                requires_handoff=False,
                 reasons=("malformed_reply",),
             )
 

@@ -44,9 +44,9 @@ def test_quality_gate_blocks_unverified_price():
         bot_settings=None,
         appointment_confirmed=False,
     )
-    assert result.requires_handoff is True
+    assert result.requires_handoff is False
     assert result.reasons == ("unverified_price",)
-    assert "doğrulamadan" in result.reply
+    assert "kayıtlarımda görünmüyor" in result.reply
 
 
 def test_quality_gate_allows_verified_price():
@@ -68,7 +68,7 @@ def test_quality_gate_blocks_false_booking_confirmation():
         bot_settings=None,
         appointment_confirmed=False,
     )
-    assert result.requires_handoff is True
+    assert result.requires_handoff is False
     assert result.reasons == ("unverified_appointment",)
 
 
@@ -81,5 +81,41 @@ def test_quality_gate_blocks_near_duplicate_reply():
         bot_settings=None,
         appointment_confirmed=False,
     )
-    assert result.requires_handoff is True
+    assert result.requires_handoff is False
     assert result.reasons == ("duplicate_reply",)
+
+
+def test_quality_gate_handoffs_only_on_explicit_human_request():
+    from app.models.bot_settings import BotSettings
+
+    result = AIResponseQualityService().assess(
+        reply="Elbette, yardımcı olayım.",
+        conversation=_conversation(),
+        knowledge_items=[],
+        bot_settings=BotSettings(
+            human_handoff_enabled=True,
+            human_handoff_message="Talebinizi ekibimize aktardım.",
+        ),
+        appointment_confirmed=False,
+        user_message="Bir müşteri temsilcisiyle görüşmek istiyorum.",
+    )
+
+    assert result.requires_handoff is True
+    assert result.reasons == ("human_requested",)
+    assert result.reply == "Talebinizi ekibimize aktardım."
+
+
+def test_quality_gate_does_not_handoff_for_ordinary_unknown_question():
+    from app.models.bot_settings import BotSettings
+
+    result = AIResponseQualityService().assess(
+        reply="Bu detayı netleştirmek için hangi hizmeti istediğinizi söyler misiniz?",
+        conversation=_conversation(),
+        knowledge_items=[],
+        bot_settings=BotSettings(human_handoff_enabled=True),
+        appointment_confirmed=False,
+        user_message="Bu işlemin ayrıntıları nedir?",
+    )
+
+    assert result.requires_handoff is False
+    assert result.reasons == ()

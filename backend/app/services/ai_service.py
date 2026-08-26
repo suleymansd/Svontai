@@ -15,6 +15,7 @@ from app.models.knowledge import BotKnowledgeItem
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.bot_settings import BotSettings, ResponseTone, EmojiUsage
+from app.services.conversation_policy import requests_human_support
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,17 @@ _rate_limits = defaultdict(list)
 
 class AIService:
     """Service for AI-powered response generation with guardrails."""
+
+    HANDOFF_CLAIM_RE = re.compile(
+        r"(?:sizi\s+(?:bir\s+)?(?:müşteri\s+)?temsilci(?:mize|ye)\s+"
+        r"(?:bağlıyorum|aktarıyorum)|talebinizi\s+(?:ekibimize|yetkiliye)\s+aktardım)"
+        r"(?:\s*[,;:.!?-]*\s*(?:lütfen\s+)?bekleyin)?",
+        re.IGNORECASE,
+    )
+    GENERIC_REFUSAL_RE = re.compile(
+        r"(?:üzgünüm|maalesef).{0,100}(?:yardımcı\s+olamıyorum|bilgim\s+yok)",
+        re.IGNORECASE | re.DOTALL,
+    )
     
     def __init__(self):
         """Initialize the selected OpenAI-compatible provider client."""
@@ -95,8 +107,6 @@ class AIService:
         tone = bot_settings.response_tone if bot_settings else ResponseTone.FRIENDLY.value
         emoji = bot_settings.emoji_usage if bot_settings else EmojiUsage.LIGHT.value
         enable_guardrails = bot_settings.enable_guardrails if bot_settings else True
-        fallback_msg = bot_settings.fallback_message if bot_settings else "Üzgünüm, bu konuda size yardımcı olamıyorum."
-        handoff_msg = bot_settings.human_handoff_message if bot_settings else "Sizi bir müşteri temsilcimize bağlıyorum."
         prohibited = bot_settings.prohibited_topics if bot_settings else self.default_guardrails["prohibited_topics"]
         custom_prompt = bot_settings.system_prompt_override if bot_settings else None
         extra_settings = bot_settings.extra_settings if bot_settings else {}
@@ -131,9 +141,9 @@ class AIService:
 {self._get_emoji_instructions(emoji)}
 
 ### TEMEL KURALLAR
-1. SADECE aşağıdaki bilgi tabanına dayanarak cevap ver.
-2. Bilgi tabanında olmayan konularda "Maalesef bu konuda bilgim yok" de.
-3. Fiyat, tarih, adres gibi spesifik bilgileri TAHMİN ETME, sadece bilgi tabanındakileri söyle.
+1. İşletmeye özel doğrulanabilir bilgilerde aşağıdaki bilgi tabanını ve çalışma bağlamını kullan.
+2. Genel konuşma, ihtiyaç anlama ve açıklayıcı soru sorma becerilerini doğal biçimde kullanabilirsin.
+3. Fiyat, tarih, adres, stok ve uygunluk gibi işletmeye özel bilgileri TAHMİN ETME.
 4. {length_instruction}
 5. Her zaman nazik ve yardımsever ol.
 6. Dil: Türkçe (kullanıcı farklı dilde yazarsa o dilde cevap ver)
@@ -144,6 +154,8 @@ class AIService:
 11. Aynı cümleyi veya soruyu art arda tekrarlama. Tek seferde en fazla bir net soru sor.
 12. Kendinden "yapay zeka", "bot" veya "sistem" diye bahsetme; müşteri özellikle sorarsa dürüstçe dijital asistan olduğunu söyle.
 13. {price_instruction}
+14. Bilgi eksikse konuşmayı kapatma. Önce müşterinin ne istediğini anlamak için tek ve kısa bir soru sor.
+15. Müşteri açıkça insan desteği istemedikçe temsilciye bağlandığını veya talebin aktarıldığını söyleme.
 
 """
         
@@ -152,8 +164,9 @@ class AIService:
             base_prompt += f"""
 ### GÜVENLİK KURALLARI
 - Yasaklı konular: {', '.join(prohibited)}
-- Yasaklı konularda: "{fallback_msg}"
-- Emin olmadığın konularda: "{handoff_msg}"
+- Yasaklı veya tehlikeli talebin yalnızca sakıncalı kısmını kısa ve sakin biçimde reddet; işletmeyle ilgili güvenli yardıma devam et.
+- Emin olmadığın işletme bilgisini uydurma. Eksik ayrıntıyı sor veya bu bilginin kayıtlarında bulunmadığını doğal biçimde belirt.
+- Belirsizlik tek başına insan desteğine devir nedeni değildir.
 - Kişisel bilgi (TC, şifre vb.) ASLA isteme
 - Fiyatları tahmini verme, bilgi tabanından al
 - Politik, dini, ırkçı konulara girme
@@ -194,6 +207,19 @@ C: {item.answer}
             flags=re.IGNORECASE,
         ).strip()
         return cleaned or reply.strip()
+
+    @classmethod
+    def _repair_unrequested_handoff(cls, reply: str, user_message: str) -> str:
+        """Prevent the model from claiming a handoff that the system did not perform."""
+        if requests_human_support(user_message) or not cls.HANDOFF_CLAIM_RE.search(reply):
+            return reply.strip()
+        cleaned = cls.HANDOFF_CLAIM_RE.sub("", reply).strip(" \n,;:.!-")
+        if not cleaned or cls.GENERIC_REFUSAL_RE.search(cleaned):
+            return (
+                "Sorunuzu doğru yanıtlayabilmem için biraz daha ayrıntı paylaşır mısınız? "
+                "Hangi ürün veya hizmetten bahsettiğinizi söylerseniz hemen kontrol edeyim."
+            )
+        return cleaned
     
     def _build_conversation_context(
         self, 
@@ -289,7 +315,6 @@ C: {item.answer}
         settings_obj = bot_settings or BotSettings()
         enable_guardrails = settings_obj.enable_guardrails if bot_settings else True
         fallback_msg = settings_obj.fallback_message if bot_settings else "Üzgünüm, bu konuda size yardımcı olamıyorum. Lütfen bizimle iletişime geçin."
-        handoff_msg = settings_obj.human_handoff_message if bot_settings else "Sizi bir müşteri temsilcimize bağlıyorum. Lütfen bekleyin."
         memory_window = settings_obj.memory_window if bot_settings else 10
         requested_max_tokens = settings_obj.max_response_length if bot_settings else 500
         max_tokens = max(100, min(requested_max_tokens, settings.AI_MAX_REPLY_TOKENS))
@@ -343,21 +368,7 @@ C: {item.answer}
             
             reply = response.choices[0].message.content or fallback_msg
             reply = self._remove_repeated_greeting(reply, list(conversation.messages or []))
-            
-            # Post-process: Check if response indicates uncertainty
-            uncertainty_phrases = [
-                "bilmiyorum", "emin değilim", "bilgim yok",
-                "size yardımcı olamıyorum", "net bir cevap",
-                "maalesef"
-            ]
-            
-            if enable_guardrails:
-                reply_lower = reply.lower()
-                uncertainty_count = sum(1 for phrase in uncertainty_phrases if phrase in reply_lower)
-                
-                # If AI seems very uncertain, suggest human handoff
-                if uncertainty_count >= 2:
-                    reply += f"\n\n💬 {handoff_msg}"
+            reply = self._repair_unrequested_handoff(reply, last_user_message)
             
             return reply
         
