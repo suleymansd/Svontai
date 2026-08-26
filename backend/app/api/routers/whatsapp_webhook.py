@@ -36,10 +36,10 @@ from app.models.whatsapp_account import WhatsAppAccount
 from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message, MessageSender
 from app.models.bot import Bot
-from app.models.knowledge import BotKnowledgeItem
 from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.assistant_media_service import AssistantMediaService
 from app.services.n8n_client import get_n8n_client, trigger_n8n_in_background
@@ -406,9 +406,7 @@ async def process_whatsapp_reply_in_background(
             )
             return
 
-        knowledge_items = db.query(BotKnowledgeItem).filter(
-            BotKnowledgeItem.bot_id == bot.id
-        ).all()
+        knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         if tenant is None:
             logger.error("whatsapp.direct_reply_tenant_missing tenant_id=%s", tenant_id)

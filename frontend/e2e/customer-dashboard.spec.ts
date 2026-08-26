@@ -120,6 +120,8 @@ async function mockBackend(page: Page) {
         generated_at: new Date().toISOString(),
         metrics: { incoming_messages: 12, ai_replies: 10, response_rate: 83.3, leads: 2, appointments: 1, failed_automations: 0 },
       }
+    } else if (path === '/bots' && request.method() === 'GET') {
+      body = []
     } else if (path === '/bots/assistant-profile') {
       body = {
         assistant: {
@@ -146,6 +148,33 @@ async function mockBackend(page: Page) {
         safe_mode: 'simulation',
         history_count: 1,
         latency_ms: 35,
+      }
+    } else if (path === '/bots/assistant-profile/trainer/message' && request.method() === 'POST') {
+      body = {
+        session_id: 'trainer-session-1',
+        status: 'ready',
+        assistant_message: 'Kargo soruları için uzman taslağını hazırladım.',
+        proposal: {
+          name: 'Kargo Takip Uzmanı',
+          description: 'Kargo sorularında sipariş numarasını alır.',
+          example_questions: ['Kargom nerede?'],
+          answer: 'Önce sipariş numarasını isteyin.',
+          behavior_instruction: 'Durum uydurmayın ve sipariş numarasını isteyin.',
+        },
+      }
+    } else if (path === '/bots/assistant-profile/trainer/trainer-session-1/apply' && request.method() === 'POST') {
+      body = {
+        session_id: 'trainer-session-1',
+        status: 'applied',
+        assistant_message: 'Kargo Takip Uzmanı oluşturuldu ve Ana Asistanınıza bağlandı.',
+        bot: {
+          id: 'specialist-1',
+          name: 'Kargo Takip Uzmanı',
+          description: 'Kargo sorularında sipariş numarasını alır.',
+          is_active: true,
+          assistant_type: 'specialist',
+        },
+        knowledge_items_created: 1,
       }
     } else if (path === '/conversations' || path === '/leads' || path === '/calls' || path === '/voice-automation/intents' || path === '/voice-automation/jobs') {
       body = []
@@ -296,6 +325,36 @@ test('assistant simulator previews a reply without creating customer data', asyn
       (path) => !path.startsWith('/product-analytics/') && path !== '/api/auth/refresh',
     ),
   ).toEqual(['/bots/bot-1/simulate'])
+  await expectNoHorizontalOverflow(page)
+})
+
+test('assistant can create a reviewed specialist through conversation', async ({ page }) => {
+  const mutatingPaths: string[] = []
+  page.on('request', (request) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) {
+      mutatingPaths.push(new URL(request.url()).pathname)
+    }
+  })
+
+  await openAuthenticated(page, '/dashboard/bots')
+  await page.getByRole('button', { name: 'Sohbetle Uzman Oluştur' }).click()
+  await expect(page.getByRole('heading', { name: 'AI Eğitim Asistanı' })).toBeVisible()
+  await page.getByPlaceholder(/Kargo nerede/).fill('Kargom nerede diye sorulursa sipariş numarasını istesin.')
+  await page.getByRole('button', { name: 'Eğitim mesajını gönder' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Kargo Takip Uzmanı' })).toBeVisible()
+  await expect(page.getByText('Önce sipariş numarasını isteyin.')).toBeVisible()
+  await page.getByRole('button', { name: 'Oluştur ve Etkinleştir' }).click()
+  await expect(page.getByText('Uzman Ana Asistanınıza bağlandı.')).toBeVisible()
+
+  expect(
+    mutatingPaths.filter(
+      (path) => !path.startsWith('/product-analytics/') && path !== '/api/auth/refresh',
+    ),
+  ).toEqual([
+    '/bots/assistant-profile/trainer/message',
+    '/bots/assistant-profile/trainer/trainer-session-1/apply',
+  ])
   await expectNoHorizontalOverflow(page)
 })
 

@@ -139,3 +139,53 @@ class AssistantSimulationResponse(BaseModel):
     safe_mode: Literal["simulation"] = "simulation"
     history_count: int
     latency_ms: int
+
+
+class AssistantTrainerMessageRequest(BaseModel):
+    message: str = Field(min_length=3, max_length=3000)
+    session_id: UUID | None = None
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 3:
+            raise ValueError("Mesaj en az 3 karakter olmalıdır")
+        return normalized
+
+
+class AssistantTrainerProposal(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    description: str = Field(min_length=5, max_length=500)
+    example_questions: list[str] = Field(min_length=1, max_length=5)
+    answer: str = Field(min_length=2, max_length=3000)
+    behavior_instruction: str = Field(min_length=5, max_length=1500)
+
+    @field_validator("name", "description", "answer", "behavior_instruction")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("example_questions")
+    @classmethod
+    def normalize_questions(cls, value: list[str]) -> list[str]:
+        normalized = [" ".join(item.split())[:300] for item in value if item.strip()]
+        if not normalized:
+            raise ValueError("En az bir örnek soru gereklidir")
+        return list(dict.fromkeys(normalized))[:5]
+
+
+class AssistantTrainerMessageResponse(BaseModel):
+    session_id: UUID
+    status: Literal["collecting", "ready", "applied"]
+    assistant_message: str
+    proposal: AssistantTrainerProposal | None = None
+    specialist_bot_id: UUID | None = None
+
+
+class AssistantTrainerApplyResponse(BaseModel):
+    session_id: UUID
+    status: Literal["applied"] = "applied"
+    assistant_message: str
+    bot: BotResponse
+    knowledge_items_created: int

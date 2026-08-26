@@ -25,13 +25,13 @@ from app.models.automation import AutomationRun
 from app.models.call import Call
 from app.models.call import CallTranscript
 from app.models.conversation import Conversation, ConversationStatus
-from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_note import LeadNote
 from app.models.incident import Incident
 from app.models.real_estate import RealEstateLeadListingEvent, RealEstateListing
 from app.models.tenant import Tenant
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.assistant_media_service import AssistantMediaService
 from app.services.ai_service import ai_service
@@ -257,7 +257,7 @@ async def generate_ai_reply(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     appointment_service = AppointmentAvailabilityService(db)
     assistant_profile_service = AssistantProfileService(db)
-    knowledge_items = db.query(BotKnowledgeItem).filter(BotKnowledgeItem.bot_id == bot_id).all()
+    knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
     reply = await ai_service.generate_reply(
         bot=bot,
         knowledge_items=knowledge_items,
