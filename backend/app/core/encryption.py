@@ -4,7 +4,6 @@ Uses Fernet symmetric encryption (AES-128-CBC with HMAC).
 """
 
 import base64
-import os
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -26,17 +25,28 @@ class EncryptionService:
         """
         encryption_key = key or getattr(settings, 'ENCRYPTION_KEY', None)
         
+        if not encryption_key and settings.ENVIRONMENT == "prod":
+            raise RuntimeError("ENCRYPTION_KEY is required in production")
         if not encryption_key:
-            # Generate a key from SECRET_KEY if ENCRYPTION_KEY not set
+            # Development-only compatibility for local databases.
             encryption_key = self._derive_key_from_secret(settings.JWT_SECRET_KEY)
         
         # Ensure key is valid Fernet key (32 bytes, base64 encoded)
         try:
-            self.fernet = Fernet(encryption_key.encode() if isinstance(encryption_key, str) else encryption_key)
+            active_key = encryption_key.encode() if isinstance(encryption_key, str) else encryption_key
+            self.fernet = Fernet(active_key)
         except (ValueError, TypeError):
-            # If key is not a valid Fernet key, derive one
-            derived_key = self._derive_key_from_secret(encryption_key)
-            self.fernet = Fernet(derived_key)
+            if settings.ENVIRONMENT == "prod":
+                raise RuntimeError("ENCRYPTION_KEY must be a valid Fernet key")
+            # Development-only compatibility for existing local configuration.
+            active_key = self._derive_key_from_secret(encryption_key)
+            self.fernet = Fernet(active_key)
+
+        self.legacy_fernet: Fernet | None = None
+        if getattr(settings, "ENCRYPTION_KEY_LEGACY_JWT_FALLBACK", False):
+            legacy_key = self._derive_key_from_secret(settings.JWT_SECRET_KEY)
+            if legacy_key != active_key:
+                self.legacy_fernet = Fernet(legacy_key)
     
     def _derive_key_from_secret(self, secret: str) -> bytes:
         """
@@ -95,7 +105,12 @@ class EncryptionService:
             decrypted = self.fernet.decrypt(ciphertext.encode())
             return decrypted.decode()
         except InvalidToken:
-            return None
+            if self.legacy_fernet is None:
+                return None
+            try:
+                return self.legacy_fernet.decrypt(ciphertext.encode()).decode()
+            except InvalidToken:
+                return None
     
     def rotate_encryption(self, ciphertext: str, new_key: str) -> Optional[str]:
         """
@@ -138,4 +153,3 @@ def generate_encryption_key() -> str:
         Base64-encoded 32-byte key as string.
     """
     return Fernet.generate_key().decode()
-

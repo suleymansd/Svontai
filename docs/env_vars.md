@@ -132,6 +132,13 @@ access disabled and issue a bucket-scoped Object Read & Write token. Generate
 store it separately from R2 credentials and never rotate it before old backups
 have expired or been re-encrypted.
 
+`ENCRYPTION_KEY` protects OAuth tokens, Meta credentials and super-admin 2FA
+secrets stored in PostgreSQL. Production requires a dedicated Fernet key; it
+must not equal `JWT_SECRET_KEY` or `API_KEY_HASH_SECRET`. Generate it once with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`,
+store the same value on API and worker services, and retain the previous key
+until all encrypted rows have been re-encrypted during a planned rotation.
+
 ## Production defaults
 - `SERVICE_ROLE=api` web servisi için, `SERVICE_ROLE=worker` dedicated worker için zorunludur.
 - `ENVIRONMENT=prod` rejects insecure default JWT, n8n and voice gateway secrets at startup.
@@ -186,7 +193,7 @@ have expired or been re-encrypted.
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, Google Calendar appointment sync, stuck automation run cleanup, outbound voice jobs, and daily/weekly operational reports.
-- Current Alembic migration head: `049`.
+- Current Alembic migration head: `050`.
 
 ## n8n execution capacity
 - SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.

@@ -21,6 +21,7 @@ def _prod_real_service_settings(**overrides):
         "JWT_SECRET_KEY": "secure-jwt-key-32-chars-minimum!",
         "JWT_ALGORITHM": "HS256",
         "API_KEY_HASH_SECRET": "separate-api-key-hash-secret-32-chars!",
+        "ENCRYPTION_KEY": base64.urlsafe_b64encode(b"e" * 32).decode(),
         "SUPER_ADMIN_REQUIRE_2FA": True,
         "VOICE_GATEWAY_TO_SVONTAI_SECRET": "secure-voice-gateway-secret!",
         "OPENAI_API_KEY": "sk-prod-test-key",
@@ -298,6 +299,16 @@ class TestProductionSecretValidation:
             Settings(**_prod_real_service_settings(
                 SVONTAI_TO_N8N_SECRET="change-this-to-a-secure-random-string-svontai-to-n8n"
             ))
+
+    @pytest.mark.parametrize("encryption_key", ["", "not-a-fernet-key"])
+    def test_production_requires_separate_valid_encryption_key(self, encryption_key):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(**_prod_real_service_settings(ENCRYPTION_KEY=encryption_key))
+
+        assert "ENCRYPTION_KEY" in str(exc_info.value)
     
     def test_prod_requires_real_time_external_services(self):
         """Test that production fails when real-time external services are disabled."""

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 import { API_URL, authApi } from './api'
+import { getAccessToken, setAccessToken } from './auth-token'
 
 export type RealtimeEvent = {
   type: 'message.created' | 'conversation.created' | 'conversation.updated' | string
@@ -28,8 +29,17 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
 
     const connect = async () => {
       if (stopped) return
-      const token = window.localStorage.getItem('access_token')
-      if (!token) return
+      let token = getAccessToken()
+      if (!token) {
+        try {
+          token = await authApi.refreshWithCookie()
+          setAccessToken(token)
+        } catch {
+          retryTimer = window.setTimeout(connect, retryMs)
+          retryMs = Math.min(retryMs * 2, 15000)
+          return
+        }
+      }
       controller = new AbortController()
       const headers: Record<string, string> = {
         Accept: 'text/event-stream',
@@ -46,7 +56,7 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
         })
         if (response.status === 401) {
           const refreshed = await authApi.refreshWithCookie()
-          window.localStorage.setItem('access_token', refreshed.data.access_token)
+          setAccessToken(refreshed)
           throw new Error('token-refreshed')
         }
         if (!response.ok || !response.body) throw new Error(`stream-${response.status}`)

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BACKEND_URL: https://svontai-production.up.railway.app
-      FRONTEND_URL: https://svontai.vercel.app
+      FRONTEND_URL: https://www.svontai.com
       SMARTWA_SMOKE_EMAIL: ${{ secrets.SMARTWA_SMOKE_EMAIL }}
       SMARTWA_SMOKE_PASSWORD: ${{ secrets.SMARTWA_SMOKE_PASSWORD }}
       SMARTWA_SMOKE_TENANT_ID: ${{ secrets.SMARTWA_SMOKE_TENANT_ID }}

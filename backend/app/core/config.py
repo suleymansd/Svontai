@@ -12,6 +12,7 @@ from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
+from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class Settings(BaseSettings):
     
     # Encryption
     ENCRYPTION_KEY: str = ""  # 32-byte base64 encoded key, generated if not set
+    ENCRYPTION_KEY_LEGACY_JWT_FALLBACK: bool = False
     
     # Application URLs
     BACKEND_URL: str = "http://localhost:8000"
@@ -467,6 +469,16 @@ class Settings(BaseSettings):
             or self.API_KEY_HASH_SECRET == self.JWT_SECRET_KEY
         ):
             missing_real_time_config.append("separate API_KEY_HASH_SECRET with at least 32 characters")
+        try:
+            Fernet(self.ENCRYPTION_KEY.strip().encode())
+            encryption_key_valid = True
+        except (TypeError, ValueError):
+            encryption_key_valid = False
+        if (
+            not encryption_key_valid
+            or self.ENCRYPTION_KEY in {self.JWT_SECRET_KEY, self.API_KEY_HASH_SECRET}
+        ):
+            missing_real_time_config.append("separate Fernet ENCRYPTION_KEY")
         if not self.SENTRY_DSN.strip():
             missing_real_time_config.append("SENTRY_DSN")
         if self.DATABASE_BACKUP_ENABLED:

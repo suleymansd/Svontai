@@ -13,10 +13,11 @@ import { authApi, tenantApi, meApi } from '@/lib/api'
 import { LEGAL_VERSIONS } from '@/lib/legal'
 import { useAuthStore } from '@/lib/store'
 import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
+import { setAccessToken } from '@/lib/auth-token'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
+  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags, setSessionReady } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [infoMessage, setInfoMessage] = useState('')
@@ -48,7 +49,7 @@ export default function RegisterPage() {
     })
 
     const { access_token } = loginResponse.data
-    localStorage.setItem('access_token', access_token)
+    setAccessToken(access_token)
 
     const tenantResponse = await tenantApi.createTenant({
       name: pendingCredentials.company_name || pendingCredentials.full_name + "'in İşletmesi",
@@ -62,6 +63,7 @@ export default function RegisterPage() {
     setPermissions(permissions || [])
     setEntitlements(entitlements || {})
     setFeatureFlags(feature_flags || {})
+    setSessionReady(true)
     clearAdminTenantContext()
 
     router.push('/dashboard/onboarding')

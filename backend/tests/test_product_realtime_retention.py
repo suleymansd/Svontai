@@ -7,12 +7,17 @@ from unittest.mock import AsyncMock
 
 from app.core.time import utc_now_naive
 from app.models.bot import Bot
+from app.models.artifact import Artifact
+from app.models.assistant_media import AssistantMediaAsset
+from app.models.call import Call
 from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.data_retention import DataRetentionPolicy
 from app.models.message import Message
 from app.models.product_event import ProductEvent
 from app.models.system_event import SystemEvent
+from app.models.ticket import Ticket
 from app.models.usage_log import UsageLog
+from app.models.voice_automation import CallIntent, OutboundCallJob
 from app.services.data_retention_service import DataRetentionService
 
 
@@ -199,6 +204,78 @@ def test_retention_deletes_expired_records_and_respects_legal_hold(client):
             message="old",
             created_at=old,
         ))
+        report_artifact = Artifact(
+            tenant_id=uuid.UUID(tenant_id),
+            request_id="expired-report",
+            tool_slug="report-generator",
+            type="pdf",
+            name="expired.pdf",
+            storage_provider="external",
+            created_at=old,
+        )
+        media_artifact = Artifact(
+            tenant_id=uuid.UUID(tenant_id),
+            request_id="expired-media",
+            tool_slug="assistant-media",
+            type="image",
+            name="expired.jpg",
+            storage_provider="external",
+            created_at=old,
+        )
+        db.add_all([report_artifact, media_artifact])
+        db.flush()
+        db.add(AssistantMediaAsset(
+            tenant_id=uuid.UUID(tenant_id),
+            artifact_id=media_artifact.id,
+            title="Expired media",
+            media_type="image",
+            mime_type="image/jpeg",
+            file_size_bytes=10,
+            created_at=old,
+            updated_at=old,
+        ))
+        call = Call(
+            tenant_id=uuid.UUID(tenant_id),
+            provider="test",
+            provider_call_id="expired-call",
+            direction="outbound",
+            status="completed",
+            from_number="+905550000001",
+            to_number="+905550000002",
+            created_at=old,
+            updated_at=old,
+        )
+        intent = CallIntent(
+            tenant_id=uuid.UUID(tenant_id),
+            customer_phone="+905550000002",
+            trigger="test",
+            reason="expired",
+            status="completed",
+            created_at=old,
+            updated_at=old,
+        )
+        db.add_all([call, intent])
+        db.flush()
+        db.add(OutboundCallJob(
+            tenant_id=uuid.UUID(tenant_id),
+            call_intent_id=intent.id,
+            call_id=call.id,
+            provider="test",
+            from_number="+905550000001",
+            to_number="+905550000002",
+            status="completed",
+            created_at=old,
+            updated_at=old,
+        ))
+        db.add(Ticket(
+            tenant_id=tenant_id,
+            requester_id=None,
+            subject="Expired solved ticket",
+            status="solved",
+            last_activity_at=old,
+            created_at=old,
+            updated_at=old,
+        ))
         db.commit()
 
         service = DataRetentionService(db)
@@ -209,6 +286,12 @@ def test_retention_deletes_expired_records_and_respects_legal_hold(client):
         assert result["deleted"]["product_events"] == 1
         assert result["deleted"]["usage_logs"] == 1
         assert result["deleted"]["system_events"] == 1
+        assert result["deleted"]["media_assets"] == 1
+        assert result["deleted"]["artifacts"] == 1
+        assert result["deleted"]["calls"] == 1
+        assert result["deleted"]["voice_jobs"] == 1
+        assert result["deleted"]["voice_intents"] == 1
+        assert result["deleted"]["solved_tickets"] == 1
 
         policy = service.get_or_create(uuid.UUID(tenant_id))
         policy.legal_hold = True

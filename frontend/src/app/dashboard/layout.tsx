@@ -39,6 +39,7 @@ import { authApi, setupOnboardingApi, subscriptionApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { decodeJwtPayload } from '@/lib/jwt'
+import { getAccessToken } from '@/lib/auth-token'
 import { trackProductEvent } from '@/lib/product-analytics'
 
 const sidebarItems = [
@@ -66,7 +67,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, tenant, isAuthenticated, logout } = useAuthStore()
+  const { user, tenant, isAuthenticated, sessionReady, logout } = useAuthStore()
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const [mounted, setMounted] = useState(false)
   const [authHydrated, setAuthHydrated] = useState(false)
@@ -78,14 +79,14 @@ export default function DashboardLayout({
   const { data: onboardingStatus } = useQuery({
     queryKey: ['onboarding-status'],
     queryFn: () => setupOnboardingApi.getStatus().then(res => res.data),
-    enabled: isAuthenticated,
+    enabled: sessionReady && isAuthenticated,
   })
 
   // Fetch subscription for features
   const { data: usageStats } = useQuery({
     queryKey: ['usage-stats'],
     queryFn: () => subscriptionApi.getUsageStats().then(res => res.data),
-    enabled: isAuthenticated,
+    enabled: sessionReady && isAuthenticated,
   })
 
   useEffect(() => {
@@ -99,20 +100,20 @@ export default function DashboardLayout({
   }, [])
 
   useEffect(() => {
-    if (!authHydrated) return
+    if (!authHydrated || !sessionReady) return
     if (!isAuthenticated) {
       router.push('/login')
       return
     }
 
     if (user?.is_admin) {
-      const token = localStorage.getItem('access_token') || ''
+      const token = getAccessToken() || ''
       const portal = (decodeJwtPayload(token)?.portal || 'tenant') as string
       if (portal === 'super_admin' && !getAdminTenantContext()?.id) {
         router.push('/admin')
       }
     }
-  }, [authHydrated, isAuthenticated, user?.is_admin, router])
+  }, [authHydrated, sessionReady, isAuthenticated, user?.is_admin, router])
 
   useEffect(() => {
     if (!mounted || !isAuthenticated || !onboardingStatus) return
@@ -166,7 +167,7 @@ export default function DashboardLayout({
     router.push('/admin')
   }
 
-  if (!mounted || !authHydrated || !isAuthenticated) {
+  if (!mounted || !authHydrated || !sessionReady || !isAuthenticated) {
     return null
   }
 

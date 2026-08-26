@@ -6,9 +6,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
-import { authApi, userApi } from '@/lib/api'
+import { authApi, refreshAccessToken, userApi } from '@/lib/api'
 import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
 import { decodeJwtPayload } from '@/lib/jwt'
+import { clearAccessToken, getAccessToken } from '@/lib/auth-token'
+import { useAuthStore } from '@/lib/store'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import {
   LayoutDashboard,
@@ -64,23 +66,19 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState<{ full_name: string; email: string; is_admin: boolean } | null>(null)
   const [tenantContext, setTenantContext] = useState<{ id: string; name?: string } | null>(null)
+  const resetAuth = useAuthStore((state) => state.logout)
 
   useEffect(() => {
     if (isLoginRoute) return
     // Check if user is admin
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('access_token')
-        if (!token) {
-          router.push('/admin/login')
-          return
-        }
+        const token = getAccessToken() || await refreshAccessToken()
 
         const payload = decodeJwtPayload(token)
         const portal = (payload?.portal || 'tenant') as string
         if (portal !== 'super_admin') {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+          clearAccessToken()
           clearAdminTenantContext()
           router.push('/admin/login')
           return
@@ -95,8 +93,7 @@ export default function AdminLayout({
         setUser(user)
         setTenantContext(getAdminTenantContext())
       } catch (error) {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        clearAccessToken()
         clearAdminTenantContext()
         router.push('/admin/login')
       }
@@ -116,9 +113,7 @@ export default function AdminLayout({
     try {
       await authApi.logout()
     } finally {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      clearAdminTenantContext()
+      resetAuth()
       router.push('/admin/login')
     }
   }

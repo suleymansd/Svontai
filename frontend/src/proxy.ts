@@ -22,11 +22,16 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const development = process.env.NODE_ENV !== 'production'
   const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'"]
+  const styleSources = development
+    ? ["'self'", "'unsafe-inline'"]
+    : ["'self'", `'nonce-${nonce}'`]
   const connectSources = ["'self'", backendOrigin()]
   const monitoringOrigin = sentryOrigin()
   if (monitoringOrigin) connectSources.push(monitoringOrigin)
   if (development) {
     scriptSources.push("'unsafe-eval'")
+    // Turbopack injects nonce-less style elements for HMR. Production remains
+    // nonce-only and is covered by the production build/smoke gate.
     connectSources.push('http:', 'https:', 'ws:', 'wss:')
   }
 
@@ -38,7 +43,11 @@ export function proxy(request: NextRequest) {
     "object-src 'none'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
+    `style-src ${styleSources.join(' ')}`,
+    `style-src-elem ${styleSources.join(' ')}`,
+    // React dynamic style attributes remain narrowly allowed; executable style
+    // blocks and injected <style> elements require the per-request nonce.
+    "style-src-attr 'unsafe-inline'",
     `script-src ${scriptSources.join(' ')}`,
     `connect-src ${connectSources.join(' ')}`,
     "worker-src 'self' blob:",
