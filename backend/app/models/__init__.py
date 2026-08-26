@@ -53,6 +53,7 @@ from app.models.sales_inquiry import SalesInquiry
 from app.models.invoice import Invoice
 from app.models.product_event import ProductEvent
 from app.models.data_retention import DataRetentionPolicy
+from app.models.webhook_inbox import WebhookInboxEvent
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -130,6 +131,7 @@ __all__ = [
     "Invoice",
     "ProductEvent",
     "DataRetentionPolicy",
+    "WebhookInboxEvent",
     "Ticket",
     "TicketMessage",
     "PasswordResetCode",

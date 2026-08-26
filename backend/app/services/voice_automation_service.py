@@ -337,6 +337,7 @@ class VoiceAutomationService:
             meta_json={
                 "trigger": intent.trigger,
                 "reason": intent.reason,
+                "bypass_business_hours": intent.trigger == "manual_test",
                 "customer_name": intent.customer_name,
                 "conversation_id": str(intent.conversation_id) if intent.conversation_id else None,
                 "lead_id": str(intent.lead_id) if intent.lead_id else None,
@@ -377,8 +378,9 @@ class VoiceAutomationService:
                     self.db.commit()
                     skipped += 1
                     continue
+                bypass_business_hours = bool((job.meta_json or {}).get("bypass_business_hours"))
                 next_opening = self.next_business_opening(tenant_settings, now)
-                if next_opening > now:
+                if not bypass_business_hours and next_opening > now:
                     job.next_attempt_at = next_opening
                     job.meta_json = {
                         **(job.meta_json or {}),

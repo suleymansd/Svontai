@@ -25,6 +25,20 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: svontai_ci
+          POSTGRES_USER: svontai
+          POSTGRES_PASSWORD: svontai_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U svontai -d svontai_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -43,7 +57,7 @@ jobs:
       - name: Verify Railway and backend dependencies stay aligned
         run: diff -u requirements.txt ../requirements.txt
       - name: Verify fresh database migrations
-        run: DATABASE_URL=sqlite:////tmp/svontai-ci-migrations.db alembic upgrade head
+        run: DATABASE_URL=postgresql+psycopg://svontai:svontai_ci_password@127.0.0.1:5432/svontai_ci alembic upgrade head
       - run: python -m pytest -q
 
   frontend:
