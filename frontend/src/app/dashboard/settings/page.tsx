@@ -86,6 +86,10 @@ export default function SettingsPage() {
     product_analytics_days: 180,
     usage_log_days: 730,
     system_event_days: 730,
+    media_days: 365,
+    call_data_days: 365,
+    ticket_days: 730,
+    artifact_days: 180,
   })
 
   const [profileData, setProfileData] = useState({
@@ -186,6 +190,10 @@ export default function SettingsPage() {
       product_analytics_days: retentionPolicy.product_analytics_days,
       usage_log_days: retentionPolicy.usage_log_days,
       system_event_days: retentionPolicy.system_event_days,
+      media_days: retentionPolicy.media_days,
+      call_data_days: retentionPolicy.call_data_days,
+      ticket_days: retentionPolicy.ticket_days,
+      artifact_days: retentionPolicy.artifact_days,
     })
   }, [retentionPolicy])
 
@@ -1020,6 +1028,10 @@ export default function SettingsPage() {
                           ['product_analytics_days', 'Ürün kullanım olayları', 30, 730],
                           ['usage_log_days', 'Kullanım kayıtları', 90, 3650],
                           ['system_event_days', 'Sistem olayları', 90, 3650],
+                          ['media_days', 'Medya kütüphanesi', 30, 3650],
+                          ['call_data_days', 'Arama kayıtları', 30, 3650],
+                          ['ticket_days', 'Çözülen destek talepleri', 90, 3650],
+                          ['artifact_days', 'Üretilen rapor ve dosyalar', 30, 3650],
                         ].map(([key, label, min, max]) => (
                           <div key={String(key)} className="space-y-2">
                             <Label htmlFor={`retention-${key}`}>{label}</Label>

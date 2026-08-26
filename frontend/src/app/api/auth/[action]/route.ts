@@ -14,6 +14,15 @@ export async function POST(
     return NextResponse.json({ detail: 'Not found' }, { status: 404 })
   }
 
+  // An anonymous refresh cannot mutate authentication state. Return before
+  // origin validation so public pages do not emit a failed network request.
+  if (action === 'refresh' && !request.cookies.has('smartwa_refresh_token')) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
+
   const origin = (request.headers.get('origin') || '').replace(/\/+$/, '')
   const requestOrigin = request.nextUrl.origin.replace(/\/+$/, '')
   if (origin && origin !== requestOrigin) {
@@ -51,6 +60,7 @@ export async function POST(
 
     const setCookie = upstream.headers.get('set-cookie')
     if (setCookie) response.headers.set('set-cookie', setCookie)
+    if (action === 'logout') response.cookies.delete('smartwa_refresh_token')
     const requestId = upstream.headers.get('x-request-id')
     if (requestId) response.headers.set('x-request-id', requestId)
     return response

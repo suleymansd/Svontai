@@ -26,15 +26,19 @@ class EncryptionService:
         """
         encryption_key = key or getattr(settings, 'ENCRYPTION_KEY', None)
         
+        if not encryption_key and settings.ENVIRONMENT == "prod":
+            raise RuntimeError("ENCRYPTION_KEY is required in production")
         if not encryption_key:
-            # Generate a key from SECRET_KEY if ENCRYPTION_KEY not set
+            # Development-only compatibility for local databases.
             encryption_key = self._derive_key_from_secret(settings.JWT_SECRET_KEY)
         
         # Ensure key is valid Fernet key (32 bytes, base64 encoded)
         try:
             self.fernet = Fernet(encryption_key.encode() if isinstance(encryption_key, str) else encryption_key)
         except (ValueError, TypeError):
-            # If key is not a valid Fernet key, derive one
+            if settings.ENVIRONMENT == "prod":
+                raise RuntimeError("ENCRYPTION_KEY must be a valid Fernet key")
+            # Development-only compatibility for existing local configuration.
             derived_key = self._derive_key_from_secret(encryption_key)
             self.fernet = Fernet(derived_key)
     
@@ -138,4 +142,3 @@ def generate_encryption_key() -> str:
         Base64-encoded 32-byte key as string.
     """
     return Fernet.generate_key().decode()
-

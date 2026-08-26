@@ -7,6 +7,9 @@ def test_health_endpoints_report_liveness_and_readiness(client):
     assert ready.status_code == 200
     assert ready.json()["status"] == "ready"
     assert ready.json()["components"]["database"] == "ok"
+    assert isinstance(ready.json()["deployment"]["migration_heads"], list)
+    assert "api_commit" in ready.json()["deployment"]
+    assert "worker_commit" in ready.json()["deployment"]
 
     compatibility = client.get("/health")
     assert compatibility.status_code == 200
@@ -32,3 +35,21 @@ def test_health_ready_returns_503_without_exposing_exception(client, monkeypatch
         "environment": "test",
         "components": {"database": "unavailable", "redis": "not_required"},
     }
+
+
+def test_health_reports_worker_release_heartbeat(client, monkeypatch):
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "a" * 40)
+
+    from app.db import session as session_module
+    from app import worker as worker_module
+
+    monkeypatch.setattr(worker_module, "SessionLocal", session_module.SessionLocal)
+
+    worker_module._record_worker_heartbeat()
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    deployment = response.json()["deployment"]
+    assert deployment["api_commit"] == "a" * 40
+    assert deployment["worker_commit"] == "a" * 40
+    assert deployment["worker_heartbeat_age_seconds"] <= 2

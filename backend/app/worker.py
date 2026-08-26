@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from contextlib import suppress
 from datetime import datetime, timedelta
@@ -172,6 +173,30 @@ def _wait_for_database_schema(timeout_seconds: int = 180, poll_seconds: int = 5)
     raise RuntimeError(
         f"Database migrations did not reach head {sorted(expected)} within {timeout_seconds}s: {detail}"
     )
+
+
+def _release_sha() -> str:
+    for name in ("RAILWAY_GIT_COMMIT_SHA", "GIT_COMMIT_SHA", "SOURCE_VERSION"):
+        value = str(os.getenv(name) or "").strip()
+        if value:
+            return value[:64]
+    return "unknown"
+
+
+def _record_worker_heartbeat() -> None:
+    db = SessionLocal()
+    try:
+        with scheduled_job_lock(db, "worker_heartbeat", 30, lock_seconds=25) as job:
+            if job is None:
+                return
+            job.meta_json = {
+                **(job.meta_json or {}),
+                "release_sha": _release_sha(),
+                "heartbeat_at": utc_now_naive().isoformat(),
+            }
+            db.commit()
+    finally:
+        db.close()
 
 
 async def _run_every(name: str, interval_seconds: int, fn) -> None:
@@ -652,6 +677,7 @@ async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
     tasks = [
+        asyncio.create_task(_run_every("worker_heartbeat", 30, _record_worker_heartbeat)),
         asyncio.create_task(_run_every("webhook_inbox", settings.WEBHOOK_INBOX_POLL_INTERVAL_SECONDS, _process_webhook_inbox)),
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),

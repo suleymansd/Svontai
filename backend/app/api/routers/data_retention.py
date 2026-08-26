@@ -28,6 +28,10 @@ class RetentionPolicyUpdate(BaseModel):
     product_analytics_days: int = Field(ge=30, le=730)
     usage_log_days: int = Field(ge=90, le=3650)
     system_event_days: int = Field(ge=90, le=3650)
+    media_days: int = Field(ge=30, le=3650)
+    call_data_days: int = Field(ge=30, le=3650)
+    ticket_days: int = Field(ge=90, le=3650)
+    artifact_days: int = Field(ge=30, le=3650)
 
 
 class RetentionPolicyResponse(RetentionPolicyUpdate):

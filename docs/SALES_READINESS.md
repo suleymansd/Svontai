@@ -1,6 +1,6 @@
 # SvontAI Sales Readiness
 
-Last reviewed: 22 July 2026
+Last reviewed: 26 August 2026
 
 ## Launch scope
 
@@ -14,6 +14,7 @@ issues that require customer action.
 ## Ready in code
 
 - Tenant-isolated registration, email verification, login, HttpOnly refresh cookie and RBAC.
+- Browser access tokens are memory-only; refresh continuity is provided by the HttpOnly, Secure cookie through the same-origin BFF.
 - Self-service and concierge onboarding with idempotent autopilot setup.
 - One protected Main Assistant per tenant with guided training; knowledge, lead qualification,
   appointment, human handoff and verified catalog sharing operate as capabilities behind it.
@@ -38,6 +39,8 @@ issues that require customer action.
 - Auditable KVKK export, correction and deletion requests; destructive deletion is never performed
   immediately from an unreviewed customer action.
 - Explicit consent recording for manually initiated test calls and a configurable OpenWA active-session ceiling.
+- Tenant retention now covers messages/logs plus media objects, generated artifacts, completed call records and closed support tickets; provider deletion failures are retried instead of being silently accepted.
+- Readiness exposes non-secret API/Worker commit, Worker heartbeat age and Alembic heads so production smoke rejects split-version deploys.
 
 ## Deliberately unavailable at launch
 

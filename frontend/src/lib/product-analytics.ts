@@ -1,5 +1,6 @@
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 import { normalizeApiUrl } from './api-url'
+import { getAccessToken } from './auth-token'
 
 type ProductEventCategory = 'navigation' | 'action' | 'error' | 'funnel' | 'performance'
 
@@ -57,7 +58,7 @@ function safePath(path?: string) {
 
 async function flush() {
   if (flushing || queue.length === 0 || typeof window === 'undefined') return
-  const token = window.localStorage.getItem('access_token')
+  const token = getAccessToken()
   if (!token) {
     queue = []
     return

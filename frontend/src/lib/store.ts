@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { clearAdminTenantContext } from './admin-tenant-context'
+import { clearAccessToken } from './auth-token'
 import type { ToolWorkspaceConfig } from '@/components/tools/types'
 
 interface User {
@@ -29,12 +30,14 @@ interface AuthState {
   entitlements: Record<string, any>
   featureFlags: Record<string, boolean>
   isAuthenticated: boolean
+  sessionReady: boolean
   setUser: (user: User | null) => void
   setTenant: (tenant: Tenant | null) => void
   setRole: (role: Role | null) => void
   setPermissions: (permissions: string[]) => void
   setEntitlements: (entitlements: Record<string, any>) => void
   setFeatureFlags: (flags: Record<string, boolean>) => void
+  setSessionReady: (ready: boolean) => void
   logout: () => void
 }
 
@@ -48,15 +51,16 @@ export const useAuthStore = create<AuthState>()(
       entitlements: {},
       featureFlags: {},
       isAuthenticated: false,
+      sessionReady: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setTenant: (tenant) => set({ tenant }),
       setRole: (role) => set({ role }),
       setPermissions: (permissions) => set({ permissions }),
       setEntitlements: (entitlements) => set({ entitlements }),
       setFeatureFlags: (flags) => set({ featureFlags: flags }),
+      setSessionReady: (sessionReady) => set({ sessionReady }),
       logout: () => {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        clearAccessToken()
         clearAdminTenantContext()
         set({
           user: null,
@@ -65,7 +69,8 @@ export const useAuthStore = create<AuthState>()(
           permissions: [],
           entitlements: {},
           featureFlags: {},
-          isAuthenticated: false
+          isAuthenticated: false,
+          sessionReady: true,
         })
       },
     }),

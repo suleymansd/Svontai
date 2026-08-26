@@ -40,6 +40,14 @@ async function mockBackend(page: Page) {
     })
   })
 
+  await page.route('**/api/auth/refresh', async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ access_token: 'test-access-token', token_type: 'bearer' }),
+    })
+  })
+
   await page.route(localBackendPattern, async (route: Route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -223,7 +231,6 @@ async function openAuthenticated(page: Page, path: string) {
 
   if (path !== '/dashboard') {
     await page.addInitScript(({ state }) => {
-      localStorage.setItem('access_token', 'test-access-token')
       localStorage.setItem('auth-storage', JSON.stringify(state))
     }, { state: authState })
     await page.goto(path)
@@ -284,7 +291,11 @@ test('assistant simulator previews a reply without creating customer data', asyn
   await page.getByRole('button', { name: 'Mesajı dene' }).click()
   await expect(page.getByText('Hafta içi 09:00-18:00 arasında hizmet veriyoruz.')).toBeVisible()
 
-  expect(mutatingPaths.filter((path) => !path.startsWith('/product-analytics/'))).toEqual(['/bots/bot-1/simulate'])
+  expect(
+    mutatingPaths.filter(
+      (path) => !path.startsWith('/product-analytics/') && path !== '/api/auth/refresh',
+    ),
+  ).toEqual(['/bots/bot-1/simulate'])
   await expectNoHorizontalOverflow(page)
 })
 

@@ -11,11 +11,12 @@ import { Label } from '@/components/ui/label'
 import { authApi, meApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
 import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
+import { setAccessToken } from '@/lib/auth-token'
 
 export default function LoginPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags } = useAuthStore()
+  const { setUser, setTenant, setRole, setPermissions, setEntitlements, setFeatureFlags, setSessionReady } = useAuthStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
@@ -47,7 +48,7 @@ export default function LoginPageClient() {
       })
       const { access_token } = loginResponse.data
 
-      localStorage.setItem('access_token', access_token)
+      setAccessToken(access_token)
 
       const contextResponse = await meApi.getContext()
       const { user, tenant, role, permissions, entitlements, feature_flags } = contextResponse.data
@@ -57,6 +58,7 @@ export default function LoginPageClient() {
       setPermissions(permissions || [])
       setEntitlements(entitlements || {})
       setFeatureFlags(feature_flags || {})
+      setSessionReady(true)
 
       if (!user?.is_admin) {
         clearAdminTenantContext()

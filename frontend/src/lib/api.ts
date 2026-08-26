@@ -2,6 +2,13 @@ import axios from 'axios'
 import { ADMIN_TENANT_CONTEXT_ID_KEY } from './admin-tenant-context'
 import { normalizeApiUrl } from './api-url'
 import { normalizeTrackedApiPath, trackProductEvent } from './product-analytics'
+import {
+  clearAccessToken,
+  getAccessToken,
+  getRefreshPromise,
+  setAccessToken,
+  setRefreshPromise,
+} from './auth-token'
 
 export const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
 
@@ -16,7 +23,7 @@ export const api = axios.create({
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('access_token')
+    const token = getAccessToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -44,21 +51,13 @@ api.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        const response = await axios.post(
-          '/api/auth/refresh',
-          {},
-          { withCredentials: true }
-        )
-
-        const { access_token } = response.data
-        localStorage.setItem('access_token', access_token)
+        const access_token = await refreshAccessToken()
 
         originalRequest.headers.Authorization = `Bearer ${access_token}`
         return api(originalRequest)
       } catch (refreshError) {
         // Refresh failed, redirect to login
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        clearAccessToken()
         if (typeof window !== 'undefined') {
           window.location.href = '/login'
         }
@@ -81,6 +80,28 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export async function refreshAccessToken(): Promise<string> {
+  const activeRefresh = getRefreshPromise()
+  if (activeRefresh) return activeRefresh
+
+  const refresh = axios
+    .post('/api/auth/refresh', {}, { withCredentials: true })
+    .then((response) => {
+      const token = String(response.data?.access_token || '').trim()
+      if (!token) throw new Error('Refresh response did not include an access token')
+      setAccessToken(token)
+      return token
+    })
+    .catch((error) => {
+      clearAccessToken()
+      throw error
+    })
+    .finally(() => setRefreshPromise(null))
+
+  setRefreshPromise(refresh)
+  return refresh
+}
 
 // Auth API
 export const authApi = {
@@ -105,10 +126,10 @@ export const authApi = {
   }) =>
     axios.post('/api/auth/login', data, { withCredentials: true }),
   
-  refresh: () => axios.post('/api/auth/refresh', {}, { withCredentials: true }),
-  refreshWithCookie: () => axios.post('/api/auth/refresh', {}, { withCredentials: true }),
+  refresh: refreshAccessToken,
+  refreshWithCookie: refreshAccessToken,
   logout: () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+    const token = getAccessToken()
     return axios.post(
       '/api/auth/logout',
       {},
@@ -567,6 +588,10 @@ export type DataRetentionPolicy = {
   product_analytics_days: number
   usage_log_days: number
   system_event_days: number
+  media_days: number
+  call_data_days: number
+  ticket_days: number
+  artifact_days: number
   last_run_at?: string | null
   last_result: Record<string, number>
   updated_at: string

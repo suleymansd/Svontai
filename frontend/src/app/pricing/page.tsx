@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { billingApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
+import { getAccessToken } from '@/lib/auth-token'
 
 const plans = [
   {
@@ -101,7 +102,7 @@ export default function PricingPage() {
       window.location.href = `${contactUrl}?plan=${plan}&interval=${billing}`
       return
     }
-    const token = localStorage.getItem('access_token')
+    const token = getAccessToken()
     if (!token) {
       window.location.href = '/login?next=/pricing'
       return

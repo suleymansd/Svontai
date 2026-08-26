@@ -58,7 +58,7 @@ OPENWA_WEBHOOK_PUBLIC_URL=https://<smartwa-backend-domain>
 OPENWA_TIMEOUT_SECONDS=20
 ```
 
-Backend deploy sırasında `alembic upgrade head` çalışmalı ve migration head `049` olmalıdır.
+Backend deploy sırasında `alembic upgrade head` çalışmalı ve migration head `050` olmalıdır.
 
 ## Çalışma Akışı
 

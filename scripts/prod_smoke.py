@@ -133,6 +133,41 @@ def _check_json(name: str, url: str, token: str | None = None, tenant_id: str | 
     return Result(name, True, f"status=200 keys={','.join(sorted(parsed.keys())[:6])}")
 
 
+def _check_deployment_alignment(backend_url: str) -> Result:
+    try:
+        status, body, parsed = _request(f"{backend_url}/health/ready")
+    except Exception as exc:
+        return Result("deployment alignment", False, f"request failed: {exc}")
+    if status != 200 or not isinstance(parsed, dict):
+        return Result("deployment alignment", False, f"status={status}, body={body[:300]!r}")
+    deployment = parsed.get("deployment")
+    if not isinstance(deployment, dict):
+        return Result("deployment alignment", False, "readiness response has no deployment evidence")
+
+    expected_head = (os.getenv("SMARTWA_EXPECTED_MIGRATION_HEAD") or "050").strip()
+    heads = {str(value) for value in deployment.get("migration_heads") or []}
+    api_commit = str(deployment.get("api_commit") or "unknown")
+    worker_commit = str(deployment.get("worker_commit") or "unknown")
+    heartbeat_age = deployment.get("worker_heartbeat_age_seconds")
+    if expected_head not in heads:
+        return Result("deployment alignment", False, f"migration heads={sorted(heads)!r}, expected={expected_head}")
+    if "unknown" in {api_commit, worker_commit}:
+        return Result("deployment alignment", False, "API or worker commit identity is unavailable")
+    if api_commit != worker_commit:
+        return Result(
+            "deployment alignment",
+            False,
+            f"API commit {api_commit[:12]} != worker commit {worker_commit[:12]}",
+        )
+    if not isinstance(heartbeat_age, int) or heartbeat_age > 120:
+        return Result("deployment alignment", False, f"worker heartbeat age={heartbeat_age!r}")
+    return Result(
+        "deployment alignment",
+        True,
+        f"commit={api_commit[:12]} migration={expected_head} worker_age={heartbeat_age}s",
+    )
+
+
 def _check_json_shape(
     name: str,
     url: str,
@@ -229,6 +264,7 @@ def run() -> int:
 
     if backend_url:
         results.append(_check_json("backend /health/ready", f"{backend_url}/health/ready"))
+        results.append(_check_deployment_alignment(backend_url))
         results.append(_check_json("backend /", f"{backend_url}/"))
         if not token and smoke_email and smoke_password:
             try:
