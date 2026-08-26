@@ -101,7 +101,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 - Railway health check path is `/health/ready`; `/health/live` only confirms that the process is running.
 - Vercel `NEXT_PUBLIC_BACKEND_URL` must point to the Railway API domain.
 - Frontend builds must fail or smoke must fail if `NEXT_PUBLIC_BACKEND_URL` is missing; do not rely on `localhost:8000` defaults.
-- Alembic head must include revision `041`.
+- Alembic head must include revision `049`.
 
 ### n8n runtime
 

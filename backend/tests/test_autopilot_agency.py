@@ -164,20 +164,22 @@ def test_scheduled_job_lock_prevents_duplicate_runs(client):
     from app.db.session import SessionLocal
     from app.services.scheduled_job_service import ScheduledJobService
 
-    db = SessionLocal()
+    first_db = SessionLocal()
+    second_db = SessionLocal()
     try:
-        first = ScheduledJobService(db, owner="worker-a").acquire("diagnostics", 300, lock_seconds=120)
+        first = ScheduledJobService(first_db, owner="worker-a").acquire("diagnostics", 300, lock_seconds=120)
         assert first is not None
 
-        second = ScheduledJobService(db, owner="worker-b").acquire("diagnostics", 300, lock_seconds=120)
+        second = ScheduledJobService(second_db, owner="worker-b").acquire("diagnostics", 300, lock_seconds=120)
         assert second is None
 
-        ScheduledJobService(db, owner="worker-a").mark_success(first)
+        ScheduledJobService(first_db, owner="worker-a").mark_success(first)
 
-        third = ScheduledJobService(db, owner="worker-b").acquire("diagnostics", 300, lock_seconds=120)
+        third = ScheduledJobService(second_db, owner="worker-b").acquire("diagnostics", 300, lock_seconds=120)
         assert third is None
     finally:
-        db.close()
+        first_db.close()
+        second_db.close()
 
 
 def test_scheduled_job_failure_rolls_back_before_recording_retry(client, monkeypatch):

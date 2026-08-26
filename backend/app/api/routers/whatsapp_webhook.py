@@ -11,12 +11,12 @@ import logging
 import re
 import uuid
 from typing import Optional
-from datetime import datetime
 from app.core.time import utc_now_naive
 
 from fastapi import APIRouter, Request, Response, HTTPException, status, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import get_db
 from app.services.onboarding_service import OnboardingService
@@ -49,15 +49,13 @@ from app.services.openwa_client import OpenWAClient, OpenWAError, openwa_client
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
 from app.services.push_notification_service import send_tenant_push_notification
 from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
+from app.services.webhook_inbox_service import WebhookInboxService
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp Webhook"])
 
-
-# Rate limiting state (in production, use Redis)
-_webhook_requests = {}
 
 _CONTACT_NAME_SOURCE_PRIORITY = {
     "profile": 10,
@@ -167,7 +165,6 @@ async def _resolve_openwa_contact_name(
 @router.post("/openwa/webhook")
 async def openwa_webhook_events(
     request: Request,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Receive HMAC-signed OpenWA session and message events."""
@@ -184,7 +181,6 @@ async def openwa_webhook_events(
 
     session_id = str(payload.get("sessionId") or "")
     event = str(payload.get("event") or "")
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     if not session_id or not event:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OpenWA event")
     signature = request.headers.get("X-OpenWA-Signature")
@@ -199,22 +195,18 @@ async def openwa_webhook_events(
         logger.warning("openwa.account_not_found session_id=%s", session_id)
         return {"status": "ignored"}
 
-    service = OnboardingService(db)
-    if event in {"session.authenticated", "session.disconnected", "session.status"}:
-        service.sync_openwa_webhook_event(account, event, data)
-    elif event == "message.received":
-        background_tasks.add_task(
-            process_openwa_message_event,
-            str(account.tenant_id),
-            session_id,
-            account.display_phone_number or "",
-            data,
-            payload,
-            db,
-            background_tasks,
-        )
-
-    return {"status": "ok"}
+    inbox_event, created = WebhookInboxService(db).enqueue(
+        provider="openwa",
+        body=body,
+        payload=payload,
+        event_type=event,
+        tenant_id=account.tenant_id,
+        provider_reference=session_id,
+    )
+    return {
+        "status": "accepted" if created else "duplicate",
+        "event_id": str(inbox_event.id),
+    }
 
 
 async def process_openwa_message_event(
@@ -599,25 +591,6 @@ async def process_whatsapp_reply_in_background(
         db.close()
 
 
-def rate_limit_check(phone_number_id: str, max_per_minute: int = 100) -> bool:
-    """
-    Simple rate limiting check.
-    In production, use Redis or a proper rate limiter.
-    """
-    import time
-    current_time = int(time.time() / 60)  # Current minute
-    key = f"{phone_number_id}:{current_time}"
-
-    _webhook_requests[key] = _webhook_requests.get(key, 0) + 1
-
-    # Clean old entries
-    old_keys = [k for k in _webhook_requests if not k.endswith(f":{current_time}")]
-    for k in old_keys:
-        del _webhook_requests[k]
-
-    return _webhook_requests[key] <= max_per_minute
-
-
 @router.get("/webhook")
 async def webhook_verification(
     request: Request,
@@ -637,7 +610,7 @@ async def webhook_verification(
     verify_token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
 
-    logger.info(f"Webhook verification request: mode={mode}, token={verify_token[:10]}...")
+    logger.info("Webhook verification request received: mode=%s", mode)
 
     if mode != "subscribe":
         logger.warning(f"Invalid webhook mode: {mode}")
@@ -658,7 +631,7 @@ async def webhook_verification(
     account = service.get_account_by_verify_token(verify_token)
 
     if not account:
-        logger.warning(f"Invalid verify token: {verify_token[:10]}...")
+        logger.warning("Invalid webhook verify token")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid verify token"
@@ -676,7 +649,6 @@ async def webhook_verification(
 @router.post("/webhook")
 async def webhook_events(
     request: Request,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -719,13 +691,16 @@ async def webhook_events(
             detail="Invalid JSON"
         )
 
-    logger.info(f"Webhook event received: {json.dumps(payload)[:500]}")
-
-    # Acknowledge quickly (Meta expects response within 20 seconds)
-    # Process in background - pass background_tasks for nested async tasks
-    background_tasks.add_task(process_webhook_event, payload, db, background_tasks)
-
-    return {"status": "ok"}
+    inbox_event, created = WebhookInboxService(db).enqueue(
+        provider="meta_cloud",
+        body=body,
+        payload=payload,
+        event_type=str(payload.get("object") or "unknown"),
+    )
+    return {
+        "status": "accepted" if created else "duplicate",
+        "event_id": str(inbox_event.id),
+    }
 
 
 async def process_webhook_event(
@@ -766,7 +741,8 @@ async def process_webhook_event(
                     logger.info(f"Ignoring webhook field: {field}")
 
     except Exception as e:
-        logger.error(f"Error processing webhook event: {e}", exc_info=True)
+        logger.error("Error processing webhook event: %s", e, exc_info=True)
+        raise
 
 
 async def process_message_event(
@@ -782,10 +758,6 @@ async def process_message_event(
 
         if not phone_number_id:
             logger.warning("whatsapp.message_event_missing_phone_number_id waba_id=%s", waba_id)
-            return
-
-        if not rate_limit_check(phone_number_id):
-            logger.warning("Rate limit exceeded for %s", phone_number_id)
             return
 
         account_row = (
@@ -831,13 +803,7 @@ async def process_message_event(
                     logger.warning("Message skipped, missing sender: id=%s tenant_id=%s", message_id, tenant_id_str)
                     continue
 
-                logger.info(
-                    "Message received: id=%s, from=%s, type=%s, contact=%s",
-                    message_id,
-                    from_number,
-                    message_type,
-                    contact_name,
-                )
+                logger.info("Message received: id=%s type=%s", message_id, message_type)
 
                 content: Optional[str] = None
 
@@ -888,8 +854,6 @@ async def process_message_event(
                 if not content:
                     content = f"[{message_type} received]"
 
-                logger.info("Message content: %s", content)
-
                 await handle_incoming_message(
                     tenant_id_str=tenant_id_str,
                     account_phone_number_id=account_phone_number_id,
@@ -914,6 +878,7 @@ async def process_message_event(
                     message_exc,
                     exc_info=True,
                 )
+                raise
 
         statuses = value.get("statuses", []) or []
         for status_update in statuses:
@@ -932,6 +897,7 @@ async def process_message_event(
 
     except Exception as exc:
         logger.error("Error processing webhook message event: %s", exc, exc_info=True)
+        raise
 
 
 async def process_template_status_event(waba_id: str, value: dict, db: Session):
@@ -1024,6 +990,7 @@ async def handle_incoming_message(
                 Bot.is_active.is_(True),
             )
             .order_by(Bot.created_at.asc())
+            .with_for_update()
             .first()
         )
         if not bot_row:
@@ -1034,6 +1001,7 @@ async def handle_incoming_message(
                 db.query(Bot.id)
                 .filter(Bot.tenant_id == tenant_uuid, Bot.is_active.is_(True))
                 .order_by(Bot.created_at.asc())
+                .with_for_update()
                 .first()
             )
         if not bot_row:
@@ -1146,7 +1114,17 @@ async def handle_incoming_message(
             },
         )
         db.add(incoming_message)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            logger.info(
+                "whatsapp.concurrent_duplicate_ignored tenant_id=%s message_id=%s provider=%s",
+                tenant_id_str,
+                message_id,
+                provider,
+            )
+            return
 
         try:
             SubscriptionService(db).increment_message_count(tenant_uuid)
@@ -1239,3 +1217,4 @@ async def handle_incoming_message(
             exc,
             exc_info=True,
         )
+        raise

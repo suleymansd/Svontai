@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -246,6 +247,27 @@ def test_openwa_signed_message_is_processed_once(client, monkeypatch):
     second = client.post("/whatsapp/openwa/webhook", content=raw_body, headers=headers)
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
+    assert first.json()["status"] == "accepted"
+    assert second.json()["status"] == "duplicate"
+
+    from app.models.webhook_inbox import WebhookInboxEvent
+    from app.services.webhook_inbox_service import WebhookInboxService
+
+    db = SessionLocal()
+    try:
+        event_ids = WebhookInboxService(db, owner="test-worker").claim_batch()
+    finally:
+        db.close()
+    assert len(event_ids) == 1
+
+    db = SessionLocal()
+    try:
+        asyncio.run(WebhookInboxService(db, owner="test-worker").process_claimed(event_ids[0]))
+        inbox_event = db.query(WebhookInboxEvent).filter(WebhookInboxEvent.id == event_ids[0]).one()
+        assert inbox_event.status == "processed"
+        assert inbox_event.payload_json == {}
+    finally:
+        db.close()
 
     db = SessionLocal()
     try:

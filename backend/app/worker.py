@@ -34,6 +34,7 @@ from app.services.google_calendar_service import GoogleCalendarService
 from app.services.database_backup_service import DatabaseBackupService
 from app.services.data_retention_service import DataRetentionService
 from app.services.openwa_client import OpenWAError, openwa_client
+from app.services.webhook_inbox_service import WebhookInboxService
 from zoneinfo import ZoneInfo
 
 
@@ -629,10 +630,29 @@ def _run_data_retention() -> None:
         db.close()
 
 
+def _process_webhook_inbox() -> None:
+    claim_db = SessionLocal()
+    try:
+        event_ids = WebhookInboxService(claim_db).claim_batch(limit=20, lease_seconds=180)
+    finally:
+        claim_db.close()
+
+    for event_id in event_ids:
+        event_db = SessionLocal()
+        try:
+            asyncio.run(WebhookInboxService(event_db).process_claimed(event_id))
+        except Exception as exc:
+            logger.error("webhook_inbox event_id=%s failed: %s", event_id, exc)
+            capture_exception(exc)
+        finally:
+            event_db.close()
+
+
 async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
     tasks = [
+        asyncio.create_task(_run_every("webhook_inbox", settings.WEBHOOK_INBOX_POLL_INTERVAL_SECONDS, _process_webhook_inbox)),
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),
         asyncio.create_task(_run_every("integration_diagnostics", settings.INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS, _run_integration_diagnostics)),

@@ -26,6 +26,7 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+        Index("uq_messages_conversation_external_id", "conversation_id", "external_id", unique=True),
     )
     
     id: Mapped[uuid.UUID] = mapped_column(

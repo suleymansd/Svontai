@@ -60,6 +60,8 @@
 - `OPENWA_RECONNECT_BASE_BACKOFF_SECONDS` (default `900`)
 - `OPENWA_RECONNECT_MAX_BACKOFF_SECONDS` (default `21600`)
 - `GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS` (production minimum `300`, default `600`)
+- `WEBHOOK_INBOX_POLL_INTERVAL_SECONDS` (durable inbound event polling, production range `1-10`)
+- `WEBHOOK_INBOX_MAX_ATTEMPTS` (provider event retry budget, production range `3-20`)
 - `AI_MAX_REPLY_TOKENS` (hard customer-reply output cap; default `800`)
 - `AI_REQUEST_TIMEOUT_SECONDS` (provider timeout; default `30`)
 - `AI_REQUEST_MAX_RETRIES` (provider retry cap; default `1`)
@@ -184,7 +186,7 @@ have expired or been re-encrypted.
 - Railway should run both Procfile processes: `web` for API and `worker` for scheduled autonomy.
 - Worker jobs persist lock/retry state in `scheduled_jobs`; this prevents duplicate runs across multiple worker instances.
 - Current scheduled jobs: appointment reminders, real-estate automation, integration diagnostics, Google Calendar appointment sync, stuck automation run cleanup, outbound voice jobs, and daily/weekly operational reports.
-- Current Alembic migration head: `046`.
+- Current Alembic migration head: `049`.
 
 ## n8n execution capacity
 - SmartWA uses shared, tenant-aware workflows. Do not duplicate a workflow for every customer.
