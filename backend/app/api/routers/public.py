@@ -335,6 +335,7 @@ async def send_chat_message(
         knowledge_items=knowledge_items,
         bot_settings=bot.settings,
         appointment_confirmed=appointment is not None,
+        user_message=request.message,
     )
     ai_response = quality.reply
     if quality.requires_handoff and tenant:

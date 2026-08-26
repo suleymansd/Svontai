@@ -286,6 +286,7 @@ async def generate_ai_reply(
         knowledge_items=knowledge_items,
         bot_settings=bot.settings,
         appointment_confirmed=appointment is not None,
+        user_message=body.message,
     )
     reply = quality.reply
     handoff_ticket = None

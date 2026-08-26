@@ -73,7 +73,7 @@ class BotSettings(Base):
     )
     fallback_message: Mapped[str] = mapped_column(
         Text,
-        default="Üzgünüm, bu konuda size yardımcı olamıyorum. Lütfen bizimle iletişime geçin.",
+        default="Bu konuda yardımcı olamam; işletmemizle ilgili başka bir konuda yardımcı olabilirim.",
         nullable=False
     )
     uncertainty_threshold: Mapped[float] = mapped_column(
@@ -88,7 +88,7 @@ class BotSettings(Base):
     )
     human_handoff_message: Mapped[str] = mapped_column(
         Text,
-        default="Sizi bir müşteri temsilcimize bağlıyorum. Lütfen bekleyin.",
+        default="Talebinizi ekibimize aktardım. Mümkün olan en kısa sürede sizinle ilgilenecekler.",
         nullable=False
     )
     # Rate limiting
@@ -158,4 +158,3 @@ DEFAULT_BOT_SETTINGS = {
         "adult content"
     ]
 }
-

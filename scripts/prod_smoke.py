@@ -144,7 +144,7 @@ def _check_deployment_alignment(backend_url: str) -> Result:
     if not isinstance(deployment, dict):
         return Result("deployment alignment", False, "readiness response has no deployment evidence")
 
-    expected_head = (os.getenv("SMARTWA_EXPECTED_MIGRATION_HEAD") or "050").strip()
+    expected_head = (os.getenv("SMARTWA_EXPECTED_MIGRATION_HEAD") or "051").strip()
     heads = {str(value) for value in deployment.get("migration_heads") or []}
     api_commit = str(deployment.get("api_commit") or "unknown")
     worker_commit = str(deployment.get("worker_commit") or "unknown")
