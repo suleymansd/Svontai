@@ -9,6 +9,20 @@ This runbook covers incident triage, error center usage, and common failure path
 - Customer Errors page: `/dashboard/errors`
 - Tickets: `/admin/tickets`
 
+## Application Encryption Key Rotation
+For installations that previously derived application encryption from
+`JWT_SECRET_KEY`, deploy once with a new `ENCRYPTION_KEY` and
+`ENCRYPTION_KEY_LEGACY_JWT_FALLBACK=true` on both API and worker. Then run:
+
+```bash
+python scripts/rotate_encryption_key.py --dry-run
+python scripts/rotate_encryption_key.py --apply
+```
+
+After the apply command succeeds, set
+`ENCRYPTION_KEY_LEGACY_JWT_FALLBACK=false` on both services and redeploy. Never
+replace an existing `ENCRYPTION_KEY` without a separate, verified rotation.
+
 ## Severity Guide
 - **sev1**: Production outage, inbound/outbound messaging blocked, widespread auth failures.
 - **sev2**: Partial outage, major automation failures, elevated error spikes.

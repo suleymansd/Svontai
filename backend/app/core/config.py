@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     
     # Encryption
     ENCRYPTION_KEY: str = ""  # 32-byte base64 encoded key, generated if not set
+    ENCRYPTION_KEY_LEGACY_JWT_FALLBACK: bool = False
     
     # Application URLs
     BACKEND_URL: str = "http://localhost:8000"
