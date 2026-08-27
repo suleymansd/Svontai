@@ -35,7 +35,6 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
         _query_returning(first=bot),
         _query_returning(first=conversation),
         _query_returning(first=tenant),
-        _query_returning(all_items=knowledge),
     ]
 
     body = AIReplyRequest(
@@ -53,6 +52,9 @@ def test_n8n_ai_reply_uses_tenant_bot_context():
     ), patch(
         "app.api.routers.n8n_tools.AssistantProfileService.capability_enabled",
         return_value=True,
+    ), patch(
+        "app.api.routers.n8n_tools.AssistantKnowledgeService.list_effective",
+        return_value=knowledge,
     ), patch(
         "app.api.routers.n8n_tools.AppointmentAvailabilityService.apply_ai_action",
         return_value=("Size nasıl yardımcı olabilirim?", None),

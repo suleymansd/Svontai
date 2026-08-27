@@ -29,11 +29,11 @@ from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.conversation import Conversation, ConversationSource
-from app.models.knowledge import BotKnowledgeItem
 from app.models.message import Message, MessageSender
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.services.assistant_media_service import AssistantMediaService
 from app.services.ai_response_quality_service import AIResponseQualityService, HumanHandoffService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 
 logger = logging.getLogger(__name__)
 
@@ -197,9 +197,7 @@ async def send_whatsapp_message(
         outbound_text = body.text
         conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
         if conversation is not None:
-            knowledge_items = db.query(BotKnowledgeItem).filter(
-                BotKnowledgeItem.bot_id == conversation.bot_id
-            ).all()
+            knowledge_items = AssistantKnowledgeService.list_effective(db, conversation.bot)
             meta = body.meta or {}
             appointment_confirmed = bool(
                 meta.get("appointmentId")

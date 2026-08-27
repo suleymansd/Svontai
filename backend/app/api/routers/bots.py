@@ -2,6 +2,7 @@
 Bot management router.
 """
 
+import logging
 from time import perf_counter
 from uuid import UUID, uuid4
 
@@ -16,7 +17,6 @@ from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.bot_settings import BotSettings
 from app.models.conversation import Conversation, ConversationSource
-from app.models.knowledge import BotKnowledgeItem
 from app.models.message import Message, MessageSender
 from app.schemas.bot import (
     AssistantCapabilityUpdate,
@@ -24,12 +24,21 @@ from app.schemas.bot import (
     AssistantTrainingUpdate,
     AssistantSimulationRequest,
     AssistantSimulationResponse,
+    AssistantTrainerApplyResponse,
+    AssistantTrainerMessageRequest,
+    AssistantTrainerMessageResponse,
     BotCreate,
     BotResponse,
     BotUpdate,
 )
 from app.services.audit_log_service import AuditLogService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
+from app.services.assistant_trainer_service import (
+    AssistantTrainerService,
+    AssistantTrainerUnavailableError,
+)
+from app.services.system_event_service import SystemEventService
 from app.services.ai_service import ai_service
 from app.core.rate_limit import (
     assistant_rate_limiter,
@@ -38,6 +47,7 @@ from app.core.rate_limit import (
 )
 
 router = APIRouter(prefix="/bots", tags=["Bots"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=list[BotResponse])
@@ -152,9 +162,7 @@ async def simulate_assistant_reply(
     if bot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot bulunamadı")
 
-    knowledge_items = db.query(BotKnowledgeItem).filter(
-        BotKnowledgeItem.bot_id == bot.id,
-    ).all()
+    knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
     bot_settings = db.query(BotSettings).filter(BotSettings.bot_id == bot.id).first()
     conversation = Conversation(
         id=uuid4(),
@@ -188,6 +196,104 @@ ortamda izleyeceğin doğal yanıtı göster, ancak işlemin bu önizlemede kayd
         reply=reply,
         history_count=len(payload.history) + 2,
         latency_ms=max(0, int((perf_counter() - started_at) * 1000)),
+    )
+
+
+@router.post(
+    "/assistant-profile/trainer/message",
+    response_model=AssistantTrainerMessageResponse,
+)
+async def train_assistant_by_chat(
+    payload: AssistantTrainerMessageRequest,
+    request: Request,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"])),
+) -> AssistantTrainerMessageResponse:
+    """Draft a specialist through natural-language conversation without publishing it."""
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant-trainer", current_tenant.id, current_user.id),
+        "Çok fazla eğitim isteği. Lütfen kısa bir süre sonra tekrar deneyin.",
+    )
+    try:
+        session, assistant_message = await AssistantTrainerService(db).message(
+            tenant=current_tenant,
+            user=current_user,
+            message=payload.message,
+            session_id=payload.session_id,
+        )
+    except AssistantTrainerUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return AssistantTrainerMessageResponse(
+        session_id=session.id,
+        status=session.status,
+        assistant_message=assistant_message,
+        proposal=session.proposal_json,
+        specialist_bot_id=session.specialist_bot_id,
+    )
+
+
+@router.post(
+    "/assistant-profile/trainer/{session_id}/apply",
+    response_model=AssistantTrainerApplyResponse,
+)
+async def apply_assistant_training_draft(
+    session_id: UUID,
+    request: Request,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:install"])),
+) -> AssistantTrainerApplyResponse:
+    """Publish a reviewed specialist proposal once; repeated calls are idempotent."""
+    require_rate_limit(
+        assistant_rate_limiter,
+        rate_limit_key(request, "assistant-trainer-apply", current_tenant.id, current_user.id),
+        "Çok fazla etkinleştirme isteği. Lütfen kısa bir süre sonra tekrar deneyin.",
+    )
+    try:
+        session, bot, knowledge_count = AssistantTrainerService(db).apply(
+            tenant=current_tenant,
+            user=current_user,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if knowledge_count:
+        AuditLogService(db).log(
+            action="assistant.specialist.create_by_chat",
+            tenant_id=str(current_tenant.id),
+            user_id=str(current_user.id),
+            resource_type="bot",
+            resource_id=str(bot.id),
+            payload={"session_id": str(session.id), "knowledge_items_created": knowledge_count},
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("User-Agent"),
+        )
+        try:
+            SystemEventService(db).log(
+                tenant_id=str(current_tenant.id),
+                source="assistant_trainer",
+                level="info",
+                code="assistant.specialist.activated",
+                message=f"{bot.name} sohbetle oluşturuldu ve Ana Asistana bağlandı.",
+                meta_json={"bot_id": str(bot.id), "session_id": str(session.id)},
+                correlation_id=request.headers.get("X-Correlation-Id"),
+            )
+        except Exception:
+            logger.exception("assistant specialist system event could not be written")
+    return AssistantTrainerApplyResponse(
+        session_id=session.id,
+        assistant_message=(
+            f"{bot.name} oluşturuldu ve Ana Asistanınıza bağlandı. "
+            "Yeni davranışı yayın öncesi simülatörde deneyebilirsiniz."
+        ),
+        bot=bot,
+        knowledge_items_created=knowledge_count,
     )
 
 

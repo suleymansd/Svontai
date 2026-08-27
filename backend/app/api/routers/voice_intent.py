@@ -21,6 +21,7 @@ from app.models.call import Call, CallTranscript
 from app.models.tenant import Tenant
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.audit_log_service import AuditLogService
 from app.services.n8n_client import N8NClient
@@ -178,7 +179,7 @@ async def voice_intent(
         else:
             response_text = await ai_service.generate_voice_reply(
                 bot=bot,
-                knowledge_items=list(bot.knowledge_items or []),
+                knowledge_items=AssistantKnowledgeService.list_effective(db, bot),
                 user_text=body.text,
                 transcript=segments,
                 bot_settings=bot.settings,

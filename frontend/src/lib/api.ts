@@ -208,6 +208,10 @@ export const botApi = {
     message: string
     history: Array<{ role: 'customer' | 'assistant'; content: string }>
   }) => api.post(`/bots/${id}/simulate`, data),
+  trainerMessage: (data: { message: string; session_id?: string | null }) =>
+    api.post<AssistantTrainerMessageResponse>('/bots/assistant-profile/trainer/message', data),
+  applyTrainerDraft: (sessionId: string) =>
+    api.post<AssistantTrainerApplyResponse>(`/bots/assistant-profile/trainer/${sessionId}/apply`),
   create: (data: {
     name: string
     description?: string
@@ -226,6 +230,36 @@ export const botApi = {
     is_active: boolean
   }>) => api.put(`/bots/${id}`, data),
   delete: (id: string) => api.delete(`/bots/${id}`),
+}
+
+export type AssistantTrainerProposal = {
+  name: string
+  description: string
+  example_questions: string[]
+  answer: string
+  behavior_instruction: string
+}
+
+export type AssistantTrainerMessageResponse = {
+  session_id: string
+  status: 'collecting' | 'ready' | 'applied'
+  assistant_message: string
+  proposal?: AssistantTrainerProposal | null
+  specialist_bot_id?: string | null
+}
+
+export type AssistantTrainerApplyResponse = {
+  session_id: string
+  status: 'applied'
+  assistant_message: string
+  bot: {
+    id: string
+    name: string
+    description?: string | null
+    is_active: boolean
+    assistant_type: 'primary' | 'specialist'
+  }
+  knowledge_items_created: number
 }
 
 export type AssistantMediaAsset = {

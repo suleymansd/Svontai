@@ -41,6 +41,7 @@ import { autopilotApi, botApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { useToast } from '@/components/ui/use-toast'
 import { AssistantSimulator } from '@/components/bots/assistant-simulator'
+import { ConversationalBotTrainer } from '@/components/bots/conversational-bot-trainer'
 
 type Training = {
   goal: 'support' | 'sales' | 'appointments' | 'mixed'
@@ -74,6 +75,14 @@ type AssistantProfile = {
   training: Training
   capabilities: Capability[]
   completion_percent: number
+}
+
+type SpecialistBot = {
+  id: string
+  name: string
+  description?: string | null
+  is_active: boolean
+  assistant_type: 'primary' | 'specialist'
 }
 
 const capabilityIcons: Record<string, typeof BookOpen> = {
@@ -145,6 +154,12 @@ export default function BotsPage() {
     queryKey: ['assistant-profile'],
     queryFn: () => botApi.getAssistantProfile().then((response) => response.data),
   })
+
+  const { data: bots = [] } = useQuery<SpecialistBot[]>({
+    queryKey: ['bots'],
+    queryFn: () => botApi.list().then((response) => response.data),
+  })
+  const specialists = bots.filter((bot) => bot.assistant_type === 'specialist')
 
   useEffect(() => {
     if (profile) setTraining(profile.training)
@@ -221,6 +236,7 @@ export default function BotsPage() {
           icon={<Icon3DBadge icon={Bot} from="from-primary" to="to-cyan-500" />}
           actions={(
             <div className="flex flex-wrap gap-2">
+              <ConversationalBotTrainer onApplied={refresh} />
               <AssistantSimulator botId={profile.assistant.id} />
               <Button variant="outline" onClick={() => autopilotMutation.mutate()} disabled={autopilotMutation.isPending}>
                 {autopilotMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -302,6 +318,54 @@ export default function BotsPage() {
               )
             })}
           </div>
+        </section>
+
+        <section className="space-y-4 border-t border-border/70 pt-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Özel Uzmanlar</h2>
+              <p className="text-sm text-muted-foreground">
+                Belirli müşteri sorularına odaklanan uzmanlar, yanıtlarını Ana Asistan üzerinden verir.
+              </p>
+            </div>
+            <Badge variant="secondary">{specialists.length} uzman</Badge>
+          </div>
+          {specialists.length === 0 ? (
+            <div className="border-y border-dashed py-8 text-center">
+              <p className="text-sm font-medium">Henüz özel uzman yok</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sohbetle Uzman Oluştur seçeneğiyle ihtiyacınızı doğal dille anlatabilirsiniz.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y border-y">
+              {specialists.map((specialist) => (
+                <div key={specialist.id} className="flex flex-wrap items-center justify-between gap-4 py-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <Bot className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{specialist.name}</p>
+                        <Badge variant={specialist.is_active ? 'success' : 'secondary'}>
+                          {specialist.is_active ? 'Aktif' : 'Pasif'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {specialist.description || 'Ana Asistana bağlı özel uzman.'}
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/dashboard/bots/${specialist.id}/knowledge`}>
+                      <BookOpen className="mr-2 h-4 w-4" />Bilgileri Düzenle
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <Dialog open={trainingOpen} onOpenChange={setTrainingOpen}>

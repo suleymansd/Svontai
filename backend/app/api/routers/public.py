@@ -16,7 +16,6 @@ from app.db.session import get_db
 from app.models.bot import Bot
 from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message, MessageSender
-from app.models.knowledge import BotKnowledgeItem
 from app.models.lead import Lead
 from app.models.sales_inquiry import SalesInquiry
 from app.models.tenant import Tenant
@@ -32,6 +31,7 @@ from app.schemas.bot import BotPublicInfo
 from app.schemas.lead import LeadPublicCreate, LeadResponse
 from app.services.ai_service import ai_service
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.email_service import EmailService
 from app.services.system_event_service import SystemEventService
@@ -300,9 +300,7 @@ async def send_chat_message(
         )
     
     # Get knowledge items
-    knowledge_items = db.query(BotKnowledgeItem).filter(
-        BotKnowledgeItem.bot_id == bot.id
-    ).all()
+    knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
     
     # Refresh conversation to get latest messages
     db.refresh(conversation, ["messages"])
