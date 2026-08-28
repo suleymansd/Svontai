@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     BILLING_MODE: Literal["manual", "stripe"] = "manual"
     PAYMENTS_ENABLED: bool = False
     PAYMENTS_PROVIDER: Literal["stripe"] = "stripe"
-    SALES_CONTACT_EMAIL: str = "sales@svontai.com"
+    SALES_CONTACT_EMAIL: str = "info@svontai.com"
     SALES_CONTACT_URL: str = "/contact"
 
     # Stripe

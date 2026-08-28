@@ -428,7 +428,7 @@ export default function MarketplaceToolsPage() {
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                   <span>Bu tool {PLAN_LABELS[normalizePlanCode(runtime.requiredPlan)]} plan gerektirir.</span>
                                   {runtime.requiredPlan === 'enterprise' ? (
-                                    <a href="mailto:sales@svontai.com" className="text-primary hover:underline">
+                                    <a href="mailto:info@svontai.com" className="text-primary hover:underline">
                                       Contact Sales
                                     </a>
                                   ) : (
@@ -500,7 +500,7 @@ export default function MarketplaceToolsPage() {
                 <div className="rounded-lg border border-warning/40 bg-warning-subtle/40 p-3 text-sm">
                   Bu tool {PLAN_LABELS[normalizePlanCode(activeToolRuntime.requiredPlan)]} planda kullanılabilir.{' '}
                   {activeToolRuntime.requiredPlan === 'enterprise' ? (
-                    <a href="mailto:sales@svontai.com" className="font-medium text-primary hover:underline">
+                    <a href="mailto:info@svontai.com" className="font-medium text-primary hover:underline">
                       Satış ekibiyle iletişime geç
                     </a>
                   ) : (
@@ -680,7 +680,7 @@ export default function MarketplaceToolsPage() {
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setUpgradeModal(null)}>Kapat</Button>
               {upgradeModal && normalizePlanCode(upgradeModal.requiredPlan) === 'enterprise' ? (
-                <a href="mailto:sales@svontai.com?subject=SvontAI%20Kurumsal%20Plan">
+                <a href="mailto:info@svontai.com?subject=SvontAI%20Kurumsal%20Plan">
                   <Button>Satışla İletişime Geç</Button>
                 </a>
               ) : (

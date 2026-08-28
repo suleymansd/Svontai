@@ -507,7 +507,7 @@ export default function HomePage() {
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </Link>
-                <Link href="mailto:sales@svontai.com">
+                <Link href="mailto:info@svontai.com">
                   <Button size="lg" variant="outline" className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10 text-lg px-8 h-14 rounded-2xl">
                     Satış Ekibiyle Konuş
                   </Button>
