@@ -185,7 +185,7 @@ export default function HomePage() {
 
           {/* Hero Image / Dashboard Preview */}
           <div className="mt-20 relative animate-fade-in-up stagger-5">
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent z-10 pointer-events-none" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-background to-transparent" />
             <div className="relative mx-auto max-w-5xl">
               <AutopilotDemo />
             </div>

@@ -399,19 +399,16 @@
 }
 
 /* Marketing autopilot demo */
-@keyframes sv-demo-reveal {
-  0%, 8% {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  14%, 82% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  92%, 100% {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.99);
-  }
+@keyframes sv-demo-stage {
+  0%, 8% { opacity: 0.42; transform: translateY(2px); }
+  14%, 72% { opacity: 1; transform: translateY(0); }
+  84%, 100% { opacity: 0.58; transform: translateY(0); }
+}
+
+@keyframes sv-demo-message {
+  0%, 6% { opacity: 0.18; transform: translateY(7px) scale(0.98); }
+  13%, 80% { opacity: 1; transform: translateY(0) scale(1); }
+  92%, 100% { opacity: 0.38; transform: translateY(0) scale(1); }
 }
 
 @keyframes sv-demo-thinking {
@@ -420,26 +417,61 @@
 }
 
 @keyframes sv-demo-phone-float {
-  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
-  50% { transform: translateY(-5px) rotate(0.6deg); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
-@keyframes sv-demo-core-pulse {
-  0%, 100% { box-shadow: 0 8px 24px rgb(37 99 235 / 0.22); }
-  50% { box-shadow: 0 8px 34px rgb(37 99 235 / 0.48); }
+@keyframes sv-demo-orbit {
+  to { transform: rotate(360deg); }
 }
 
-@keyframes sv-demo-flow {
-  0% { left: 0; opacity: 0; }
-  20%, 80% { opacity: 1; }
-  100% { left: calc(100% - 6px); opacity: 0; }
+@keyframes sv-demo-core-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(34 211 238 / 0), 0 10px 30px rgb(15 23 42 / 0.32); }
+  50% { box-shadow: 0 0 0 8px rgb(34 211 238 / 0.08), 0 12px 34px rgb(79 70 229 / 0.38); }
 }
 
-.sv-demo-reveal {
+@keyframes sv-demo-scan {
+  0% { top: 6%; opacity: 0; }
+  16%, 72% { opacity: 0.65; }
+  88%, 100% { top: 92%; opacity: 0; }
+}
+
+@keyframes sv-demo-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0.35); }
+  50% { box-shadow: 0 0 0 5px rgb(16 185 129 / 0); }
+}
+
+@keyframes sv-demo-processing {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+.sv-demo-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgb(148 163 184 / 0.08) 1px, transparent 1px),
+                    linear-gradient(90deg, rgb(148 163 184 / 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+.sv-demo-stage,
+.sv-demo-message {
   --demo-step: 0;
-  opacity: 0;
-  animation: sv-demo-reveal 10s ease-in-out infinite both;
-  animation-delay: calc(var(--demo-step) * 0.72s);
+  animation-duration: 10s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+  animation-delay: calc(var(--demo-step) * 0.66s);
+}
+
+.sv-demo-stage {
+  animation-name: sv-demo-stage;
+}
+
+.sv-demo-message {
+  animation-name: sv-demo-message;
 }
 
 .sv-demo-thinking span {
@@ -463,34 +495,50 @@
   background-size: 10px 10px;
 }
 
-.sv-demo-ai-core {
-  animation: sv-demo-core-pulse 2s ease-in-out infinite;
+.sv-demo-orbit,
+.sv-demo-orbit-dot {
+  animation: sv-demo-orbit 8s linear infinite;
 }
 
-.sv-demo-flow-dot {
+.sv-demo-core-glow {
+  animation: sv-demo-core-glow 2.4s ease-in-out infinite;
+}
+
+.sv-demo-scan-line {
   position: absolute;
-  top: -3px;
-  left: 0;
-  height: 7px;
-  width: 7px;
-  border-radius: 999px;
-  background: rgb(37 99 235);
-  box-shadow: 0 0 8px rgb(37 99 235 / 0.7);
-  animation: sv-demo-flow 1.4s ease-in-out infinite;
+  z-index: 0;
+  left: 8%;
+  right: 8%;
+  top: 6%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(34 211 238 / 0.6), transparent);
+  animation: sv-demo-scan 5s ease-in-out infinite;
+}
+
+.sv-demo-live-dot {
+  animation: sv-demo-live 1.8s ease-in-out infinite;
+}
+
+.sv-demo-processing {
+  animation: sv-demo-processing 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sv-demo-reveal {
+  .sv-demo-stage,
+  .sv-demo-message {
     opacity: 1;
     transform: none;
     animation: none;
   }
 
   .sv-demo-thinking span,
-  .sv-demo .animate-ping,
   .sv-demo-phone,
-  .sv-demo-ai-core,
-  .sv-demo-flow-dot {
+  .sv-demo-orbit,
+  .sv-demo-orbit-dot,
+  .sv-demo-core-glow,
+  .sv-demo-scan-line,
+  .sv-demo-live-dot,
+  .sv-demo-processing {
     animation: none;
   }
 }

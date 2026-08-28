@@ -76,6 +76,18 @@ test('landing trial link uses the animated hero button', async ({ page }) => {
   }
 })
 
+test('landing renders the premium autonomous operation demo', async ({ page }) => {
+  await page.goto('/')
+
+  const demo = page.getByTestId('premium-autopilot-demo')
+  await expect(demo).toBeVisible()
+  await expect(demo).toContainText('Müşteri talebi uçtan uca işleniyor')
+  await expect(demo).toContainText('Canlı karar akışı')
+  await expect(demo).toContainText('Operasyon merkezi')
+  await expect(demo).toContainText('Randevu takvime eklendi')
+  await expect(demo.locator('.sv-demo-stage')).toHaveCount(8)
+})
+
 test('landing page shows the current monthly plan prices', async ({ page }) => {
   await page.goto('/#pricing')
 
