@@ -17,8 +17,8 @@ const LEGACY_PLAN_ALIASES: Record<string, PlanCode> = {
 
 export const PLAN_LABELS: Record<PlanCode, string> = {
   free: 'Ücretsiz',
-  pro: 'Pro',
-  premium: 'Premium',
+  pro: 'Başlangıç',
+  premium: 'Profesyonel',
   enterprise: 'Kurumsal',
 }
 
