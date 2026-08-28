@@ -230,10 +230,7 @@ export default function RegisterPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2 gradient-text-vivid">Hesap oluşturun</h1>
-            <p className="text-muted-foreground">
-              Demo workspace açın, ardından kurulum tipinizi seçin
-            </p>
+            <h1 className="text-3xl font-bold gradient-text-vivid">Hesap oluşturun</h1>
           </div>
 
           {/* Form */}
