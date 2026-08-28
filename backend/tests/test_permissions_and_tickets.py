@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from app.core.time import utc_now_naive
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -16,37 +16,47 @@ from app.schemas.ticket import TicketMessageCreate
 async def test_require_permissions_allows_admin():
     dep = require_permissions(["tickets:manage"])
     user = SimpleNamespace(is_admin=True)
-    membership = SimpleNamespace(role=SimpleNamespace(permissions=[]))
+    tenant = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
 
-    await dep(current_user=user, membership=membership, db=db)
+    await dep(current_user=user, current_tenant=tenant, db=db)
 
     db.refresh.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_require_permissions_denies_missing():
+async def test_require_permissions_denies_missing(monkeypatch):
     dep = require_permissions(["tickets:manage"])
     user = SimpleNamespace(is_admin=False)
     role = SimpleNamespace(permissions=[SimpleNamespace(key="tools:read")])
     membership = SimpleNamespace(role=role)
+    tenant = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
+    monkeypatch.setattr(
+        "app.dependencies.permissions.get_current_membership",
+        AsyncMock(return_value=membership),
+    )
 
     with pytest.raises(HTTPException) as exc:
-        await dep(current_user=user, membership=membership, db=db)
+        await dep(current_user=user, current_tenant=tenant, db=db)
 
     assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_require_permissions_allows_when_granted():
+async def test_require_permissions_allows_when_granted(monkeypatch):
     dep = require_permissions(["tickets:manage"])
     user = SimpleNamespace(is_admin=False)
     role = SimpleNamespace(permissions=[SimpleNamespace(key="tickets:manage")])
     membership = SimpleNamespace(role=role)
+    tenant = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
+    monkeypatch.setattr(
+        "app.dependencies.permissions.get_current_membership",
+        AsyncMock(return_value=membership),
+    )
 
-    await dep(current_user=user, membership=membership, db=db)
+    await dep(current_user=user, current_tenant=tenant, db=db)
 
 
 @pytest.mark.asyncio

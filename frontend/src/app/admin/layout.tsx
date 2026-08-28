@@ -11,6 +11,10 @@ import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tena
 import { decodeJwtPayload } from '@/lib/jwt'
 import { clearAccessToken, getAccessToken } from '@/lib/auth-token'
 import { useAuthStore } from '@/lib/store'
+import { openAdminCustomerPreview } from '@/lib/admin-customer-preview'
+import { getApiErrorMessage } from '@/lib/api-error'
+import { useToast } from '@/components/ui/use-toast'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import {
   LayoutDashboard,
@@ -64,9 +68,12 @@ export default function AdminLayout({
   const router = useRouter()
   const isLoginRoute = (pathname || '').startsWith('/admin/login')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isOpeningCustomerPanel, setIsOpeningCustomerPanel] = useState(false)
   const [user, setUser] = useState<{ full_name: string; email: string; is_admin: boolean } | null>(null)
   const [tenantContext, setTenantContext] = useState<{ id: string; name?: string } | null>(null)
   const resetAuth = useAuthStore((state) => state.logout)
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
 
   useEffect(() => {
     if (isLoginRoute) return
@@ -118,12 +125,26 @@ export default function AdminLayout({
     }
   }
 
-  const handleOpenCustomerPanel = () => {
+  const handleOpenCustomerPanel = async () => {
     if (!tenantContext?.id) {
       router.push('/admin/tenants')
       return
     }
-    router.push('/dashboard')
+    setIsOpeningCustomerPanel(true)
+    try {
+      await openAdminCustomerPreview({
+        tenantId: tenantContext.id,
+        tenantName: tenantContext.name,
+        queryClient,
+      })
+    } catch (error) {
+      setIsOpeningCustomerPanel(false)
+      toast({
+        title: 'Müşteri paneli açılamadı',
+        description: getApiErrorMessage(error, 'Müşteri oturumu doğrulanamadı. Lütfen tekrar deneyin.'),
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleClearTenantContext = () => {
@@ -267,8 +288,17 @@ export default function AdminLayout({
 
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleOpenCustomerPanel}>
-                  {tenantContext?.id ? `Müşteri: ${tenantContext?.name || tenantContext.id}` : 'Tenant Seç'}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleOpenCustomerPanel()}
+                  disabled={isOpeningCustomerPanel}
+                >
+                  {isOpeningCustomerPanel
+                    ? 'Panel Açılıyor...'
+                    : tenantContext?.id
+                      ? `Müşteri: ${tenantContext?.name || tenantContext.id}`
+                      : 'Tenant Seç'}
                 </Button>
                 {tenantContext?.id && (
                   <Button variant="ghost" size="sm" onClick={handleClearTenantContext}>

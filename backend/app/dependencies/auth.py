@@ -157,6 +157,7 @@ async def get_current_user(
 
 async def get_current_tenant(
     current_user: User = Depends(get_current_user),
+    token_payload: dict[str, Any] = Depends(get_access_token_payload),
     db: Session = Depends(get_db),
     x_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-ID")
 ) -> Tenant:
@@ -186,11 +187,18 @@ async def get_current_tenant(
             TenantMembership.user_id == current_user.id,
             TenantMembership.status == "active"
         ).first()
-        if membership is None and tenant.owner_id != current_user.id and not current_user.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bu işletmeye erişim yetkiniz yok"
-            )
+        if membership is None and tenant.owner_id != current_user.id:
+            if not current_user.is_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Bu işletmeye erişim yetkiniz yok"
+                )
+            portal = str(token_payload.get("portal") or "tenant").strip()
+            if portal != "super_admin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Müşteri görünümü yalnızca süper admin oturumundan açılabilir"
+                )
         if tenant.settings and tenant.settings.get("suspended") and not current_user.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -1359,6 +1359,31 @@ async def get_tenant_detail(
     )
 
 
+@router.post("/tenants/{tenant_id}/preview", response_model=TenantResponse)
+async def start_tenant_preview(
+    tenant_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None,
+):
+    """Validate and audit a super-admin customer-panel preview session."""
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.preview.start",
+        "tenant",
+        str(tenant.id),
+        {"tenant_name": tenant.name},
+        request=request,
+    )
+    db.commit()
+    return TenantResponse.model_validate(tenant)
+
+
 @router.patch("/tenants/{tenant_id}/feature-flags", response_model=TenantAdminDetail)
 async def update_tenant_feature_flags(
     tenant_id: UUID,
