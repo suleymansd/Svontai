@@ -35,6 +35,35 @@ test('contact page exposes a real sales request form', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Görüşme Talebi Gönder' })).toBeEnabled()
 })
 
+test('register enforces the password policy and safely renders API validation errors', async ({ page }) => {
+  await page.route('**/auth/register', async (route) => {
+    await route.fulfill({
+      status: 422,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        detail: [{ msg: 'Value error, Kayıt doğrulama mesajı güvenli gösterildi' }],
+      }),
+    })
+  })
+
+  await page.goto('/register')
+  await page.getByLabel('Ad Soyad').fill('Kayıt Kontrol')
+  await page.getByLabel('E-posta').fill('register-check@example.com')
+  await page.getByLabel('Şifre').fill('Test123!')
+  await page.getByRole('checkbox').nth(0).check()
+  await page.getByRole('checkbox').nth(1).check()
+
+  const submitButton = page.getByRole('button', { name: 'Ücretsiz Başla' })
+  await expect(submitButton).toBeDisabled()
+
+  await page.getByLabel('Şifre').fill('GucluParola123!')
+  await expect(submitButton).toBeEnabled()
+  await submitButton.click()
+
+  await expect(page.getByText('Kayıt doğrulama mesajı güvenli gösterildi')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Hesap oluşturun/i })).toBeVisible()
+})
+
 test('customer guide search opens the matching section', async ({ page }) => {
   await page.goto('/docs')
   await page.getByLabel('Kılavuzda ara').fill('randevu')
