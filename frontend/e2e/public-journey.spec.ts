@@ -37,6 +37,14 @@ test('contact page exposes a real sales request form', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Görüşme Talebi Gönder' })).toBeEnabled()
 })
 
+test('auth screens omit the removed helper copy', async ({ page }) => {
+  await page.goto('/register')
+  await expect(page.getByText('Demo workspace açın, ardından kurulum tipinizi seçin', { exact: true })).toHaveCount(0)
+
+  await page.goto('/login')
+  await expect(page.getByRole('link', { name: 'E-postanı doğrulamadın mı? Kodu yeniden gönder' })).toHaveCount(0)
+})
+
 test('landing page shows the current monthly plan prices', async ({ page }) => {
   await page.goto('/#pricing')
 
