@@ -59,10 +59,11 @@ export default function HomePage() {
             </div>
             
             <div className="flex items-center gap-3">
-              <Link href="/login">
-                <Button variant="ghost" size="sm" className="hidden sm:flex">
-                  Giriş Yap
-                </Button>
+              <Link href="/login" className="animated-login-button hidden sm:flex">
+                <ArrowRight className="animated-login-arrow animated-login-arrow-leading" aria-hidden="true" />
+                <span className="animated-login-text">Giriş Yap</span>
+                <span className="animated-login-circle" aria-hidden="true" />
+                <ArrowRight className="animated-login-arrow animated-login-arrow-trailing" aria-hidden="true" />
               </Link>
               <Link href="/register">
                 <Button size="sm" className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 shadow-lg shadow-blue-500/25 btn-shine">

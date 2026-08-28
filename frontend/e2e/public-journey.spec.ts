@@ -45,6 +45,22 @@ test('auth screens omit the removed helper copy', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'E-postanı doğrulamadın mı? Kodu yeniden gönder' })).toHaveCount(0)
 })
 
+test('landing login link uses the animated brand button', async ({ page }) => {
+  await page.goto('/')
+
+  const loginLink = page.locator('a.animated-login-button[href="/login"]')
+  await expect(loginLink).toHaveCount(1)
+  await expect(loginLink).toHaveClass(/animated-login-button/)
+  await expect(loginLink.locator('.animated-login-arrow')).toHaveCount(2)
+  await expect(loginLink.locator('.animated-login-circle')).toHaveCount(1)
+
+  if ((page.viewportSize()?.width || 0) >= 640) {
+    await expect(loginLink).toBeVisible()
+    await loginLink.hover()
+    await expect(loginLink).toHaveCSS('border-radius', '10px')
+  }
+})
+
 test('landing page shows the current monthly plan prices', async ({ page }) => {
   await page.goto('/#pricing')
 
