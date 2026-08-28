@@ -34,9 +34,10 @@ import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { cn, maskEmail } from '@/lib/utils'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { authApi, setupOnboardingApi, subscriptionApi } from '@/lib/api'
-import { clearAdminTenantContext, getAdminTenantContext } from '@/lib/admin-tenant-context'
+import { getAdminTenantContext } from '@/lib/admin-tenant-context'
+import { closeAdminCustomerPreview } from '@/lib/admin-customer-preview'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { decodeJwtPayload } from '@/lib/jwt'
 import { getAccessToken } from '@/lib/auth-token'
@@ -69,6 +70,7 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const { user, tenant, isAuthenticated, sessionReady, logout } = useAuthStore()
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
+  const queryClient = useQueryClient()
   const [mounted, setMounted] = useState(false)
   const [authHydrated, setAuthHydrated] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(
@@ -91,13 +93,16 @@ export default function DashboardLayout({
 
   useEffect(() => {
     setMounted(true)
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setSidebarOpen(false)
+    }
     setAuthHydrated(useAuthStore.persist.hasHydrated())
     const unsubscribe = useAuthStore.persist.onFinishHydration(() => setAuthHydrated(true))
     if (!useAuthStore.persist.hasHydrated()) {
       void useAuthStore.persist.rehydrate()
     }
     return unsubscribe
-  }, [])
+  }, [setSidebarOpen])
 
   useEffect(() => {
     if (!authHydrated || !sessionReady) return
@@ -163,8 +168,7 @@ export default function DashboardLayout({
   }
 
   const handleExitAdminContext = () => {
-    clearAdminTenantContext()
-    router.push('/admin')
+    void closeAdminCustomerPreview(queryClient)
   }
 
   if (!mounted || !authHydrated || !sessionReady || !isAuthenticated) {

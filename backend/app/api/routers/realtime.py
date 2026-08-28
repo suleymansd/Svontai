@@ -45,7 +45,12 @@ async def resolve_realtime_tenant_id(
         token_payload = await get_access_token_payload(credentials=credentials)
         if user.is_admin and (token_payload.get("portal") or "tenant") != "super_admin":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin portal session required")
-        tenant = await get_current_tenant(current_user=user, db=db, x_tenant_id=x_tenant_id)
+        tenant = await get_current_tenant(
+            current_user=user,
+            token_payload=token_payload,
+            db=db,
+            x_tenant_id=x_tenant_id,
+        )
         if not user.is_admin:
             membership = await get_current_membership(current_user=user, current_tenant=tenant, db=db)
             db.refresh(membership, ["role"])

@@ -391,6 +391,7 @@ export const adminApi = {
   listTenants: (params?: { page?: number; page_size?: number; search?: string }) =>
     api.get('/admin/tenants', { params }),
   getTenant: (id: string) => api.get(`/admin/tenants/${id}`),
+  startTenantPreview: (id: string) => api.post(`/admin/tenants/${id}/preview`),
   updateTenantFeatureFlags: (id: string, enabled_flags: string[]) =>
     api.patch(`/admin/tenants/${id}/feature-flags`, { enabled_flags }),
   getTenantRealEstatePack: (id: string) =>

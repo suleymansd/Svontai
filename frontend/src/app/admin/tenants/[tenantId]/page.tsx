@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Activity, ShieldCheck } from 'lucide-react'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -15,15 +15,15 @@ import { adminApi } from '@/lib/api'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { setAdminTenantContext } from '@/lib/admin-tenant-context'
+import { openAdminCustomerPreview } from '@/lib/admin-customer-preview'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { getApiErrorMessage } from '@/lib/api-error'
 
 export function TenantDetailView({ tenantId }: { tenantId: string }) {
-  const router = useRouter()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [flagInput, setFlagInput] = useState('')
+  const [isOpeningCustomerPanel, setIsOpeningCustomerPanel] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'pro' | 'premium' | 'enterprise'>('free')
 
   const { data, isLoading } = useQuery({
@@ -108,13 +108,25 @@ export function TenantDetailView({ tenantId }: { tenantId: string }) {
     { key: 'status', header: 'Durum', render: (row) => <Badge variant={row.status === 'resolved' ? 'success' : 'secondary'}>{row.status}</Badge> },
   ]
 
-  const handleOpenCustomerPanel = () => {
+  const handleOpenCustomerPanel = async () => {
     if (!data?.tenant?.id) {
       return
     }
-    setAdminTenantContext(data.tenant.id, data.tenant.name)
-    toast({ title: 'Tenant context seçildi', description: `${data.tenant.name} müşteri paneli açılıyor.` })
-    router.push('/dashboard')
+    setIsOpeningCustomerPanel(true)
+    try {
+      await openAdminCustomerPreview({
+        tenantId: data.tenant.id,
+        tenantName: data.tenant.name,
+        queryClient,
+      })
+    } catch (error) {
+      setIsOpeningCustomerPanel(false)
+      toast({
+        title: 'Müşteri paneli açılamadı',
+        description: getApiErrorMessage(error, 'Müşteri oturumu doğrulanamadı. Lütfen tekrar deneyin.'),
+        variant: 'destructive',
+      })
+    }
   }
 
   return (
@@ -146,8 +158,8 @@ export function TenantDetailView({ tenantId }: { tenantId: string }) {
 
         <SectionCard title="Tenant Actions" description="Operasyonel kontroller">
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleOpenCustomerPanel}>
-              Müşteri Paneline Geç
+            <Button onClick={() => void handleOpenCustomerPanel()} disabled={isOpeningCustomerPanel || !data?.tenant?.id}>
+              {isOpeningCustomerPanel ? 'Panel Açılıyor...' : 'Müşteri Paneline Geç'}
             </Button>
             <Button variant="outline" onClick={() => suspendMutation.mutate()} disabled={suspendMutation.isPending}>
               Suspend

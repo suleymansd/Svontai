@@ -84,6 +84,7 @@ async def get_context(
     else:
         current_tenant = await get_current_tenant(
             current_user=current_user,
+            token_payload=token_payload,
             db=db,
             x_tenant_id=x_tenant_id
         )
