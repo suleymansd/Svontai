@@ -14,6 +14,15 @@ import { LEGAL_VERSIONS } from '@/lib/legal'
 import { useAuthStore } from '@/lib/store'
 import { clearAdminTenantContext } from '@/lib/admin-tenant-context'
 import { setAccessToken } from '@/lib/auth-token'
+import { getApiErrorMessage } from '@/lib/api-error'
+
+const PASSWORD_REQUIREMENTS = [
+  { label: 'En az 12 karakter', test: (value: string) => value.length >= 12 },
+  { label: 'Büyük ve küçük harf', test: (value: string) => /\p{Lu}/u.test(value) && /\p{Ll}/u.test(value) },
+  { label: 'En az bir rakam', test: (value: string) => /\p{N}/u.test(value) },
+  { label: 'En az bir özel karakter', test: (value: string) => /[^\p{L}\p{N}\s]/u.test(value) },
+  { label: 'Boşluk içermez', test: (value: string) => value.length > 0 && !/\s/u.test(value) },
+] as const
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -37,6 +46,11 @@ export default function RegisterPage() {
     password: '',
     company_name: '',
   })
+  const passwordRequirements = PASSWORD_REQUIREMENTS.map((requirement) => ({
+    ...requirement,
+    met: requirement.test(formData.password),
+  }))
+  const isPasswordValid = passwordRequirements.every((requirement) => requirement.met)
 
   const completeSignupAfterVerification = async () => {
     if (!pendingCredentials) {
@@ -71,6 +85,10 @@ export default function RegisterPage() {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isPasswordValid) {
+      setError('Şifreniz aşağıdaki güvenlik koşullarının tamamını karşılamalıdır.')
+      return
+    }
     setIsLoading(true)
     setError('')
     setInfoMessage('')
@@ -95,7 +113,7 @@ export default function RegisterPage() {
       setVerificationRequired(true)
       setInfoMessage('Kayıt başarılı. E-posta adresinize gönderilen 6 haneli kodu girin.')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Kayıt başarısız. Lütfen tekrar deneyin.')
+      setError(getApiErrorMessage(err, 'Kayıt başarısız. Lütfen tekrar deneyin.'))
     } finally {
       setIsLoading(false)
     }
@@ -119,7 +137,7 @@ export default function RegisterPage() {
       })
       await completeSignupAfterVerification()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Doğrulama başarısız. Kodu kontrol edip tekrar deneyin.')
+      setError(getApiErrorMessage(err, 'Doğrulama başarısız. Kodu kontrol edip tekrar deneyin.'))
     } finally {
       setIsLoading(false)
     }
@@ -134,7 +152,7 @@ export default function RegisterPage() {
       const response = await authApi.requestEmailVerification(pendingCredentials.email)
       setInfoMessage(response.data?.message || 'Doğrulama kodu tekrar gönderildi.')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Kod tekrar gönderilemedi. Lütfen tekrar deneyin.')
+      setError(getApiErrorMessage(err, 'Kod tekrar gönderilemedi. Lütfen tekrar deneyin.'))
     } finally {
       setIsLoading(false)
     }
@@ -288,14 +306,26 @@ export default function RegisterPage() {
                     <Input
                       id="password"
                       type="password"
-                      placeholder="En az 8 karakter"
+                      placeholder="Güçlü bir şifre oluşturun"
                       className="pl-12 h-12 rounded-xl"
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       required
-                      minLength={8}
+                      minLength={12}
+                      autoComplete="new-password"
                     />
                   </div>
+                  <ul className="grid grid-cols-1 gap-1.5 pt-1 sm:grid-cols-2" aria-label="Güvenli parola koşulları">
+                    {passwordRequirements.map((requirement) => (
+                      <li
+                        key={requirement.label}
+                        className={`flex items-center gap-1.5 text-xs ${requirement.met ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                      >
+                        <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        {requirement.label}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </>
             ) : (
@@ -348,7 +378,7 @@ export default function RegisterPage() {
             <Button
               type="submit"
               className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-base font-medium shadow-lg shadow-blue-500/25 btn-shimmer"
-              disabled={isLoading || (!verificationRequired && (!termsAccepted || !privacyAcknowledged))}
+              disabled={isLoading || (!verificationRequired && (!termsAccepted || !privacyAcknowledged || !isPasswordValid))}
             >
               {isLoading ? (
                 <>
