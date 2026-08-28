@@ -256,7 +256,7 @@ SMTP_FROM_NAME=SvontAI
 BILLING_MODE=manual
 PAYMENTS_ENABLED=false
 PAYMENTS_PROVIDER=stripe
-SALES_CONTACT_EMAIL=sales@svontai.com
+SALES_CONTACT_EMAIL=info@svontai.com
 SALES_CONTACT_URL=/contact
 
 # Future Stripe mode: set BILLING_MODE=stripe and PAYMENTS_ENABLED=true,

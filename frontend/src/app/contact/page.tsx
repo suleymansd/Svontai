@@ -122,7 +122,7 @@ export default function ContactPage() {
                   <Mail className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Satış ve kurulum</p>
-                    <p className="font-medium">sales@svontai.com</p>
+                    <p className="font-medium">info@svontai.com</p>
                   </div>
                 </div>
               </CardContent>

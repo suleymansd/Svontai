@@ -29,6 +29,8 @@ for (const route of publicRoutes) {
 
 test('contact page exposes a real sales request form', async ({ page }) => {
   await page.goto('/contact?plan=pro&interval=monthly')
+  await expect(page.getByText('info@svontai.com', { exact: true })).toBeVisible()
+  await expect(page.getByText('sales@svontai.com', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Ad Soyad')).toBeVisible()
   await expect(page.getByLabel('E-posta')).toBeVisible()
   await expect(page.getByLabel('Mesajınız')).toHaveValue(/PRO planı/)
