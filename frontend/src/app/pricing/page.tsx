@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { billingApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { getAccessToken } from '@/lib/auth-token'
+import { formatTry, PUBLIC_PAID_PLANS } from '@/lib/public-plans'
 
 const plans = [
   {
@@ -20,32 +21,18 @@ const plans = [
     description: 'Ürünü tanımak ve demo akışı görmek için',
     monthly: 0,
     yearly: 0,
+    setupFee: 0,
     highlights: ['Demo workspace', 'Otonom kurulum merkezi', 'Temel sağlık görünümü'],
   },
-  {
-    name: 'Pro',
-    key: 'pro',
-    description: 'Tek işletme için satışa hazır WhatsApp AI',
-    monthly: 299,
-    yearly: 2990,
-    highlights: ['Done-for-you kurulum', '1 WhatsApp AI asistanı', 'Concierge bilgi formasyonu'],
-  },
-  {
-    name: 'Premium',
-    key: 'premium',
-    description: 'Daha yoğun müşteri akışı ve entegrasyonlar',
-    monthly: 599,
-    yearly: 5990,
-    highlights: ['Gelişmiş entegrasyonlar', 'Öncelikli destek', 'Incident ve retry otomasyonu'],
-  },
-  {
-    name: 'Kurumsal',
-    key: 'enterprise',
-    description: 'Ajanslar ve çoklu müşteri operasyonları',
-    monthly: null,
-    yearly: null,
-    highlights: ['Çoklu müşteri yönetimi', 'Launch board ve SLA', 'Özel güvenlik gereksinimleri', 'Dedicated support'],
-  },
+  ...PUBLIC_PAID_PLANS.map((plan) => ({
+    name: plan.name,
+    key: plan.code,
+    description: plan.description,
+    monthly: plan.monthlyPrice,
+    yearly: plan.yearlyPrice,
+    setupFee: plan.setupFee,
+    highlights: plan.features,
+  })),
 ]
 
 export default function PricingPage() {
@@ -87,7 +74,6 @@ export default function PricingPage() {
 
   const pricedPlans = useMemo(() => {
     return plans.map((plan) => {
-      if (plan.monthly === null) return plan
       return {
         ...plan,
         price: billing === 'monthly' ? plan.monthly : plan.yearly,
@@ -140,9 +126,16 @@ export default function PricingPage() {
                     {plan.key === 'premium' && <Badge>Popüler</Badge>}
                   </div>
                   <div className="text-3xl font-semibold">
-                    {plan.monthly === null ? 'Özel teklif' : `₺${plan.price}`}
-                    {plan.monthly !== null && <span className="text-sm text-muted-foreground">/{billing === 'monthly' ? 'ay' : 'yıl'}</span>}
+                    {formatTry(plan.price)}
+                    <span className="text-sm text-muted-foreground">/{billing === 'monthly' ? 'ay' : 'yıl'}</span>
                   </div>
+                  {plan.key !== 'free' && (
+                    <p className="text-xs text-muted-foreground">
+                      {plan.setupFee === null
+                        ? 'Kurulum kapsamı teklif ile belirlenir'
+                        : `Tek seferlik kurulum: ${formatTry(plan.setupFee)}`}
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground">{plan.description}</p>
                   <div className="space-y-2 text-sm">
                     {plan.highlights.map((item) => (
@@ -186,11 +179,15 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <div className="mt-16 rounded-3xl border border-border/60 bg-card/60 p-8 text-center">
+        <div className="mt-16 border-t border-border/60 pt-8 text-center">
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Star className="h-4 w-4 text-warning" />
-            Enterprise ve ajans planlarında launch board, çoklu müşteri yönetimi ve şirket içi bilgi formasyonu operasyonu birlikte gelir.
+            Kurumsal planda 50.000 AI yanıtı dahildir; üzerindeki hacim için kesintisiz çalışmayı koruyan özel fiyatlandırma sunulur.
           </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Fiyatlara KDV ile WhatsApp/Meta mesaj, telefon araması ve üçüncü taraf servis kullanım bedelleri dahil değildir.
+            Kullanım aşımı müşteri onayı olmadan etkinleştirilmez.
+          </p>
         </div>
       </section>
     </MarketingShell>

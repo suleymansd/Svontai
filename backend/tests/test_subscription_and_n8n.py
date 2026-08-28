@@ -5,6 +5,25 @@ from unittest.mock import MagicMock, patch
 
 from app.services.subscription_service import SubscriptionService
 from app.core import n8n_security
+from app.models.plan import DEFAULT_PLANS
+
+
+def test_default_commercial_plans_match_public_pricing_contract():
+    plans = {plan["name"]: plan for plan in DEFAULT_PLANS}
+
+    assert plans["pro"]["display_name"] == "Başlangıç"
+    assert plans["pro"]["price_monthly"] == 999
+    assert plans["pro"]["price_yearly"] == 9990
+    assert plans["pro"]["message_limit"] == 1000
+
+    assert plans["premium"]["display_name"] == "Profesyonel"
+    assert plans["premium"]["price_monthly"] == 4999
+    assert plans["premium"]["price_yearly"] == 49990
+    assert plans["premium"]["message_limit"] == 10000
+
+    assert plans["enterprise"]["price_monthly"] == 14999
+    assert plans["enterprise"]["price_yearly"] == 149990
+    assert plans["enterprise"]["message_limit"] == 50000
 
 
 def test_check_feature_returns_true_when_enabled():

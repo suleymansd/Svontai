@@ -25,8 +25,8 @@ PLAN_LEVELS: dict[str, int] = {
 
 PLAN_UI_LABELS: dict[str, str] = {
     StandardPlanType.FREE.value: "Ücretsiz",
-    StandardPlanType.PRO.value: "Pro",
-    StandardPlanType.PREMIUM.value: "Premium",
+    StandardPlanType.PRO.value: "Başlangıç",
+    StandardPlanType.PREMIUM.value: "Profesyonel",
     StandardPlanType.ENTERPRISE.value: "Kurumsal",
 }
 

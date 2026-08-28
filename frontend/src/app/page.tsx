@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Logo, LogoIcon } from '@/components/Logo'
 import { AutopilotDemo } from '@/components/marketing/autopilot-demo'
+import { formatTry, PUBLIC_PAID_PLANS } from '@/lib/public-plans'
 import { 
   Users, 
   Brain, 
@@ -357,38 +358,16 @@ export default function HomePage() {
             <p className="text-xl text-muted-foreground">
               İhtiyacınıza uygun planı seçin, gizli ücret yok
             </p>
+            <p className="mt-3 text-sm font-medium text-green-700 dark:text-green-400">
+              Yıllık ödemede 2 ay ücretsiz
+            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {[
-              {
-                name: 'Başlangıç',
-                price: '₺999',
-                description: 'Küçük işletmeler için',
-                features: ['1 Bot', '1,000 mesaj/ay', 'Web Widget', 'E-posta desteği', 'Temel analizler'],
-                popular: false,
-                cta: 'Başla'
-              },
-              {
-                name: 'Profesyonel',
-                price: '₺4.999',
-                description: 'Büyüyen işletmeler için',
-                features: ['5 Bot', '10,000 mesaj/ay', 'WhatsApp entegrasyonu', 'Öncelikli destek', 'Gelişmiş analizler', 'API erişimi'],
-                popular: true,
-                cta: 'Popüler Plan'
-              },
-              {
-                name: 'Kurumsal',
-                price: '₺14.999',
-                description: 'Büyük ölçekli operasyonlar',
-                features: ['Sınırsız bot', 'Sınırsız mesaj', 'Özel entegrasyonlar', '7/24 destek', 'SLA garantisi', 'Özel eğitim'],
-                popular: false,
-                cta: 'İletişime Geç'
-              },
-            ].map((plan, i) => (
+            {PUBLIC_PAID_PLANS.map((plan, i) => (
               <div 
-                key={i}
-                className={`relative p-8 rounded-3xl ${
+                key={plan.code}
+                className={`relative flex h-full flex-col p-8 rounded-3xl ${
                   plan.popular 
                     ? 'bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-2xl shadow-blue-500/30 scale-105 z-10' 
                     : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
@@ -408,12 +387,20 @@ export default function HomePage() {
                   </p>
                   <div className="flex items-baseline justify-center gap-1">
                     <span className={`text-5xl font-bold ${plan.popular ? 'text-white' : 'gradient-text'}`}>
-                      {plan.price}
+                      {formatTry(plan.monthlyPrice)}
                     </span>
                     <span className={plan.popular ? 'text-blue-100' : 'text-muted-foreground'}>/ay</span>
                   </div>
+                  <p className={`mt-3 text-xs ${plan.popular ? 'text-blue-100' : 'text-muted-foreground'}`}>
+                    Yıllık {formatTry(plan.yearlyPrice)} · 2 ay ücretsiz
+                  </p>
+                  <p className={`mt-1 text-xs ${plan.popular ? 'text-blue-100' : 'text-muted-foreground'}`}>
+                    {plan.setupFee === null
+                      ? 'Kurulum kapsamı teklif ile belirlenir'
+                      : `Tek seferlik kurulum: ${formatTry(plan.setupFee)}`}
+                  </p>
                 </div>
-                <ul className="space-y-4 mb-8">
+                <ul className="mb-8 flex-1 space-y-4">
                   {plan.features.map((feature, j) => (
                     <li key={j} className="flex items-center gap-3">
                       <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
@@ -427,7 +414,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/register">
+                <Link href={plan.code === 'enterprise' ? '/contact?plan=enterprise' : `/register?plan=${plan.code}`}>
                   <Button 
                     className={`w-full h-12 rounded-xl font-semibold ${
                       plan.popular 
@@ -440,6 +427,10 @@ export default function HomePage() {
                 </Link>
               </div>
             ))}
+          </div>
+          <div className="mx-auto mt-10 max-w-4xl border-t border-slate-200 pt-6 text-center text-sm leading-6 text-muted-foreground dark:border-slate-800">
+            Plan ücretlerine KDV ile WhatsApp/Meta mesaj, telefon araması ve üçüncü taraf servis kullanım bedelleri dahil değildir.
+            Kullanım aşımı yalnızca müşterinin onayıyla uygulanır ve teklif öncesinde açıkça bildirilir.
           </div>
         </div>
       </section>

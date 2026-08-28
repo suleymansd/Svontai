@@ -45,6 +45,33 @@ test('landing page shows the current monthly plan prices', async ({ page }) => {
   await expect(pricingSection).toContainText('₺4.999')
   await expect(pricingSection).toContainText('Kurumsal')
   await expect(pricingSection).toContainText('₺14.999')
+  await expect(pricingSection).toContainText('Yıllık ödemede 2 ay ücretsiz')
+  await expect(pricingSection).toContainText('Tek seferlik kurulum: ₺2.499')
+  await expect(pricingSection).toContainText('Tek seferlik kurulum: ₺9.999')
+  await expect(pricingSection).toContainText('50.000 AI yanıtı/ay')
+  await expect(pricingSection).toContainText('WhatsApp/Meta mesaj')
+  await expect(pricingSection).not.toContainText('Sınırsız mesaj')
+})
+
+test('pricing page uses the same commercial pricing contract', async ({ page }) => {
+  await page.route('**/billing/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ mode: 'manual', payments_enabled: false, contact_url: '/contact' }),
+    })
+  })
+  await page.goto('/pricing')
+
+  await expect(page.getByText(/^₺999\/ay$/)).toBeVisible()
+  await expect(page.getByText(/^₺4\.999\/ay$/)).toBeVisible()
+  await expect(page.getByText(/^₺14\.999\/ay$/)).toBeVisible()
+  await expect(page.getByText('50.000 AI yanıtı/ay', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Yıllık (2 ay hediye)' }).click()
+  await expect(page.getByText(/^₺9\.990\/yıl$/)).toBeVisible()
+  await expect(page.getByText(/^₺49\.990\/yıl$/)).toBeVisible()
+  await expect(page.getByText(/^₺149\.990\/yıl$/)).toBeVisible()
 })
 
 test('register enforces the password policy and safely renders API validation errors', async ({ page }) => {
