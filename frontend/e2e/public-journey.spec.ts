@@ -53,6 +53,12 @@ test('landing page shows the current monthly plan prices', async ({ page }) => {
   await expect(pricingSection).not.toContainText('Sınırsız mesaj')
 })
 
+test('landing footer omits the made-in slogan', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText("Türkiye'de ❤️ ile yapıldı", { exact: true })).toHaveCount(0)
+  await expect(page.getByText('© 2026 SvontAI. Tüm hakları saklıdır.', { exact: true })).toBeVisible()
+})
+
 test('pricing page uses the same commercial pricing contract', async ({ page }) => {
   await page.route('**/billing/config', async (route) => {
     await route.fulfill({

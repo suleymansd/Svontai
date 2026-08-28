@@ -566,9 +566,6 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">
               © 2026 SvontAI. Tüm hakları saklıdır.
             </p>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">Türkiye'de ❤️ ile yapıldı</span>
-            </div>
           </div>
         </div>
       </footer>
