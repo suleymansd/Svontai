@@ -141,6 +141,14 @@
               transform 180ms ease;
 }
 
+.animated-trial-button {
+  min-height: 3.5rem;
+  padding: 0.75rem 3rem;
+  font-size: 1.125rem;
+  box-shadow: 0 0 0 2px hsl(var(--primary)),
+              0 1.25rem 2.5rem hsl(var(--primary) / 0.2);
+}
+
 .animated-login-arrow {
   position: absolute;
   z-index: 2;
@@ -203,6 +211,11 @@
   width: 14rem;
   height: 14rem;
   opacity: 1;
+}
+
+.animated-trial-button:hover .animated-login-circle {
+  width: 18rem;
+  height: 18rem;
 }
 
 .animated-login-button:active {

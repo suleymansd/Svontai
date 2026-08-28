@@ -61,6 +61,21 @@ test('landing login link uses the animated brand button', async ({ page }) => {
   }
 })
 
+test('landing trial link uses the animated hero button', async ({ page }) => {
+  await page.goto('/')
+
+  const trialLink = page.locator('a.animated-trial-button[href="/register"]')
+  await expect(trialLink).toHaveCount(1)
+  await expect(trialLink).toBeVisible()
+  await expect(trialLink.locator('.animated-login-arrow')).toHaveCount(2)
+  await expect(trialLink.locator('.animated-login-circle')).toHaveCount(1)
+
+  if ((page.viewportSize()?.width || 0) >= 640) {
+    await trialLink.hover()
+    await expect(trialLink).toHaveCSS('border-radius', '10px')
+  }
+})
+
 test('landing page shows the current monthly plan prices', async ({ page }) => {
   await page.goto('/#pricing')
 
