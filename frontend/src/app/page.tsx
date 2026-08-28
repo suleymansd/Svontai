@@ -149,11 +149,11 @@ export default function HomePage() {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-4">
-              <Link href="/register">
-                <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-lg px-8 h-14 rounded-2xl shadow-2xl shadow-blue-500/30 btn-shine">
-                  Ücretsiz Deneyin
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
+              <Link href="/register" className="animated-login-button animated-trial-button flex w-full sm:w-auto">
+                <ArrowRight className="animated-login-arrow animated-login-arrow-leading" aria-hidden="true" />
+                <span className="animated-login-text">Ücretsiz Deneyin</span>
+                <span className="animated-login-circle" aria-hidden="true" />
+                <ArrowRight className="animated-login-arrow animated-login-arrow-trailing" aria-hidden="true" />
               </Link>
               <Button 
                 size="lg" 
