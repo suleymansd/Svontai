@@ -35,6 +35,18 @@ test('contact page exposes a real sales request form', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Görüşme Talebi Gönder' })).toBeEnabled()
 })
 
+test('landing page shows the current monthly plan prices', async ({ page }) => {
+  await page.goto('/#pricing')
+
+  const pricingSection = page.locator('#pricing')
+  await expect(pricingSection).toContainText('Başlangıç')
+  await expect(pricingSection).toContainText('₺999')
+  await expect(pricingSection).toContainText('Profesyonel')
+  await expect(pricingSection).toContainText('₺4.999')
+  await expect(pricingSection).toContainText('Kurumsal')
+  await expect(pricingSection).toContainText('₺14.999')
+})
+
 test('register enforces the password policy and safely renders API validation errors', async ({ page }) => {
   await page.route('**/auth/register', async (route) => {
     await route.fulfill({

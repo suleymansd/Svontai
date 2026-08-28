@@ -363,7 +363,7 @@ export default function HomePage() {
             {[
               {
                 name: 'Başlangıç',
-                price: '₺299',
+                price: '₺999',
                 description: 'Küçük işletmeler için',
                 features: ['1 Bot', '1,000 mesaj/ay', 'Web Widget', 'E-posta desteği', 'Temel analizler'],
                 popular: false,
@@ -371,7 +371,7 @@ export default function HomePage() {
               },
               {
                 name: 'Profesyonel',
-                price: '₺699',
+                price: '₺4.999',
                 description: 'Büyüyen işletmeler için',
                 features: ['5 Bot', '10,000 mesaj/ay', 'WhatsApp entegrasyonu', 'Öncelikli destek', 'Gelişmiş analizler', 'API erişimi'],
                 popular: true,
@@ -379,7 +379,7 @@ export default function HomePage() {
               },
               {
                 name: 'Kurumsal',
-                price: '₺1,999',
+                price: '₺14.999',
                 description: 'Büyük ölçekli operasyonlar',
                 features: ['Sınırsız bot', 'Sınırsız mesaj', 'Özel entegrasyonlar', '7/24 destek', 'SLA garantisi', 'Özel eğitim'],
                 popular: false,
