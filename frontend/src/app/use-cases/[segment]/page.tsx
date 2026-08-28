@@ -30,11 +30,12 @@ const useCaseMap: Record<string, { title: string; subtitle: string; highlights: 
 }
 
 interface UseCasePageProps {
-  params: { segment: string }
+  params: Promise<{ segment: string }>
 }
 
 export async function generateMetadata({ params }: UseCasePageProps): Promise<Metadata> {
-  const data = useCaseMap[params.segment]
+  const { segment } = await params
+  const data = useCaseMap[segment]
   if (!data) {
     return { title: 'Use Case' }
   }
@@ -44,8 +45,9 @@ export async function generateMetadata({ params }: UseCasePageProps): Promise<Me
   }
 }
 
-export default function UseCasePage({ params }: UseCasePageProps) {
-  const data = useCaseMap[params.segment]
+export default async function UseCasePage({ params }: UseCasePageProps) {
+  const { segment } = await params
+  const data = useCaseMap[segment]
   if (!data) {
     notFound()
   }

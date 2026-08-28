@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Activity, ShieldCheck } from 'lucide-react'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -17,9 +17,9 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { setAdminTenantContext } from '@/lib/admin-tenant-context'
 import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { getApiErrorMessage } from '@/lib/api-error'
 
-export default function TenantDetailPage({ params }: { params: { tenantId: string } }) {
-  const tenantId = params.tenantId
+export function TenantDetailView({ tenantId }: { tenantId: string }) {
   const router = useRouter()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -29,6 +29,7 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
   const { data, isLoading } = useQuery({
     queryKey: ['admin-tenant', tenantId],
     queryFn: () => adminApi.getTenant(tenantId).then((res) => res.data),
+    enabled: Boolean(tenantId),
   })
 
   useEffect(() => {
@@ -44,6 +45,11 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
       queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
       toast({ title: 'Tenant askıya alındı' })
     },
+    onError: (error: unknown) => toast({
+      title: 'Tenant askıya alınamadı',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
   const unsuspendMutation = useMutation({
@@ -52,6 +58,11 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
       queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
       toast({ title: 'Tenant aktif' })
     },
+    onError: (error: unknown) => toast({
+      title: 'Tenant aktifleştirilemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
   const updateFlagsMutation = useMutation({
@@ -60,6 +71,11 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
       queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
       toast({ title: 'Feature flags güncellendi' })
     },
+    onError: (error: unknown) => toast({
+      title: 'Feature flags güncellenemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
   const updatePlanMutation = useMutation({
@@ -71,10 +87,10 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
       queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
       toast({ title: 'Plan etkinleştirildi', description: `${selectedPlan} planı tenant hesabına tanımlandı.` })
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: 'Plan güncellenemedi',
-        description: error.response?.data?.detail?.message || error.response?.data?.detail || 'İşlem başarısız oldu.',
+        description: getApiErrorMessage(error, 'İşlem başarısız oldu.'),
         variant: 'destructive',
       })
     },
@@ -209,4 +225,9 @@ export default function TenantDetailPage({ params }: { params: { tenantId: strin
       </div>
     </ContentContainer>
   )
+}
+
+export default function TenantDetailPage() {
+  const params = useParams<{ tenantId: string }>()
+  return <TenantDetailView tenantId={params.tenantId} />
 }
