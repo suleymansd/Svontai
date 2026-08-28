@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
+import { getApiErrorMessage } from '@/lib/api-error'
 
 const stageLabel: Record<string, string> = {
   concierge: 'Concierge',
@@ -65,6 +66,11 @@ export default function LaunchBoardPage() {
       refreshLaunchBoard()
       toast({ title: 'Bilgi formasyonu kaydedildi', description: 'Profil bot bilgisine senkronize edildi.' })
     },
+    onError: (error: unknown) => toast({
+      title: 'Bilgi formasyonu kaydedilemedi',
+      description: getApiErrorMessage(error, 'Bilgileri kontrol edip tekrar deneyin.'),
+      variant: 'destructive',
+    }),
   })
 
   const autopilotMutation = useMutation({

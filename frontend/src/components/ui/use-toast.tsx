@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { getErrorDetailMessage } from '@/lib/api-error'
 
 const TOAST_LIMIT = 5
 const TOAST_REMOVE_DELAY = 5000
@@ -143,6 +144,15 @@ type Toast = Omit<ToastProps, 'id'>
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  const safeProps = {
+    ...props,
+    title: props.title === undefined
+      ? undefined
+      : getErrorDetailMessage(props.title, 'Bildirim'),
+    description: props.description === undefined
+      ? undefined
+      : getErrorDetailMessage(props.description, 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'),
+  }
 
   const update = (props: ToastProps) =>
     dispatch({
@@ -154,7 +164,7 @@ function toast({ ...props }: Toast) {
   dispatch({
     type: 'ADD_TOAST',
     toast: {
-      ...props,
+      ...safeProps,
       id,
       open: true,
       onOpenChange: (open) => {
@@ -196,4 +206,3 @@ function useToast() {
 }
 
 export { useToast, toast }
-
