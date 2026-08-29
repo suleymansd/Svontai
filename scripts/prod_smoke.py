@@ -11,6 +11,7 @@ Environment:
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import sys
@@ -20,6 +21,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 
@@ -133,6 +135,40 @@ def _check_json(name: str, url: str, token: str | None = None, tenant_id: str | 
     return Result(name, True, f"status=200 keys={','.join(sorted(parsed.keys())[:6])}")
 
 
+def _repository_migration_head() -> str:
+    versions_dir = Path(__file__).resolve().parents[1] / "backend" / "alembic" / "versions"
+    revisions: set[str] = set()
+    parent_revisions: set[str] = set()
+
+    for migration_path in versions_dir.glob("*.py"):
+        tree = ast.parse(migration_path.read_text(encoding="utf-8"), filename=str(migration_path))
+        values: dict[str, Any] = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id in {"revision", "down_revision"}:
+                        values[target.id] = ast.literal_eval(node.value)
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id in {"revision", "down_revision"}:
+                    values[node.target.id] = ast.literal_eval(node.value)
+
+        revision = values.get("revision")
+        if not isinstance(revision, str) or not revision:
+            continue
+        revisions.add(revision)
+
+        down_revision = values.get("down_revision")
+        if isinstance(down_revision, str):
+            parent_revisions.add(down_revision)
+        elif isinstance(down_revision, (list, tuple, set)):
+            parent_revisions.update(str(value) for value in down_revision if value)
+
+    heads = sorted(revisions - parent_revisions)
+    if len(heads) != 1:
+        raise RuntimeError(f"expected one repository migration head, found {heads!r}")
+    return heads[0]
+
+
 def _check_deployment_alignment(backend_url: str) -> Result:
     try:
         status, body, parsed = _request(f"{backend_url}/health/ready")
@@ -144,7 +180,11 @@ def _check_deployment_alignment(backend_url: str) -> Result:
     if not isinstance(deployment, dict):
         return Result("deployment alignment", False, "readiness response has no deployment evidence")
 
-    expected_head = (os.getenv("SMARTWA_EXPECTED_MIGRATION_HEAD") or "052").strip()
+    configured_head = (os.getenv("SMARTWA_EXPECTED_MIGRATION_HEAD") or "").strip()
+    try:
+        expected_head = configured_head or _repository_migration_head()
+    except (OSError, SyntaxError, ValueError, RuntimeError) as exc:
+        return Result("deployment alignment", False, f"cannot determine expected migration head: {exc}")
     heads = {str(value) for value in deployment.get("migration_heads") or []}
     api_commit = str(deployment.get("api_commit") or "unknown")
     worker_commit = str(deployment.get("worker_commit") or "unknown")
