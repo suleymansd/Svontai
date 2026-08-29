@@ -2,13 +2,13 @@
 Onboarding API router for WhatsApp setup flow.
 """
 
-import json
 from uuid import UUID
 from typing import Optional, List
 from datetime import datetime
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -375,45 +375,19 @@ async def whatsapp_oauth_callback(
         )
     
     service = OnboardingService(db)
-    
+    frontend_callback = f"{(settings.FRONTEND_URL or '').rstrip('/')}/oauth/whatsapp/callback"
+
     try:
         await service.process_oauth_callback(tenant_id, code)
-        return HTMLResponse(
-            content="""
-            <html>
-            <head><title>WhatsApp Bağlandı</title></head>
-            <body>
-                <script>
-                    if (window.opener) {
-                        window.opener.postMessage({type: 'WHATSAPP_CONNECTED', success: true}, '*');
-                        window.close();
-                    } else {
-                        window.location.href = '/dashboard/setup/whatsapp?success=true';
-                    }
-                </script>
-                <p>WhatsApp bağlantısı başarılı! Bu pencere kapanacak...</p>
-            </body>
-            </html>
-            """
+        return RedirectResponse(
+            url=f"{frontend_callback}?success=1",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
     except MetaAPIError as e:
         error_message = f"Meta API hatası: {e.message}"
-        error_message_js = json.dumps(error_message)
-        return HTMLResponse(
-            content=f"""
-            <html>
-            <head><title>WhatsApp Bağlantı Hatası</title></head>
-            <body>
-                <script>
-                    if (window.opener) {{
-                        window.opener.postMessage({{type: 'WHATSAPP_CONNECTED', success: false, error: {error_message_js}}}, '*');
-                    }}
-                </script>
-                <p>{error_message}</p>
-            </body>
-            </html>
-            """,
-            status_code=status.HTTP_400_BAD_REQUEST
+        return RedirectResponse(
+            url=f"{frontend_callback}?success=0&reason={quote_plus(error_message)}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
 

@@ -79,6 +79,25 @@ def test_register_rate_limit_blocks_repeated_attempts(client):
     assert statuses[-1] == 429
 
 
+def test_login_account_limit_cannot_be_bypassed_by_changing_proxy_ip(client):
+    payload = {
+        "email": "nonexistent-rate-limit@example.com",
+        "password": "NotARealPassword123!",
+        "portal": "tenant",
+    }
+    statuses = [
+        client.post(
+            "/auth/login",
+            json=payload,
+            headers={"X-Forwarded-For": f"198.51.100.{index}"},
+        ).status_code
+        for index in range(1, 7)
+    ]
+
+    assert statuses[:5] == [401] * 5
+    assert statuses[-1] == 429
+
+
 def test_whatsapp_webhook_rate_limit_blocks_flood(client):
     from app.core import rate_limit as rate_limit_module
 

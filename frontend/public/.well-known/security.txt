@@ -1,0 +1,5 @@
+Contact: mailto:info@svontai.com
+Expires: 2027-08-29T23:59:59Z
+Preferred-Languages: tr, en
+Canonical: https://www.svontai.com/.well-known/security.txt
+Policy: https://www.svontai.com/security

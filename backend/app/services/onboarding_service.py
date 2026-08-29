@@ -4,16 +4,14 @@ Onboarding service for managing WhatsApp setup flow.
 
 import secrets
 import json
-import hashlib
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.core.time import utc_now_naive
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
 
 from app.models.whatsapp_account import WhatsAppAccount, TokenStatus, WebhookStatus
-from app.models.oauth_state import OAuthState
 from app.models.onboarding import (
     OnboardingStep, 
     OnboardingProvider, 
@@ -24,6 +22,7 @@ from app.models.onboarding import (
 from app.core.encryption import encrypt_token, decrypt_token
 from app.services.meta_api import meta_api_service, MetaAPIError
 from app.services.openwa_client import OpenWAError, openwa_client
+from app.services.oauth_state_service import OAuthStateService
 from app.core.config import settings
 from app.core.legal import OPENWA_RISK_NOTICE_VERSION
 
@@ -634,23 +633,13 @@ class OnboardingService:
         
         # The callback receives only an opaque nonce. Its tenant and user binding
         # remains server-side and is consumed atomically by the callback.
-        state = secrets.token_urlsafe(48)
-        now = utc_now_naive()
-        self.db.query(OAuthState).filter(
-            OAuthState.provider == "meta",
-            OAuthState.tenant_id == tenant_id,
-            OAuthState.consumed_at.is_(None),
-        ).delete(synchronize_session=False)
-        self.db.add(
-            OAuthState(
-                provider="meta",
-                state_hash=hashlib.sha256(state.encode("utf-8")).hexdigest(),
-                tenant_id=tenant_id,
-                user_id=user_id,
-                expires_at=now + timedelta(minutes=10),
-            )
+        state = OAuthStateService(self.db).issue(
+            provider="meta",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            expires_minutes=10,
+            exclusive_tenant=True,
         )
-        self.db.commit()
         
         # Get OAuth URL
         oauth_url = meta_api_service.get_oauth_url(state)
@@ -674,29 +663,9 @@ class OnboardingService:
             "webhook_url": f"{settings.WEBHOOK_PUBLIC_URL or ''}/whatsapp/webhook"
         }
 
-    def consume_oauth_state(self, state: str) -> OAuthState:
+    def consume_oauth_state(self, state: str):
         """Consume a valid Meta OAuth state exactly once."""
-        state_hash = hashlib.sha256(state.encode("utf-8")).hexdigest()
-        now = utc_now_naive()
-        record = self.db.query(OAuthState).filter(
-            OAuthState.provider == "meta",
-            OAuthState.state_hash == state_hash,
-            OAuthState.consumed_at.is_(None),
-            OAuthState.expires_at > now,
-        ).first()
-        if record is None:
-            raise ValueError("OAuth state geçersiz, süresi dolmuş veya daha önce kullanılmış")
-
-        updated = self.db.query(OAuthState).filter(
-            OAuthState.id == record.id,
-            OAuthState.consumed_at.is_(None),
-        ).update({OAuthState.consumed_at: now}, synchronize_session=False)
-        if updated != 1:
-            self.db.rollback()
-            raise ValueError("OAuth state daha önce kullanılmış")
-        self.db.commit()
-        self.db.refresh(record)
-        return record
+        return OAuthStateService(self.db).consume(provider="meta", state=state)
     
     async def process_oauth_callback(
         self,

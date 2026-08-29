@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Link2, RefreshCcw } from 'lucide-react'
@@ -42,6 +42,7 @@ const TITLES: Record<string, string> = {
 }
 
 export default function IntegrationsPage() {
+  const googlePopupRef = useRef<Window | null>(null)
   const router = useRouter()
   const { toast } = useToast()
   const { data, isLoading, refetch, isFetching } = useQuery<IntegrationStatusMap>({
@@ -70,7 +71,10 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (!googlePopupRef.current || event.source !== googlePopupRef.current) return
       if (event.data?.type !== 'GOOGLE_CALENDAR_CONNECTED' || !event.data?.success) return
+      googlePopupRef.current = null
       refetch()
       toast({
         title: 'Google bağlantısı tamamlandı',
@@ -95,6 +99,7 @@ export default function IntegrationsPage() {
         }
         const popup = window.open(url, 'svontai-google-oauth', 'width=620,height=760')
         if (!popup) throw new Error('Bağlantı penceresi tarayıcı tarafından engellendi.')
+        googlePopupRef.current = popup
         return
       }
       toast({ title: 'Bu servis SvontAI tarafından otomatik yönetiliyor.' })

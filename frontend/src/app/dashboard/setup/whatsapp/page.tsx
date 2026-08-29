@@ -239,6 +239,8 @@ export default function WhatsAppSetupPage() {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (!popupRef.current || event.source !== popupRef.current) return
       if (event.data?.type !== 'WHATSAPP_CONNECTED') return
 
       if (popupRef.current && !popupRef.current.closed) {

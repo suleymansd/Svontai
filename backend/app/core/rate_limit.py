@@ -165,6 +165,12 @@ def rate_limit_key(request: Request, *parts: object) -> str:
     return ":".join([client_ip(request), *safe_parts])
 
 
+def subject_rate_limit_key(*parts: object) -> str:
+    """Build a limit key independent of proxies or attacker-controlled client IPs."""
+    safe_parts = [str(part).strip().lower() for part in parts if part is not None and str(part).strip()]
+    return ":".join(safe_parts)
+
+
 def require_rate_limit(
     limiter: RateLimiter,
     key: str,
@@ -180,6 +186,7 @@ def clear_rate_limiters(limiters: Iterable[RateLimiter]) -> None:
 
 
 login_rate_limiter = RateLimiter(5, 60, "login")
+login_account_rate_limiter = RateLimiter(5, 60, "login-account")
 register_rate_limiter = RateLimiter(5, 300, "register")
 refresh_rate_limiter = RateLimiter(20, 300, "refresh")
 password_reset_rate_limiter = RateLimiter(3, 300, "password-reset")

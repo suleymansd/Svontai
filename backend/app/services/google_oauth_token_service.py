@@ -104,7 +104,12 @@ class GoogleOAuthTokenService:
             )
             data = response.json()
             if not response.is_success or "error" in data or not data.get("access_token"):
-                logger.warning("Google token refresh failed status=%s body=%s", response.status_code, str(data)[:300])
+                error_code = str(data.get("error") or "unknown")[:80]
+                logger.warning(
+                    "Google token refresh failed status=%s error=%s",
+                    response.status_code,
+                    error_code,
+                )
                 return "expired"
 
             scopes = self.parse_scopes(data.get("scope")) or list(token_row.scopes_json or [])
@@ -119,4 +124,3 @@ class GoogleOAuthTokenService:
         except Exception as exc:
             logger.warning("Google token refresh exception: %s", exc)
             return "expired"
-

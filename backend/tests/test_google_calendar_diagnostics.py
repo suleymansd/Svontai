@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
-from uuid import UUID
-
 from app.core.config import settings
 from app.services.google_calendar_service import GoogleCalendarService
 
@@ -20,11 +18,8 @@ def test_google_oauth_requests_event_and_freebusy_scopes():
             "https://api.svontai.test/real-estate/calendar/google/callback"
         )
 
-        result = GoogleCalendarService(None).get_oauth_start(
-            UUID("00000000-0000-0000-0000-000000000001"),
-            UUID("00000000-0000-0000-0000-000000000002"),
-        )
-        params = parse_qs(urlparse(result["auth_url"]).query)
+        auth_url = GoogleCalendarService(None)._build_auth_url("test-state")
+        params = parse_qs(urlparse(auth_url).query)
         scopes = set(params["scope"][0].split())
 
         assert GoogleCalendarService.CALENDAR_EVENTS_SCOPE in scopes

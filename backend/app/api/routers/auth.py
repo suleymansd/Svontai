@@ -28,12 +28,14 @@ from app.core.rate_limit import (
     client_ip,
     email_confirm_rate_limiter,
     email_verification_rate_limiter,
+    login_account_rate_limiter,
     login_rate_limiter,
     password_reset_rate_limiter,
     rate_limit_key,
     refresh_rate_limiter,
     register_rate_limiter,
     require_rate_limit,
+    subject_rate_limit_key,
 )
 from app.core.time import utc_now_naive
 from app.core.totp import generate_secret, provisioning_uri, verify_code
@@ -306,6 +308,11 @@ async def login(
         login_rate_limiter,
         rate_limit_key(request, "login", normalized_email),
         "Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.",
+    )
+    require_rate_limit(
+        login_account_rate_limiter,
+        subject_rate_limit_key("login-account", normalized_email),
+        "Bu hesap için çok fazla giriş denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
     )
 
     # Find user by email
