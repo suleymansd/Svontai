@@ -343,6 +343,8 @@ export function RealEstatePackPanel() {
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (!popupRef.current || event.source !== popupRef.current) return
       if (event.data?.type !== 'GOOGLE_CALENDAR_CONNECTED') return
       if (popupRef.current && !popupRef.current.closed) popupRef.current.close()
       popupRef.current = null

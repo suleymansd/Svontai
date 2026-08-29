@@ -6,6 +6,7 @@ import hashlib
 import socket
 import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, Request
@@ -34,6 +35,8 @@ from app.models.user import User
 from app.models.whatsapp import WhatsAppIntegration
 from app.schemas.whatsapp import WhatsAppIntegrationCreate, WhatsAppIntegrationResponse
 from app.services.onboarding_service import OnboardingService
+from app.services.google_calendar_service import GoogleCalendarService
+from app.services.oauth_state_service import InvalidOAuthState, OAuthStateService
 
 
 def _session():
@@ -84,6 +87,77 @@ def test_meta_oauth_state_is_single_use_and_tenant_bound():
         OnboardingService(db).consume_oauth_state(raw_state)
     with pytest.raises(ValueError):
         OnboardingService(db).consume_oauth_state(f"{tenant.id}:forged")
+
+
+def test_google_oauth_state_is_opaque_single_use_and_user_bound(monkeypatch):
+    db = _session()
+    user, tenant = _user_and_tenant(db, "google-oauth")
+    service = GoogleCalendarService(db)
+    monkeypatch.setattr(service, "validate_config", lambda: None)
+
+    result = service.get_oauth_start(tenant.id, user.id)
+    assert str(tenant.id) not in result["state"]
+    assert str(user.id) not in result["state"]
+
+    consumed = OAuthStateService(db).consume(
+        provider="google",
+        state=result["state"],
+    )
+    assert consumed.tenant_id == tenant.id
+    assert consumed.user_id == user.id
+
+    with pytest.raises(InvalidOAuthState):
+        OAuthStateService(db).consume(provider="google", state=result["state"])
+
+
+def test_google_callback_redirects_to_trusted_frontend_without_inline_script(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.svontai.test")
+    monkeypatch.setattr(
+        GoogleCalendarService,
+        "process_oauth_callback",
+        lambda self, code, state: object(),
+    )
+
+    response = client.get(
+        "/real-estate/calendar/google/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "https://www.svontai.test/oauth/google/callback?success=1"
+    )
+    assert "<script" not in response.text.lower()
+
+
+def test_meta_callback_redirects_to_trusted_frontend_without_inline_script(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.svontai.test")
+    tenant_id = uuid.uuid4()
+    monkeypatch.setattr(
+        OnboardingService,
+        "consume_oauth_state",
+        lambda self, state: SimpleNamespace(tenant_id=tenant_id),
+    )
+
+    async def fake_process(self, resolved_tenant_id, code):
+        assert resolved_tenant_id == tenant_id
+        return object()
+
+    monkeypatch.setattr(OnboardingService, "process_oauth_callback", fake_process)
+    response = client.get(
+        "/api/onboarding/whatsapp/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "https://www.svontai.test/oauth/whatsapp/callback?success=1"
+    )
+    assert "<script" not in response.text.lower()
 
 
 def test_outbound_url_rejects_private_and_unapproved_hosts(monkeypatch):

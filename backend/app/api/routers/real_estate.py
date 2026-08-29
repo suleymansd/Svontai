@@ -13,7 +13,7 @@ from urllib.parse import quote_plus
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -873,51 +873,19 @@ async def google_calendar_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> RedirectResponse:
     service = GoogleCalendarService(db)
-    frontend_redirect_success = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/integrations?google=success"
-    frontend_redirect_error_base = f"{(settings.FRONTEND_URL or '').rstrip('/')}/dashboard/integrations?google=error"
+    frontend_callback = f"{(settings.FRONTEND_URL or '').rstrip('/')}/oauth/google/callback"
     try:
         service.process_oauth_callback(code=code, state=state)
-        success_payload = json.dumps({"type": "GOOGLE_CALENDAR_CONNECTED", "success": True})
-        redirect_url_js = json.dumps(frontend_redirect_success)
-        return HTMLResponse(
-            content="""
-            <html>
-            <body>
-                <script>
-                    if (window.opener) {
-                        window.opener.postMessage(""" + success_payload + """, '*');
-                        window.close();
-                    } else {
-                        window.location.href = """ + redirect_url_js + """;
-                    }
-                </script>
-                <p>Google Calendar bağlantısı başarılı. Bu pencere kapanacak...</p>
-            </body>
-            </html>
-            """
+        return RedirectResponse(
+            url=f"{frontend_callback}?success=1",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
     except GoogleCalendarError as exc:
-        error_message_js = json.dumps(str(exc))
-        redirect_error_js = json.dumps(f"{frontend_redirect_error_base}&reason={quote_plus(str(exc))}")
-        return HTMLResponse(
-            content=f"""
-            <html>
-            <body>
-                <script>
-                    if (window.opener) {{
-                        window.opener.postMessage({{type: 'GOOGLE_CALENDAR_CONNECTED', success: false, error: {error_message_js}}}, '*');
-                        window.close();
-                    }} else {{
-                        window.location.href = {redirect_error_js};
-                    }}
-                </script>
-                <p>Google Calendar bağlantı hatası: {str(exc)}</p>
-            </body>
-            </html>
-            """,
-            status_code=status.HTTP_400_BAD_REQUEST,
+        return RedirectResponse(
+            url=f"{frontend_callback}?success=0&reason={quote_plus(str(exc))}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
 

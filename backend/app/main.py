@@ -354,6 +354,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs" if settings.ENVIRONMENT == "dev" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT == "dev" else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT == "dev" else None,
     lifespan=lifespan
 )
 
@@ -549,9 +550,10 @@ async def health_ready():
 
 if __name__ == "__main__":
     import uvicorn
+    # Railway exposes the container through its private ingress network.
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # nosec B104
         port=8000,
         reload=settings.ENVIRONMENT == "dev"
     )

@@ -23,6 +23,7 @@ def client(monkeypatch):
 
     rate_limit_module.clear_rate_limiters([
         rate_limit_module.login_rate_limiter,
+        rate_limit_module.login_account_rate_limiter,
         rate_limit_module.register_rate_limiter,
         rate_limit_module.refresh_rate_limiter,
         rate_limit_module.password_reset_rate_limiter,

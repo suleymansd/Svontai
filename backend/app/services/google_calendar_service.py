@@ -10,8 +10,6 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from uuid import UUID
 
 import httpx
-import jwt
-from jwt import InvalidTokenError as JWTError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -21,6 +19,7 @@ from app.models.appointment import Appointment
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.tenant import Tenant
 from app.services.google_oauth_token_service import GoogleOAuthTokenService
+from app.services.oauth_state_service import InvalidOAuthState, OAuthStateService
 
 
 class GoogleCalendarError(Exception):
@@ -115,34 +114,7 @@ class GoogleCalendarService:
     def _utcnow() -> datetime:
         return utc_now_naive()
 
-    def _encode_state(self, tenant_id: UUID, agent_id: UUID) -> str:
-        payload = {
-            "tenant_id": str(tenant_id),
-            "agent_id": str(agent_id),
-            "exp": int((self._utcnow() + timedelta(minutes=self.STATE_EXP_MINUTES)).timestamp()),
-            "iat": int(self._utcnow().timestamp()),
-            "scope": "re_google_calendar",
-        }
-        return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-
-    def _decode_state(self, state: str) -> dict:
-        try:
-            payload = jwt.decode(
-                state,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM],
-            )
-        except JWTError as exc:
-            raise GoogleCalendarError("Geçersiz veya süresi dolmuş state.") from exc
-
-        if payload.get("scope") != "re_google_calendar":
-            raise GoogleCalendarError("Geçersiz state kapsamı.")
-        return payload
-
-    def get_oauth_start(self, tenant_id: UUID, agent_id: UUID) -> dict:
-        self.validate_config()
-
-        state = self._encode_state(tenant_id, agent_id)
+    def _build_auth_url(self, state: str) -> str:
         params = {
             "client_id": settings.GOOGLE_CLIENT_ID,
             "redirect_uri": settings.GOOGLE_REDIRECT_URI,
@@ -153,8 +125,18 @@ class GoogleCalendarService:
             "prompt": "consent",
             "state": state,
         }
-        auth_url = f"{self.OAUTH_BASE_URL}?{urlencode(params)}"
-        return {"auth_url": auth_url, "state": state}
+        return f"{self.OAUTH_BASE_URL}?{urlencode(params)}"
+
+    def get_oauth_start(self, tenant_id: UUID, agent_id: UUID) -> dict:
+        self.validate_config()
+
+        state = OAuthStateService(self.db).issue(
+            provider="google",
+            tenant_id=tenant_id,
+            user_id=agent_id,
+            expires_minutes=self.STATE_EXP_MINUTES,
+        )
+        return {"auth_url": self._build_auth_url(state), "state": state}
 
     def get_diagnostics(self) -> dict[str, Any]:
         client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
@@ -225,7 +207,7 @@ class GoogleCalendarService:
 
         auth_url_preview = ""
         try:
-            auth_url_preview = self.get_oauth_start(UUID(int=0), UUID(int=0)).get("auth_url", "")
+            auth_url_preview = self._build_auth_url("diagnostic-state")
         except Exception:
             auth_url_preview = ""
 
@@ -245,7 +227,8 @@ class GoogleCalendarService:
 
     async def probe_oauth_dialog(self) -> dict[str, Any]:
         try:
-            oauth_url = self.get_oauth_start(UUID(int=0), UUID(int=0)).get("auth_url", "")
+            self.validate_config()
+            oauth_url = self._build_auth_url("diagnostic-state")
         except GoogleCalendarError as exc:
             return {
                 "status": "config_invalid",
@@ -325,9 +308,15 @@ class GoogleCalendarService:
         return data["access_token"]
 
     def process_oauth_callback(self, code: str, state: str) -> RealEstateGoogleCalendarIntegration:
-        payload = self._decode_state(state)
-        tenant_id = UUID(payload["tenant_id"])
-        agent_id = UUID(payload["agent_id"])
+        try:
+            oauth_state = OAuthStateService(self.db).consume(
+                provider="google",
+                state=state,
+            )
+        except InvalidOAuthState as exc:
+            raise GoogleCalendarError(str(exc)) from exc
+        tenant_id = oauth_state.tenant_id
+        agent_id = oauth_state.user_id
         token_data = self._exchange_code_for_tokens(code)
 
         integration = self.db.query(RealEstateGoogleCalendarIntegration).filter(
