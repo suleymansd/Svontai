@@ -39,11 +39,10 @@ class WhatsAppIntegrationResponse(BaseModel):
     bot_id: UUID | None
     whatsapp_phone_number_id: str
     whatsapp_business_account_id: str
-    webhook_verify_token: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    # Note: access_token is intentionally excluded for security
+    # Credentials are intentionally excluded for security.
 
 
 class WhatsAppWebhookVerification(BaseModel):
@@ -51,4 +50,3 @@ class WhatsAppWebhookVerification(BaseModel):
     hub_mode: str | None = None
     hub_verify_token: str | None = None
     hub_challenge: str | None = None
-

@@ -364,7 +364,7 @@ def test_google_sheets_sync_creates_and_updates_listings():
         "X1,Çankaya Güncel İlan,sale,daire,Ankara Çankaya,3100000,TRY,120,3+1,https://example.com/x1\n"
         "X2,Yeni İlan,rent,daire,Ankara Keçiören,24000,TRY,95,2+1,https://example.com/x2\n"
     )
-    service._http_get_text = lambda url, headers=None: csv_text  # type: ignore[assignment]
+    service._http_get_text = lambda url, headers=None, **kwargs: csv_text  # type: ignore[assignment]
 
     result = service.sync_listings_from_google_sheets(
         tenant_id=tenant.id,
@@ -456,7 +456,7 @@ def test_remax_sync_deactivates_missing_and_encrypts_api_key():
     db.add(listing_b)
     db.commit()
 
-    service._http_get_json = lambda url, headers=None: {  # type: ignore[assignment]
+    service._http_get_json = lambda url, headers=None, **kwargs: {  # type: ignore[assignment]
         "data": {
             "listings": [
                 {

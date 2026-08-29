@@ -4,9 +4,9 @@ Real Estate Pack orchestration service (MVP).
 
 from __future__ import annotations
 
-import json
 import csv
 import io
+import json
 import re
 import statistics
 from dataclasses import dataclass
@@ -21,7 +21,8 @@ import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import settings as app_settings
+from app.core.egress import validate_outbound_https_url
 from app.core.encryption import decrypt_token, encrypt_token
 from app.models.bot import Bot
 from app.models.conversation import Conversation
@@ -387,17 +388,45 @@ class RealEstateService:
             return "sale"
         return None
 
-    def _http_get_text(self, url: str, headers: dict[str, str] | None = None) -> str:
-        with httpx.Client(timeout=25.0) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.text
+    def _read_limited_response(self, response: httpx.Response) -> bytes:
+        limit = min(max(1024, app_settings.REAL_ESTATE_CONNECTOR_MAX_RESPONSE_BYTES), 20 * 1024 * 1024)
+        content_length = response.headers.get("content-length")
+        if content_length and int(content_length) > limit:
+            raise ValueError("Connector yanıtı izin verilen boyutu aşıyor")
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_bytes():
+            total += len(chunk)
+            if total > limit:
+                raise ValueError("Connector yanıtı izin verilen boyutu aşıyor")
+            chunks.append(chunk)
+        return b"".join(chunks)
 
-    def _http_get_json(self, url: str, headers: dict[str, str] | None = None) -> Any:
-        with httpx.Client(timeout=25.0) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    def _http_get_text(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        *,
+        allowed_hosts: set[str] | None = None,
+    ) -> str:
+        safe_url = validate_outbound_https_url(url, allowed_hosts=allowed_hosts)
+        with httpx.Client(timeout=25.0, follow_redirects=False) as client:
+            with client.stream("GET", safe_url, headers=headers) as response:
+                response.raise_for_status()
+                return self._read_limited_response(response).decode("utf-8-sig")
+
+    def _http_get_json(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        *,
+        allowed_hosts: set[str] | None = None,
+    ) -> Any:
+        safe_url = validate_outbound_https_url(url, allowed_hosts=allowed_hosts)
+        with httpx.Client(timeout=25.0, follow_redirects=False) as client:
+            with client.stream("GET", safe_url, headers=headers) as response:
+                response.raise_for_status()
+                return json.loads(self._read_limited_response(response))
 
     @staticmethod
     def _build_google_sheets_csv_url(config: dict[str, Any]) -> str:
@@ -631,7 +660,7 @@ class RealEstateService:
         merged_cfg["deactivate_missing"] = bool(merged_cfg.get("deactivate_missing", False))
 
         csv_url = self._build_google_sheets_csv_url(merged_cfg)
-        text = self._http_get_text(csv_url)
+        text = self._http_get_text(csv_url, allowed_hosts={"docs.google.com"})
         reader = csv.DictReader(io.StringIO(text))
         rows = list(reader)
         stats = self._upsert_external_listings(
@@ -690,7 +719,18 @@ class RealEstateService:
         if resolved_api_key:
             headers[auth_header] = f"{auth_scheme} {resolved_api_key}".strip()
 
-        response_payload = self._http_get_json(endpoint_url, headers=headers or None)
+        connector_hosts = {
+            item.strip().lower()
+            for item in app_settings.REAL_ESTATE_CONNECTOR_ALLOWED_HOSTS.split(",")
+            if item.strip()
+        }
+        if app_settings.ENVIRONMENT == "prod" and not connector_hosts:
+            raise ValueError("Remax connector host allowlist yapılandırılmamış")
+        response_payload = self._http_get_json(
+            endpoint_url,
+            headers=headers or None,
+            allowed_hosts=connector_hosts or None,
+        )
         response_path = (merged_cfg.get("response_path") or "data.listings").strip()
         rows_payload = self._extract_json_path(response_payload, response_path)
         if not isinstance(rows_payload, list):
@@ -2337,8 +2377,8 @@ class RealEstateService:
         if (
             not force
             and (
-                now.weekday() != settings.REAL_ESTATE_WEEKLY_REPORT_DAY
-                or now.hour < settings.REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC
+                now.weekday() != app_settings.REAL_ESTATE_WEEKLY_REPORT_DAY
+                or now.hour < app_settings.REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC
             )
         ):
             return {"sent": False, "reason": "not_schedule_window"}

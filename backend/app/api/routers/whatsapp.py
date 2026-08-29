@@ -19,6 +19,7 @@ from app.schemas.whatsapp import (
     WhatsAppIntegrationResponse
 )
 from app.services.audit_log_service import AuditLogService
+from app.core.encryption import encrypt_token
 
 router = APIRouter(tags=["WhatsApp"])
 
@@ -68,8 +69,8 @@ async def create_whatsapp_integration(
         # Update existing
         existing.whatsapp_phone_number_id = integration_data.whatsapp_phone_number_id
         existing.whatsapp_business_account_id = integration_data.whatsapp_business_account_id
-        existing.access_token = integration_data.access_token
-        existing.webhook_verify_token = integration_data.webhook_verify_token
+        existing.access_token_encrypted = encrypt_token(integration_data.access_token)
+        existing.webhook_verify_token_encrypted = encrypt_token(integration_data.webhook_verify_token)
         db.commit()
         db.refresh(existing)
         AuditLogService(db).log(
@@ -94,8 +95,8 @@ async def create_whatsapp_integration(
         bot_id=bot_id,
         whatsapp_phone_number_id=integration_data.whatsapp_phone_number_id,
         whatsapp_business_account_id=integration_data.whatsapp_business_account_id,
-        access_token=integration_data.access_token,
-        webhook_verify_token=integration_data.webhook_verify_token
+        access_token_encrypted=encrypt_token(integration_data.access_token),
+        webhook_verify_token_encrypted=encrypt_token(integration_data.webhook_verify_token)
     )
     
     db.add(integration)

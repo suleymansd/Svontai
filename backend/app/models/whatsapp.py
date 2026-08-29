@@ -37,12 +37,14 @@ class WhatsAppIntegration(Base):
         String(50),
         nullable=False
     )
-    access_token: Mapped[str] = mapped_column(
+    access_token_encrypted: Mapped[str] = mapped_column(
+        "access_token",
         Text,
         nullable=False
     )
-    webhook_verify_token: Mapped[str] = mapped_column(
-        String(100),
+    webhook_verify_token_encrypted: Mapped[str] = mapped_column(
+        "webhook_verify_token",
+        Text,
         nullable=False
     )
     is_active: Mapped[bool] = mapped_column(
@@ -74,4 +76,3 @@ class WhatsAppIntegration(Base):
     
     def __repr__(self) -> str:
         return f"<WhatsAppIntegration {self.whatsapp_phone_number_id}>"
-

@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.models.whatsapp import WhatsAppIntegration
+from app.core.encryption import decrypt_token
 
 
 class WhatsAppService:
@@ -35,8 +36,11 @@ class WhatsAppService:
         """
         url = f"{self.base_url}/{integration.whatsapp_phone_number_id}/messages"
         
+        access_token = decrypt_token(integration.access_token_encrypted)
+        if not access_token:
+            raise RuntimeError("WhatsApp credential cannot be decrypted")
         headers = {
-            "Authorization": f"Bearer {integration.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         
@@ -79,8 +83,11 @@ class WhatsAppService:
         """
         url = f"{self.base_url}/{integration.whatsapp_phone_number_id}/messages"
         
+        access_token = decrypt_token(integration.access_token_encrypted)
+        if not access_token:
+            raise RuntimeError("WhatsApp credential cannot be decrypted")
         headers = {
-            "Authorization": f"Bearer {integration.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         
@@ -176,4 +183,3 @@ class WhatsAppService:
 
 # Singleton instance
 whatsapp_service = WhatsAppService()
-

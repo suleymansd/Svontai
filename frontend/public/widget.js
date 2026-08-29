@@ -10,11 +10,10 @@
   'use strict';
 
   // Configuration
-  const API_URL = 'http://localhost:8000'; // Change this to your backend URL
-  
   // Get bot key from script tag
   const scriptTag = document.currentScript;
   const botPublicKey = scriptTag?.getAttribute('data-bot-key');
+  const API_URL = (scriptTag?.getAttribute('data-api-url') || 'https://svontai-production.up.railway.app').replace(/\/$/, '');
   
   if (!botPublicKey) {
     console.error('SvontAi Widget: data-bot-key attribute is required');
@@ -27,7 +26,7 @@
     isInitialized: false,
     isLoading: false,
     conversationId: null,
-    externalUserId: localStorage.getItem('svontai_user_id'),
+    sessionToken: null,
     botInfo: null,
     messages: []
   };
@@ -452,8 +451,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bot_public_key: botPublicKey,
-          external_user_id: state.externalUserId
+          bot_public_key: botPublicKey
         })
       });
       
@@ -461,11 +459,9 @@
       
       const data = await response.json();
       state.conversationId = data.conversation_id;
-      state.externalUserId = data.external_user_id;
+      state.sessionToken = data.session_token;
       state.botInfo = data.bot;
       state.isInitialized = true;
-      
-      localStorage.setItem('svontai_user_id', data.external_user_id);
       
       // Add welcome message
       addMessage(data.welcome_message, 'bot', primaryColor);
@@ -500,7 +496,7 @@
         body: JSON.stringify({
           conversation_id: state.conversationId,
           message: message,
-          external_user_id: state.externalUserId
+          session_token: state.sessionToken
         })
       });
       
@@ -559,19 +555,16 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bot_public_key: botPublicKey,
-          external_user_id: state.externalUserId
+          bot_public_key: botPublicKey
         })
       });
       
       if (response.ok) {
         const data = await response.json();
         state.conversationId = data.conversation_id;
-        state.externalUserId = data.external_user_id;
+        state.sessionToken = data.session_token;
         state.botInfo = data.bot;
         state.isInitialized = true;
-        localStorage.setItem('svontai_user_id', data.external_user_id);
-        
         createWidget(data.bot);
         
         // Pre-add welcome message when opened

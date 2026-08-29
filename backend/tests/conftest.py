@@ -36,6 +36,8 @@ def client(monkeypatch):
         rate_limit_module.whatsapp_send_hour_rate_limiter,
         rate_limit_module.public_chat_init_rate_limiter,
         rate_limit_module.public_chat_send_rate_limiter,
+        rate_limit_module.public_chat_bot_rate_limiter,
+        rate_limit_module.public_chat_tenant_rate_limiter,
         rate_limit_module.public_lead_rate_limiter,
         rate_limit_module.public_contact_rate_limiter,
         rate_limit_module.assistant_rate_limiter,

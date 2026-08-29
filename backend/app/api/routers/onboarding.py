@@ -155,7 +155,7 @@ async def start_whatsapp_onboarding(
     service = OnboardingService(db)
     
     try:
-        result = service.start_onboarding(current_tenant.id)
+        result = service.start_onboarding(current_tenant.id, current_user.id)
         return OnboardingStartResponse(**result)
     except MetaAPIError as e:
         error_messages = e.details.get("errors") if isinstance(e.details, dict) else None
@@ -365,14 +365,13 @@ async def whatsapp_oauth_callback(
     This endpoint is called by Meta after user completes authorization.
     Exchanges code for token and saves credentials.
     """
-    # Extract tenant_id from state
     try:
-        tenant_id_str = state.split(":")[0]
-        tenant_id = UUID(tenant_id_str)
-    except (ValueError, IndexError):
+        oauth_state = OnboardingService(db).consume_oauth_state(state)
+        tenant_id = oauth_state.tenant_id
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Geçersiz state parametresi"
+            detail="Geçersiz, süresi dolmuş veya kullanılmış state parametresi"
         )
     
     service = OnboardingService(db)
