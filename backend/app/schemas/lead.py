@@ -5,7 +5,7 @@ Pydantic schemas for Lead model.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class LeadBase(BaseModel):
@@ -33,8 +33,9 @@ class LeadCreate(LeadBase):
 
 class LeadPublicCreate(LeadBase):
     """Schema for public lead creation."""
-    bot_public_key: str
+    bot_public_key: str = Field(min_length=16, max_length=255)
     conversation_id: UUID | None = None
+    session_token: str | None = Field(default=None, min_length=32, max_length=2048)
 
 
 class LeadUpdate(BaseModel):

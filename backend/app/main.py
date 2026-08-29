@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.rate_limit import global_ip_rate_limiter, rate_limit_key
 from app.core.observability import configure_observability
+from app.core.request_limits import RequestBodyLimitMiddleware
 from app.api.routers import (
     auth_router,
     users_router,
@@ -356,6 +357,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    default_limit=settings.MAX_REQUEST_BODY_BYTES,
+    path_limits={
+        "/media": min(settings.ARTIFACT_MAX_FILE_SIZE_BYTES + 1024 * 1024, 26 * 1024 * 1024),
+        "/real-estate/listings/import/csv": settings.MAX_CSV_IMPORT_BYTES,
+    },
+)
+
 
 
 
@@ -409,10 +419,19 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Configure CORS - Allow all origins in development
+cors_allowed_origins = ["*"] if settings.ENVIRONMENT == "dev" else list(dict.fromkeys([
+    settings.FRONTEND_URL.rstrip("/"),
+    *[
+        origin.strip().rstrip("/")
+        for origin in settings.PUBLIC_WIDGET_ALLOWED_ORIGINS.split(",")
+        if origin.strip().startswith("https://")
+    ],
+]))
+
+# Configure CORS. Customer widget origins must be explicitly approved.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "dev" else [settings.FRONTEND_URL.rstrip("/")],
+    allow_origins=cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
@@ -421,6 +440,7 @@ app.add_middleware(
         "Content-Type",
         "X-Request-ID",
         "X-Tenant-ID",
+        "X-Widget-Session",
     ],
     expose_headers=["Retry-After", "X-Request-ID"],
     max_age=600,

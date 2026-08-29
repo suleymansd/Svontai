@@ -31,6 +31,7 @@
 - `ENCRYPTION_KEY`
 - `BACKEND_URL`
 - `FRONTEND_URL`
+- `PUBLIC_WIDGET_ALLOWED_ORIGINS` (comma-separated HTTPS origins approved to embed the widget)
 - `EMAIL_ENABLED`
 - `EMAIL_PROVIDER` (`resend` | `smtp`, default: `resend`)
 - `RESEND_API_KEY`
@@ -62,6 +63,10 @@
 - `GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS` (production minimum `300`, default `600`)
 - `WEBHOOK_INBOX_POLL_INTERVAL_SECONDS` (durable inbound event polling, production range `1-10`)
 - `WEBHOOK_INBOX_MAX_ATTEMPTS` (provider event retry budget, production range `3-20`)
+- `REAL_ESTATE_CONNECTOR_ALLOWED_HOSTS` (comma-separated provider host allowlist; required before enabling a production connector)
+- `REAL_ESTATE_CONNECTOR_MAX_RESPONSE_BYTES` (default `10485760`, hard maximum `20971520`)
+- `MAX_REQUEST_BODY_BYTES` (default `2097152`)
+- `MAX_CSV_IMPORT_BYTES` (default `5242880`, production maximum `10485760`)
 - `AI_MAX_REPLY_TOKENS` (hard customer-reply output cap; default `800`)
 - `AI_REQUEST_TIMEOUT_SECONDS` (provider timeout; default `30`)
 - `AI_REQUEST_MAX_RETRIES` (provider retry cap; default `1`)

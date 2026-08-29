@@ -41,11 +41,16 @@ from app.core.time import utc_now_naive
 from app.core.rate_limit import (
     public_chat_init_rate_limiter,
     public_chat_send_rate_limiter,
+    public_chat_bot_rate_limiter,
+    public_chat_tenant_rate_limiter,
     public_lead_rate_limiter,
     public_contact_rate_limiter,
     rate_limit_key,
     require_rate_limit,
 )
+from app.core.widget_session import InvalidWidgetSession, issue_widget_session, verify_widget_session
+from app.services.subscription_service import SubscriptionService
+from app.services.usage_counter_service import UsageCounterService
 
 router = APIRouter(prefix="/public", tags=["Public Chat"])
 logger = logging.getLogger(__name__)
@@ -171,7 +176,7 @@ async def init_chat(
     """
     require_rate_limit(
         public_chat_init_rate_limiter,
-        rate_limit_key(http_request, "public-chat-init", request.bot_public_key),
+        rate_limit_key(http_request, "public-chat-init"),
         "Çok fazla sohbet başlatma isteği. Lütfen daha sonra tekrar deneyin.",
     )
 
@@ -187,8 +192,9 @@ async def init_chat(
             detail="Bot bulunamadı veya aktif değil"
         )
     
-    # Use provided external_user_id or generate new one
-    external_user_id = request.external_user_id or generate_external_user_id()
+    # Each initialization receives a new opaque identity. Resuming a previous
+    # conversation requires its signed session token, not a caller-chosen ID.
+    external_user_id = generate_external_user_id()
     
     # Find or create conversation
     conversation = db.query(Conversation).filter(
@@ -210,6 +216,11 @@ async def init_chat(
     return ChatInitResponse(
         conversation_id=conversation.id,
         external_user_id=external_user_id,
+        session_token=issue_widget_session(
+            conversation_id=conversation.id,
+            bot_id=bot.id,
+            external_user_id=external_user_id,
+        ),
         bot=BotPublicInfo(
             name=bot.name,
             welcome_message=bot.welcome_message,
@@ -240,9 +251,16 @@ async def send_chat_message(
     """
     require_rate_limit(
         public_chat_send_rate_limiter,
-        rate_limit_key(http_request, "public-chat-send", request.conversation_id),
+        rate_limit_key(http_request, "public-chat-send"),
         "Çok fazla mesaj isteği. Lütfen daha sonra tekrar deneyin.",
     )
+
+    try:
+        widget_session = verify_widget_session(request.session_token)
+    except InvalidWidgetSession as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    if widget_session.conversation_id != request.conversation_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu konuşmaya erişim izniniz yok")
 
     # Get conversation
     conversation = db.query(Conversation).filter(
@@ -255,16 +273,13 @@ async def send_chat_message(
             detail="Konuşma bulunamadı"
         )
     
-    if request.external_user_id and request.external_user_id != conversation.external_user_id:
+    if (
+        widget_session.external_user_id != conversation.external_user_id
+        or widget_session.bot_id != conversation.bot_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu konuşmaya erişim izniniz yok"
-        )
-
-    if request.external_user_id is None:
-        logger.warning(
-            "Public chat send without external_user_id for conversation %s",
-            request.conversation_id
         )
 
     # Get bot
@@ -278,6 +293,22 @@ async def send_chat_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bot aktif değil"
         )
+
+    require_rate_limit(
+        public_chat_bot_rate_limiter,
+        rate_limit_key(http_request, "public-chat-bot", bot.id),
+        "Bot mesaj kapasitesi geçici olarak dolu. Lütfen daha sonra tekrar deneyin.",
+    )
+    require_rate_limit(
+        public_chat_tenant_rate_limiter,
+        f"public-chat-tenant:{bot.tenant_id}",
+        "İşletme mesaj kapasitesi geçici olarak dolu. Lütfen daha sonra tekrar deneyin.",
+    )
+    allowed, limit_message = SubscriptionService(db).check_message_limit(bot.tenant_id)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=limit_message)
+    SubscriptionService(db).increment_message_count(bot.tenant_id)
+    UsageCounterService(db).increment_message_count(bot.tenant_id, 1)
     
     # Save user message
     user_message = Message(
@@ -363,7 +394,7 @@ async def send_chat_message(
 @router.get("/chat/messages", response_model=ChatMessagesResponse)
 async def list_chat_messages(
     conversation_id: UUID,
-    external_user_id: str,
+    http_request: Request,
     since: datetime | None = None,
     limit: int = 50,
     db: Session = Depends(get_db)
@@ -371,9 +402,18 @@ async def list_chat_messages(
     """
     List messages for a public chat conversation.
     """
+    token = (http_request.headers.get("X-Widget-Session") or "").strip()
+    try:
+        widget_session = verify_widget_session(token)
+    except InvalidWidgetSession as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    if widget_session.conversation_id != conversation_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu konuşmaya erişim izniniz yok")
+
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
-        Conversation.external_user_id == external_user_id,
+        Conversation.external_user_id == widget_session.external_user_id,
+        Conversation.bot_id == widget_session.bot_id,
         Conversation.source == ConversationSource.WEB_WIDGET.value
     ).first()
     
@@ -443,9 +483,19 @@ async def create_public_lead(
     
     # Validate conversation if provided
     if lead_data.conversation_id:
+        try:
+            widget_session = verify_widget_session(lead_data.session_token or "")
+        except InvalidWidgetSession as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        if (
+            widget_session.conversation_id != lead_data.conversation_id
+            or widget_session.bot_id != bot.id
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu konuşmaya erişim izniniz yok")
         conversation = db.query(Conversation).filter(
             Conversation.id == lead_data.conversation_id,
-            Conversation.bot_id == bot.id
+            Conversation.bot_id == bot.id,
+            Conversation.external_user_id == widget_session.external_user_id,
         ).first()
         
         if conversation is None:

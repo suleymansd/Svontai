@@ -55,6 +55,7 @@ from app.models.product_event import ProductEvent
 from app.models.data_retention import DataRetentionPolicy
 from app.models.webhook_inbox import WebhookInboxEvent
 from app.models.assistant_training_session import AssistantTrainingSession
+from app.models.oauth_state import OAuthState
 from app.models.real_estate import (
     RealEstatePackSettings,
     RealEstateGoogleCalendarIntegration,
@@ -130,6 +131,7 @@ __all__ = [
     "PushSubscription",
     "SalesInquiry",
     "AssistantTrainingSession",
+    "OAuthState",
     "Invoice",
     "ProductEvent",
     "DataRetentionPolicy",

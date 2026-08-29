@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     # Application URLs
     BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
+    PUBLIC_WIDGET_ALLOWED_ORIGINS: str = ""
 
     # Email / SMTP
     EMAIL_ENABLED: bool = False
@@ -136,6 +137,12 @@ class Settings(BaseSettings):
     REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS: int = 300
     REAL_ESTATE_WEEKLY_REPORT_DAY: int = 0  # Monday=0 ... Sunday=6
     REAL_ESTATE_WEEKLY_REPORT_HOUR_UTC: int = 8
+    REAL_ESTATE_CONNECTOR_ALLOWED_HOSTS: str = ""
+    REAL_ESTATE_CONNECTOR_MAX_RESPONSE_BYTES: int = 10 * 1024 * 1024
+
+    # Request body limits. Media has a separate bounded upload flow.
+    MAX_REQUEST_BODY_BYTES: int = 2 * 1024 * 1024
+    MAX_CSV_IMPORT_BYTES: int = 5 * 1024 * 1024
 
     # Cost-aware worker polling. Incoming webhooks remain real-time; these values
     # only control background health/synchronization traffic.
@@ -515,6 +522,12 @@ class Settings(BaseSettings):
             missing_real_time_config.append("OPENWA_MAX_ACTIVE_SESSIONS>=1")
         if self.GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS < 300:
             missing_real_time_config.append("GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS>=300")
+        if self.MAX_REQUEST_BODY_BYTES < 64 * 1024:
+            missing_real_time_config.append("MAX_REQUEST_BODY_BYTES>=65536")
+        if not 64 * 1024 <= self.MAX_CSV_IMPORT_BYTES <= 10 * 1024 * 1024:
+            missing_real_time_config.append("65536<=MAX_CSV_IMPORT_BYTES<=10485760")
+        if not 1024 <= self.REAL_ESTATE_CONNECTOR_MAX_RESPONSE_BYTES <= 20 * 1024 * 1024:
+            missing_real_time_config.append("safe REAL_ESTATE_CONNECTOR_MAX_RESPONSE_BYTES")
         if not 1 <= self.WEBHOOK_INBOX_POLL_INTERVAL_SECONDS <= 10:
             missing_real_time_config.append("1<=WEBHOOK_INBOX_POLL_INTERVAL_SECONDS<=10")
         if not 3 <= self.WEBHOOK_INBOX_MAX_ATTEMPTS <= 20:

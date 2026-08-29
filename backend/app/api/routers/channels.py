@@ -186,7 +186,7 @@ async def send_whatsapp_message(
             
             # Update run status if available
             if run_id:
-                _update_run_failed(db, run_id, error_msg)
+                _update_run_failed(db, run_id, tenant_id, error_msg)
             
             return WhatsAppSendResponse(
                 success=False,
@@ -263,7 +263,7 @@ async def send_whatsapp_message(
             # Update automation run status
             if run_id:
                 _update_run_success(
-                    db, run_id, 
+                    db, run_id, tenant_id,
                     {"wa_message_id": wa_message_id, "n8n_execution_id": n8n_execution_id}
                 )
 
@@ -289,7 +289,7 @@ async def send_whatsapp_message(
             logger.error(error_msg)
             
             if run_id:
-                _update_run_failed(db, run_id, error_msg)
+                _update_run_failed(db, run_id, tenant_id, error_msg)
             
             return WhatsAppSendResponse(
                 success=False,
@@ -330,7 +330,7 @@ async def send_whatsapp_template(
     if not account:
         error_msg = f"No WhatsApp account found for tenant {tenant_id}"
         if run_id:
-            _update_run_failed(db, run_id, error_msg)
+            _update_run_failed(db, run_id, tenant_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
     try:
@@ -355,12 +355,12 @@ async def send_whatsapp_template(
             pass
 
         if run_id:
-            _update_run_success(db, run_id, {"wa_message_id": wa_message_id, "template": body.template_name})
+            _update_run_success(db, run_id, tenant_id, {"wa_message_id": wa_message_id, "template": body.template_name})
         return WhatsAppSendResponse(success=True, message_id=wa_message_id, run_id=run_id)
     except Exception as e:
         error_msg = f"Failed to send WhatsApp template: {e}"
         if run_id:
-            _update_run_failed(db, run_id, error_msg)
+            _update_run_failed(db, run_id, tenant_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
 
@@ -391,7 +391,7 @@ async def send_whatsapp_document(
     if not account:
         error_msg = f"No WhatsApp account found for tenant {tenant_id}"
         if run_id:
-            _update_run_failed(db, run_id, error_msg)
+            _update_run_failed(db, run_id, tenant_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
     try:
@@ -413,12 +413,12 @@ async def send_whatsapp_document(
             pass
 
         if run_id:
-            _update_run_success(db, run_id, {"wa_message_id": wa_message_id, "document": True})
+            _update_run_success(db, run_id, tenant_id, {"wa_message_id": wa_message_id, "document": True})
         return WhatsAppSendResponse(success=True, message_id=wa_message_id, run_id=run_id)
     except Exception as e:
         error_msg = f"Failed to send WhatsApp document: {e}"
         if run_id:
-            _update_run_failed(db, run_id, error_msg)
+            _update_run_failed(db, run_id, tenant_id, error_msg)
         return WhatsAppSendResponse(success=False, error=error_msg, run_id=run_id)
 
 
@@ -480,12 +480,12 @@ async def send_whatsapp_media(
         except Exception:
             pass
         if run_id:
-            _update_run_success(db, run_id, {"wa_message_id": message_id, "media_asset_id": str(asset.id)})
+            _update_run_success(db, run_id, tenant_id, {"wa_message_id": message_id, "media_asset_id": str(asset.id)})
         return WhatsAppSendResponse(success=True, message_id=message_id, run_id=run_id)
     except Exception as exc:
         logger.error("WhatsApp media send failed: %s", exc, exc_info=True)
         if run_id:
-            _update_run_failed(db, run_id, str(exc))
+            _update_run_failed(db, run_id, tenant_id, str(exc))
         return WhatsAppSendResponse(success=False, error="Media send failed", run_id=run_id)
 
 @router.post("/automation/status")
@@ -522,7 +522,7 @@ async def update_automation_status(
             detail=f"Automation run {body.run_id} not found"
         )
 
-    if auth_result.get("tenant_id") and run.tenant_id != auth_result["tenant_id"]:
+    if auth_result.get("tenant_id") and str(run.tenant_id) != str(auth_result["tenant_id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant mismatch for automation run"
@@ -642,10 +642,13 @@ async def _store_bot_message(
         logger.error(f"Failed to store bot message: {e}")
 
 
-def _update_run_success(db: Session, run_id: str, response_data: dict):
+def _update_run_success(db: Session, run_id: str, tenant_id: str | uuid.UUID, response_data: dict):
     """Update automation run as successful."""
     try:
-        run = db.query(AutomationRun).filter(AutomationRun.id == run_id).first()
+        run = db.query(AutomationRun).filter(
+            AutomationRun.id == run_id,
+            AutomationRun.tenant_id == str(tenant_id),
+        ).first()
         if run:
             run.mark_success(response_data)
             db.commit()
@@ -653,10 +656,13 @@ def _update_run_success(db: Session, run_id: str, response_data: dict):
         logger.error(f"Failed to update run {run_id} status: {e}")
 
 
-def _update_run_failed(db: Session, run_id: str, error_message: str):
+def _update_run_failed(db: Session, run_id: str, tenant_id: str | uuid.UUID, error_message: str):
     """Update automation run as failed."""
     try:
-        run = db.query(AutomationRun).filter(AutomationRun.id == run_id).first()
+        run = db.query(AutomationRun).filter(
+            AutomationRun.id == run_id,
+            AutomationRun.tenant_id == str(tenant_id),
+        ).first()
         if run:
             run.mark_failed(error_message)
             db.commit()

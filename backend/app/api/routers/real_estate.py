@@ -245,20 +245,20 @@ class ListingSummaryPdfResponse(BaseModel):
 
 
 class GoogleSheetsSyncRequest(BaseModel):
-    sheet_url: str | None = None
-    gid: str | None = None
-    csv_url: str | None = None
+    sheet_url: str | None = Field(default=None, max_length=2048)
+    gid: str | None = Field(default=None, max_length=64, pattern=r"^[0-9]*$")
+    csv_url: str | None = Field(default=None, max_length=2048)
     mapping: dict[str, str] = Field(default_factory=dict)
     deactivate_missing: bool = False
     save_to_settings: bool = True
 
 
 class RemaxSyncRequest(BaseModel):
-    endpoint_url: str | None = None
-    response_path: str = "data.listings"
-    auth_header: str = "Authorization"
-    auth_scheme: str = "Bearer"
-    api_key: str | None = None
+    endpoint_url: str | None = Field(default=None, max_length=2048)
+    response_path: str = Field(default="data.listings", max_length=255)
+    auth_header: str = Field(default="Authorization", max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+    auth_scheme: str = Field(default="Bearer", max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    api_key: str | None = Field(default=None, max_length=4096)
     mapping: dict[str, str] = Field(default_factory=dict)
     deactivate_missing: bool = False
     save_to_settings: bool = True
@@ -504,7 +504,14 @@ async def import_real_estate_listings_csv(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ) -> dict[str, Any]:
-    content = await file.read()
+    max_size = min(max(64 * 1024, settings.MAX_CSV_IMPORT_BYTES), 10 * 1024 * 1024)
+    content = await file.read(max_size + 1)
+    await file.close()
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="CSV dosyası izin verilen boyutu aşıyor.",
+        )
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:

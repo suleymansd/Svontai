@@ -99,7 +99,10 @@ next 24 hours of scheduled appointments.
 - `POST /public/leads`
 
 Notes:
-- `POST /public/chat/send` accepts optional `external_user_id` for validation.
+- `POST /public/chat/init` returns a short-lived signed `session_token`.
+- `POST /public/chat/send` requires that token in the JSON body.
+- `GET /public/chat/messages` requires it in the `X-Widget-Session` header.
+- Public widget origins must be listed in `PUBLIC_WIDGET_ALLOWED_ORIGINS` in production.
 
 ### n8n Channels
 - `POST /api/v1/channels/whatsapp/send`

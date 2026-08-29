@@ -206,8 +206,8 @@ Technical design and endpoint list: `docs/real_estate_pack.md`
 
 ### Public Chat
 - `POST /public/chat/init` - Initialize chat session
-- `POST /public/chat/send` - Send message and get response
-- `GET /public/chat/messages` - Fetch conversation messages
+- `POST /public/chat/send` - Send message with the signed widget session token
+- `GET /public/chat/messages` - Fetch messages with `X-Widget-Session`
 - `POST /public/leads` - Submit lead information
 
 ### WhatsApp Webhook
