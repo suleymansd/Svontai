@@ -1,0 +1,43 @@
+{
+	admin off
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+}
+
+{$FRONTEND_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+svontai.com {
+	redir https://{$FRONTEND_DOMAIN}{uri} permanent
+}
+
+{$API_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy api:8000
+}
+
+{$VOICE_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy voice-gateway:9001
+}
+
+{$N8N_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy n8n:5678
+}

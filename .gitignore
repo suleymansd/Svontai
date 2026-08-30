@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!deploy/oracle/.env.oracle.example
 !**/.env.example
 
 # Python
