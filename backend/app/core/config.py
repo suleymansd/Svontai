@@ -8,7 +8,7 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
@@ -385,6 +385,37 @@ class Settings(BaseSettings):
             return self
 
         missing_real_time_config: list[str] = []
+        frontend_origin = urlparse(self.FRONTEND_URL.strip().rstrip("/"))
+        if (
+            frontend_origin.scheme != "https"
+            or not frontend_origin.hostname
+            or frontend_origin.username
+            or frontend_origin.password
+            or frontend_origin.path not in {"", "/"}
+            or frontend_origin.params
+            or frontend_origin.query
+            or frontend_origin.fragment
+        ):
+            missing_real_time_config.append("FRONTEND_URL as an HTTPS origin without path/query")
+        for configured_origin in self.PUBLIC_WIDGET_ALLOWED_ORIGINS.split(","):
+            configured_origin = configured_origin.strip().rstrip("/")
+            if not configured_origin:
+                continue
+            parsed_origin = urlparse(configured_origin)
+            if (
+                parsed_origin.scheme != "https"
+                or not parsed_origin.hostname
+                or parsed_origin.username
+                or parsed_origin.password
+                or parsed_origin.path not in {"", "/"}
+                or parsed_origin.params
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                missing_real_time_config.append(
+                    "PUBLIC_WIDGET_ALLOWED_ORIGINS as comma-separated HTTPS origins"
+                )
+                break
         if not self.ai_api_key:
             required_key = "GEMINI_API_KEY" if self.AI_PROVIDER == "gemini" else "OPENAI_API_KEY"
             missing_real_time_config.append(required_key)

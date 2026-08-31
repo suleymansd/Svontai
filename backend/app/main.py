@@ -12,10 +12,10 @@ from contextlib import asynccontextmanager, suppress
 from sqlalchemy import func, inspect, text
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.cors import StrictCORSMiddleware
 from app.core.rate_limit import global_ip_rate_limiter, rate_limit_key
 from app.core.observability import configure_observability
 from app.core.request_limits import RequestBodyLimitMiddleware
@@ -420,30 +420,26 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-cors_allowed_origins = ["*"] if settings.ENVIRONMENT == "dev" else list(dict.fromkeys([
-    settings.FRONTEND_URL.rstrip("/"),
-    *[
-        origin.strip().rstrip("/")
-        for origin in settings.PUBLIC_WIDGET_ALLOWED_ORIGINS.split(",")
-        if origin.strip().startswith("https://")
-    ],
-]))
+cors_trusted_origins = {settings.FRONTEND_URL.strip().rstrip("/")}
+if settings.ENVIRONMENT == "dev":
+    cors_trusted_origins.update(
+        {
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        }
+    )
+cors_widget_origins = {
+    origin.strip().rstrip("/")
+    for origin in settings.PUBLIC_WIDGET_ALLOWED_ORIGINS.split(",")
+    if origin.strip()
+}
 
-# Configure CORS. Customer widget origins must be explicitly approved.
+# Authenticated dashboard origins and credential-free customer widget origins
+# intentionally use separate policies.
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Accept",
-        "Authorization",
-        "Content-Type",
-        "X-Request-ID",
-        "X-Tenant-ID",
-        "X-Widget-Session",
-    ],
-    expose_headers=["Retry-After", "X-Request-ID"],
+    StrictCORSMiddleware,
+    trusted_origins=sorted(cors_trusted_origins),
+    widget_origins=sorted(cors_widget_origins),
     max_age=600,
 )
 

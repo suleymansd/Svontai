@@ -331,6 +331,46 @@ class TestProductionSecretValidation:
         assert settings.ENVIRONMENT == "prod"
         assert settings.USE_N8N is True
 
+    @pytest.mark.parametrize(
+        "frontend_url",
+        [
+            "*",
+            "http://app.svontai.com",
+            "https://app.svontai.com/path",
+            "https://app.svontai.com?redirect=attacker.example",
+        ],
+    )
+    def test_production_rejects_unsafe_frontend_origins(self, frontend_url):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(**_prod_real_service_settings(FRONTEND_URL=frontend_url))
+
+        assert "FRONTEND_URL as an HTTPS origin" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "widget_origins",
+        [
+            "*",
+            "http://customer.example",
+            "https://customer.example/widget",
+            "https://customer.example,https://second.example?bad=true",
+        ],
+    )
+    def test_production_rejects_unsafe_widget_origins(self, widget_origins):
+        from pydantic import ValidationError
+        from app.core.config import Settings
+
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                **_prod_real_service_settings(
+                    PUBLIC_WIDGET_ALLOWED_ORIGINS=widget_origins,
+                )
+            )
+
+        assert "PUBLIC_WIDGET_ALLOWED_ORIGINS" in str(exc_info.value)
+
     def test_manual_billing_does_not_require_stripe_in_production(self):
         from app.core.config import Settings
 
