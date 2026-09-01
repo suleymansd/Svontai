@@ -249,7 +249,14 @@ async def generate_ai_reply(
     if bot is None or conversation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot or conversation not found")
 
-    if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+    if (
+        not conversation.ai_reply_enabled
+        or conversation.is_ai_paused
+        or conversation.status in {
+            ConversationStatus.HUMAN_TAKEOVER.value,
+            ConversationStatus.WAITING.value,
+        }
+    ):
         return AIReplyResponse(shouldReply=False, handoffRequired=True)
 
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()

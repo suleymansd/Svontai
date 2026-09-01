@@ -312,6 +312,8 @@ export const conversationApi = {
   get: (id: string) => api.get(`/conversations/${id}`),
   getMessages: (id: string, params?: { skip?: number; limit?: number }) =>
     api.get(`/conversations/${id}/messages`, { params }),
+  updateAIReplyPolicy: (id: string, enabled: boolean) =>
+    api.patch(`/conversations/${id}/ai-reply`, { enabled }),
 }
 
 // Lead API

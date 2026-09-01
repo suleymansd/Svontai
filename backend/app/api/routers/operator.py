@@ -44,6 +44,7 @@ class ConversationWithStatus(BaseModel):
     source: str
     status: str
     is_ai_paused: bool
+    ai_reply_enabled: bool
     has_lead: bool
     lead_score: int
     summary: Optional[str]
@@ -124,6 +125,7 @@ async def list_operator_conversations(
             source=conv.source,
             status=conv.status,
             is_ai_paused=conv.is_ai_paused,
+            ai_reply_enabled=conv.ai_reply_enabled,
             has_lead=conv.has_lead,
             lead_score=conv.lead_score,
             summary=conv.summary,

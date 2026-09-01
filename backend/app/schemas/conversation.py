@@ -34,6 +34,7 @@ class ConversationResponse(ConversationBase):
     id: UUID
     bot_id: UUID
     status: str
+    ai_reply_enabled: bool
     customer_name: str | None
     customer_phone: str
     last_message: str | None

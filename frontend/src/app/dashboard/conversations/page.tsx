@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Bot,
+  BotOff,
   MessageSquare,
   Search,
   Send,
@@ -17,7 +19,10 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { useToast } from '@/components/ui/use-toast'
 import { conversationApi } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-error'
 import { formatDate, cn } from '@/lib/utils'
 import { ContentContainer } from '@/components/shared/content-container'
 import { PageHeader } from '@/components/shared/page-header'
@@ -28,6 +33,7 @@ import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
 export default function ConversationsPage() {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -50,6 +56,26 @@ export default function ConversationsPage() {
     enabled: !!selectedConversation,
   })
 
+  const aiReplyMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      conversationApi.updateAIReplyPolicy(id, enabled),
+    onSuccess: (response) => {
+      queryClient.setQueryData(['conversation', response.data.id], response.data)
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      toast({
+        title: response.data.ai_reply_enabled ? 'AI yanıtları açıldı' : 'Kişi AI yanıtlarından hariç tutuldu',
+        description: response.data.ai_reply_enabled
+          ? 'Yeni mesajlar otomatik olarak yanıtlanacak.'
+          : 'Mesajları görünmeye devam edecek, ancak otomatik yanıt gönderilmeyecek.',
+      })
+    },
+    onError: (error) => toast({
+      title: 'AI yanıt ayarı değiştirilemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
+  })
+
   const filteredConversations = conversations?.filter((conv: any) => {
     if (!searchTerm) return true
     const search = searchTerm.toLowerCase()
@@ -57,8 +83,8 @@ export default function ConversationsPage() {
   })
 
   const activeCount = conversations?.filter((c: any) => c.status !== 'closed').length || 0
-  const closedCount = conversations?.filter((c: any) => c.status === 'closed').length || 0
   const totalCount = conversations?.length || 0
+  const aiExcludedCount = conversations?.filter((c: any) => c.ai_reply_enabled === false).length || 0
   const today = new Date().toDateString()
   const todayCount = conversations?.filter(
     (c: any) => new Date(c.created_at).toDateString() === today
@@ -81,11 +107,11 @@ export default function ConversationsPage() {
         <div className="grid gap-4 sm:grid-cols-4">
           <KPIStat label="Toplam" value={totalCount} icon={<MessageSquare className="h-5 w-5" />} />
           <KPIStat label="Aktif" value={activeCount} icon={<Clock className="h-5 w-5" />} />
-          <KPIStat label="Kapatılan" value={closedCount} icon={<MessageSquare className="h-5 w-5" />} />
+          <KPIStat label="AI Hariç" value={aiExcludedCount} icon={<BotOff className="h-5 w-5" />} />
           <KPIStat label="Bugün" value={todayCount} icon={<MessageSquare className="h-5 w-5" />} />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-320px)] min-h-[500px]">
+        <div className="grid min-h-[500px] gap-6 lg:h-[calc(100vh-320px)] lg:grid-cols-3">
           <Card className="lg:col-span-1 flex flex-col border border-border/70 shadow-soft">
             <div className="p-4 border-b border-border/70">
               <div className="relative">
@@ -141,9 +167,15 @@ export default function ConversationsPage() {
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <Badge variant={conv.status !== 'closed' ? 'success' : 'secondary'}>
-                            {conv.status !== 'closed' ? 'Aktif' : 'Kapalı'}
-                          </Badge>
+                          {conv.ai_reply_enabled === false ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <BotOff className="h-3 w-3" /> AI kapalı
+                            </Badge>
+                          ) : (
+                            <Badge variant={conv.status !== 'closed' ? 'success' : 'secondary'}>
+                              {conv.status !== 'closed' ? 'Aktif' : 'Kapalı'}
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             {formatDate(conv.last_message_at || conv.created_at)}
                           </span>
@@ -173,32 +205,54 @@ export default function ConversationsPage() {
             ) : (
               <div className="flex flex-col h-full">
                 <div className="p-4 border-b border-border/70">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary flex items-center justify-center ring-2 ring-primary/10">
-                      <User className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">
-                        {selectedConvData.customer_name || selectedConvData.customer_phone || 'Bilinmeyen'}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {selectedConvData.customer_phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {selectedConvData.customer_phone}
-                          </span>
-                        )}
-                        {selectedConvData.source && (
-                          <span className="flex items-center gap-1">
-                            <Globe className="w-3 h-3" />
-                            {selectedConvData.source}
-                          </span>
-                        )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary ring-2 ring-primary/10">
+                        <User className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate font-semibold">
+                          {selectedConvData.customer_name || selectedConvData.customer_phone || 'Bilinmeyen'}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {selectedConvData.customer_phone && (
+                            <span className="flex items-center gap-1 whitespace-nowrap">
+                              <Phone className="w-3 h-3" />
+                              {selectedConvData.customer_phone}
+                            </span>
+                          )}
+                          {selectedConvData.source && (
+                            <span className="flex items-center gap-1 whitespace-nowrap">
+                              <Globe className="w-3 h-3" />
+                              {selectedConvData.source}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <Badge variant={selectedConvData.status !== 'closed' ? 'success' : 'secondary'}>
-                      {selectedConvData.status !== 'closed' ? 'Aktif' : 'Kapalı'}
-                    </Badge>
+                    <div className="flex w-full items-center gap-3 rounded-md border border-border/70 px-3 py-2 sm:w-auto sm:shrink-0">
+                      {selectedConvData.ai_reply_enabled === false ? (
+                        <BotOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Bot className="h-4 w-4 text-primary" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">AI otomatik yanıt</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {selectedConvData.ai_reply_enabled === false ? 'Bu kişi hariç tutuldu' : 'Bu kişi için aktif'}
+                        </p>
+                      </div>
+                      <Switch
+                        className="ml-auto data-[state=unchecked]:bg-slate-300 sm:ml-0"
+                        checked={selectedConvData.ai_reply_enabled !== false}
+                        disabled={aiReplyMutation.isPending}
+                        onCheckedChange={(enabled) => aiReplyMutation.mutate({
+                          id: selectedConvData.id,
+                          enabled,
+                        })}
+                        aria-label="Bu kişi için AI otomatik yanıt"
+                      />
+                    </div>
                   </div>
                 </div>
 

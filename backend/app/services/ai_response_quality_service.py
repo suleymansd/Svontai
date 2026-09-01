@@ -51,6 +51,32 @@ class AIResponseQualityService:
         ).strip()
         return cleaned or reply.strip()
 
+    @classmethod
+    def _remove_redundant_sentences(cls, reply: str) -> str:
+        """Drop near-identical sentences without another paid model request."""
+        has_line_structure = "\n" in reply
+        parts = [
+            part.strip()
+            for part in re.split(r"\n+" if has_line_structure else r"(?<=[.!?])\s+", reply)
+            if part.strip()
+        ]
+        if len(parts) < 2:
+            return reply.strip()
+
+        kept: list[str] = []
+        normalized_kept: list[str] = []
+        for part in parts:
+            normalized = cls._normalize(part)
+            is_redundant = any(
+                len(normalized) >= 24
+                and SequenceMatcher(None, normalized, previous).ratio() >= 0.86
+                for previous in normalized_kept
+            )
+            if not is_redundant:
+                kept.append(part)
+                normalized_kept.append(normalized)
+        return ("\n" if has_line_structure else " ").join(kept).strip()
+
     def assess(
         self,
         *,
@@ -62,6 +88,7 @@ class AIResponseQualityService:
         user_message: str | None = None,
     ) -> QualityAssessment:
         cleaned = self._remove_repeated_greeting((reply or "").strip(), conversation)
+        cleaned = self._remove_redundant_sentences(cleaned)
         reasons: list[str] = []
 
         if user_message is None:

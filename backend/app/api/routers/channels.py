@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now_naive
 from app.db.session import get_db
 from app.core.n8n_security import verify_n8n_request_dependency, verify_n8n_bearer_token
 from app.services.n8n_client import get_n8n_client
@@ -28,7 +29,7 @@ from app.services.push_notification_service import send_tenant_push_notification
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
 from app.models.bot import Bot
-from app.models.conversation import Conversation, ConversationSource
+from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message, MessageSender
 from app.models.automation import AutomationRun, AutomationRunStatus
 from app.services.assistant_media_service import AssistantMediaService
@@ -67,6 +68,8 @@ class WhatsAppSendResponse(BaseModel):
     message_id: Optional[str] = None
     error: Optional[str] = None
     run_id: Optional[str] = None
+    skipped: bool = False
+    duplicate: bool = False
 
 
 class WhatsAppTemplateSendRequest(BaseModel):
@@ -175,6 +178,25 @@ async def send_whatsapp_message(
     )
     
     try:
+        conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
+        run, existing_delivery = _prepare_automation_delivery(
+            db,
+            tenant_id=tenant_id,
+            to_number=body.to,
+            run_id=run_id,
+            delivery_kind="text",
+        )
+        if existing_delivery is not None:
+            return WhatsAppSendResponse(
+                success=True,
+                message_id=existing_delivery.external_id,
+                run_id=run_id,
+                duplicate=True,
+            )
+        if _automated_reply_blocked(conversation, require_conversation=bool(run_id)):
+            _mark_run_skipped(db, run, "contact_ai_reply_disabled")
+            return WhatsAppSendResponse(success=True, run_id=run_id, skipped=True)
+
         # Find WhatsApp account for tenant
         account = await _get_whatsapp_account(
             db, tenant_id, body.phone_number_id, body.bot_id
@@ -195,7 +217,6 @@ async def send_whatsapp_message(
             )
 
         outbound_text = body.text
-        conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
         if conversation is not None:
             knowledge_items = AssistantKnowledgeService.list_effective(db, conversation.bot)
             meta = body.meta or {}
@@ -247,7 +268,15 @@ async def send_whatsapp_message(
             
             # Store message in conversation if we can find it
             await _store_bot_message(
-                db, tenant_id, body.to, outbound_text, wa_message_id
+                db,
+                tenant_id,
+                body.to,
+                outbound_text,
+                wa_message_id,
+                bot_id=body.bot_id,
+                automation_run_id=run_id,
+                automation_delivery_key=_delivery_key(run_id, "text"),
+                reply_to_external_id=run.message_id if run is not None else None,
             )
 
             # Billing-aware metering (outbound)
@@ -297,6 +326,8 @@ async def send_whatsapp_message(
                 run_id=run_id
             )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in WhatsApp send: {e}", exc_info=True)
         return WhatsAppSendResponse(
@@ -326,6 +357,25 @@ async def send_whatsapp_template(
     tenant_id = body.tenant_id
     run_id = body.meta.get("runId") if body.meta else None
 
+    conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
+    run, existing_delivery = _prepare_automation_delivery(
+        db,
+        tenant_id=tenant_id,
+        to_number=body.to,
+        run_id=run_id,
+        delivery_kind="template",
+    )
+    if existing_delivery is not None:
+        return WhatsAppSendResponse(
+            success=True,
+            message_id=existing_delivery.external_id,
+            run_id=run_id,
+            duplicate=True,
+        )
+    if _automated_reply_blocked(conversation, require_conversation=bool(run_id)):
+        _mark_run_skipped(db, run, "contact_ai_reply_disabled")
+        return WhatsAppSendResponse(success=True, run_id=run_id, skipped=True)
+
     account = await _get_whatsapp_account(db, tenant_id, body.phone_number_id, body.bot_id)
     if not account:
         error_msg = f"No WhatsApp account found for tenant {tenant_id}"
@@ -342,7 +392,17 @@ async def send_whatsapp_template(
             components=body.components,
         )
         wa_message_id = result.get("message_id")
-        await _store_bot_message(db, tenant_id, body.to, f"[template:{body.template_name}]", wa_message_id)
+        await _store_bot_message(
+            db,
+            tenant_id,
+            body.to,
+            f"[template:{body.template_name}]",
+            wa_message_id,
+            bot_id=body.bot_id,
+            automation_run_id=run_id,
+            automation_delivery_key=_delivery_key(run_id, "template"),
+            reply_to_external_id=run.message_id if run is not None else None,
+        )
 
         # Billing-aware metering (outbound)
         try:
@@ -387,6 +447,25 @@ async def send_whatsapp_document(
     if not body.link and not body.media_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="link or mediaId is required")
 
+    conversation = _find_whatsapp_conversation(db, tenant_id, body.to, body.bot_id)
+    run, existing_delivery = _prepare_automation_delivery(
+        db,
+        tenant_id=tenant_id,
+        to_number=body.to,
+        run_id=run_id,
+        delivery_kind="document",
+    )
+    if existing_delivery is not None:
+        return WhatsAppSendResponse(
+            success=True,
+            message_id=existing_delivery.external_id,
+            run_id=run_id,
+            duplicate=True,
+        )
+    if _automated_reply_blocked(conversation, require_conversation=bool(run_id)):
+        _mark_run_skipped(db, run, "contact_ai_reply_disabled")
+        return WhatsAppSendResponse(success=True, run_id=run_id, skipped=True)
+
     account = await _get_whatsapp_account(db, tenant_id, body.phone_number_id, body.bot_id)
     if not account:
         error_msg = f"No WhatsApp account found for tenant {tenant_id}"
@@ -404,7 +483,16 @@ async def send_whatsapp_document(
             caption=body.caption,
         )
         wa_message_id = result.get("message_id")
-        await _store_bot_message(db, tenant_id, body.to, f"[document:{body.filename or ''}]", wa_message_id)
+        await _store_bot_message(
+            db,
+            tenant_id,
+            body.to,
+            f"[document:{body.filename or ''}]",
+            wa_message_id,
+            bot_id=body.bot_id,
+            automation_run_id=run_id,
+            automation_delivery_key=_delivery_key(run_id, "document"),
+        )
 
         try:
             SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
@@ -440,6 +528,25 @@ async def send_whatsapp_media(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant or asset ID") from exc
 
     run_id = body.meta.get("runId") if body.meta else None
+    conversation = _find_whatsapp_conversation(db, body.tenant_id, body.to, body.bot_id)
+    run, existing_delivery = _prepare_automation_delivery(
+        db,
+        tenant_id=body.tenant_id,
+        to_number=body.to,
+        run_id=run_id,
+        delivery_kind="media",
+    )
+    if existing_delivery is not None:
+        return WhatsAppSendResponse(
+            success=True,
+            message_id=existing_delivery.external_id,
+            run_id=run_id,
+            duplicate=True,
+        )
+    if _automated_reply_blocked(conversation, require_conversation=bool(run_id)):
+        _mark_run_skipped(db, run, "contact_ai_reply_disabled")
+        return WhatsAppSendResponse(success=True, run_id=run_id, skipped=True)
+
     service = AssistantMediaService(db)
     asset = service.get(tenant_id, asset_id)
     if asset is None or not asset.is_active:
@@ -467,6 +574,9 @@ async def send_whatsapp_media(
             body.to,
             f"[{asset.media_type}:{asset.title}]",
             message_id,
+            bot_id=body.bot_id,
+            automation_run_id=run_id,
+            automation_delivery_key=_delivery_key(run_id, "media"),
             raw_payload={
                 "provider": result.get("provider"),
                 "media_asset_id": str(asset.id),
@@ -528,6 +638,12 @@ async def update_automation_status(
             detail="Tenant mismatch for automation run"
         )
     
+    if (
+        run.status in {AutomationRunStatus.SUCCESS.value, AutomationRunStatus.SKIPPED.value}
+        and body.status == "failed"
+    ):
+        return {"success": True, "run_id": body.run_id, "status": run.status}
+
     if body.status == "success":
         run.mark_success(body.response_data)
     elif body.status == "failed":
@@ -545,6 +661,70 @@ async def update_automation_status(
 # ===========================================
 # Helper Functions
 # ===========================================
+
+def _phone_key(value: str | None) -> str:
+    return "".join(character for character in (value or "") if character.isdigit())
+
+
+def _delivery_key(run_id: str | None, delivery_kind: str) -> str | None:
+    return f"{run_id}:{delivery_kind}" if run_id else None
+
+
+def _prepare_automation_delivery(
+    db: Session,
+    *,
+    tenant_id: str,
+    to_number: str,
+    run_id: str | None,
+    delivery_kind: str,
+) -> tuple[AutomationRun | None, Message | None]:
+    """Lock one automation run and detect a previously completed delivery."""
+    if not run_id:
+        return None, None
+
+    run = db.query(AutomationRun).filter(
+        AutomationRun.id == run_id,
+        AutomationRun.tenant_id == tenant_id,
+    ).with_for_update().first()
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Automation run not found")
+    if _phone_key(run.from_number) != _phone_key(to_number):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Automation recipient mismatch")
+
+    existing = db.query(Message).filter(
+        Message.automation_delivery_key == _delivery_key(run_id, delivery_kind),
+    ).first()
+    if existing is None and isinstance(run.response_payload, dict):
+        delivered_message_id = run.response_payload.get("wa_message_id")
+        if delivered_message_id:
+            existing = Message(external_id=str(delivered_message_id))
+    return run, existing
+
+
+def _automated_reply_blocked(
+    conversation: Conversation | None,
+    *,
+    require_conversation: bool,
+) -> bool:
+    if conversation is None:
+        return require_conversation
+    return (
+        not conversation.ai_reply_enabled
+        or conversation.is_ai_paused
+        or conversation.status in {
+            ConversationStatus.HUMAN_TAKEOVER.value,
+            ConversationStatus.WAITING.value,
+        }
+    )
+
+
+def _mark_run_skipped(db: Session, run: AutomationRun | None, reason: str) -> None:
+    if run is None:
+        return
+    run.status = AutomationRunStatus.SKIPPED.value
+    run.completed_at = run.updated_at = utc_now_naive()
+    run.response_payload = {"skipped": True, "reason": reason}
+    db.commit()
 
 def _find_whatsapp_conversation(
     db: Session,
@@ -602,28 +782,26 @@ async def _store_bot_message(
     to_number: str,
     text: str,
     external_id: Optional[str] = None,
+    *,
+    bot_id: Optional[str] = None,
+    automation_run_id: Optional[str] = None,
+    automation_delivery_key: Optional[str] = None,
+    reply_to_external_id: Optional[str] = None,
     raw_payload: Optional[dict] = None,
-):
+) -> Message | None:
     """Store bot message in conversation history."""
     try:
-        # Find bot for tenant
-        bot = db.query(Bot).filter(
-            Bot.tenant_id == tenant_id,
-            Bot.is_active == True
-        ).first()
-        
-        if not bot:
-            return
-        
-        # Find conversation
-        conversation = db.query(Conversation).filter(
-            Conversation.bot_id == bot.id,
-            Conversation.external_user_id == to_number,
-            Conversation.source == ConversationSource.WHATSAPP.value
-        ).first()
+        if automation_delivery_key:
+            existing = db.query(Message).filter(
+                Message.automation_delivery_key == automation_delivery_key,
+            ).first()
+            if existing is not None:
+                return existing
+
+        conversation = _find_whatsapp_conversation(db, tenant_id, to_number, bot_id)
         
         if not conversation:
-            return
+            return None
         
         # Save bot message
         message = Message(
@@ -631,15 +809,21 @@ async def _store_bot_message(
             sender=MessageSender.BOT.value,
             content=text,
             external_id=external_id,
+            automation_run_id=automation_run_id,
+            automation_delivery_key=automation_delivery_key,
+            reply_to_external_id=reply_to_external_id,
             raw_payload=raw_payload,
         )
         db.add(message)
         db.commit()
         
         logger.debug(f"Stored bot message for conversation {conversation.id}")
+        return message
     
     except Exception as e:
+        db.rollback()
         logger.error(f"Failed to store bot message: {e}")
+        return None
 
 
 def _update_run_success(db: Session, run_id: str, tenant_id: str | uuid.UUID, response_data: dict):
@@ -664,6 +848,15 @@ def _update_run_failed(db: Session, run_id: str, tenant_id: str | uuid.UUID, err
             AutomationRun.tenant_id == str(tenant_id),
         ).first()
         if run:
+            if run.status in {AutomationRunStatus.SUCCESS.value, AutomationRunStatus.SKIPPED.value}:
+                return
+            delivered = db.query(Message.id).filter(
+                Message.automation_run_id == str(run.id),
+            ).first()
+            if delivered:
+                run.mark_success({"delivery_confirmed": True})
+                db.commit()
+                return
             run.mark_failed(error_message)
             db.commit()
     except Exception as e:

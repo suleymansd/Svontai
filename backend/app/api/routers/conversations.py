@@ -5,6 +5,7 @@ Conversation management router.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
@@ -18,6 +19,10 @@ from app.schemas.conversation import ConversationResponse, ConversationWithMessa
 from app.schemas.message import MessageResponse
 
 router = APIRouter(tags=["Conversations"])
+
+
+class ConversationAIReplyPolicyUpdate(BaseModel):
+    enabled: bool
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])
@@ -171,3 +176,34 @@ async def get_conversation_messages(
     ).offset(skip).limit(limit).all()
     
     return messages
+
+
+@router.patch("/conversations/{conversation_id}/ai-reply", response_model=ConversationResponse)
+async def update_conversation_ai_reply_policy(
+    conversation_id: UUID,
+    body: ConversationAIReplyPolicyUpdate,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["dashboard:edit"])),
+) -> Conversation:
+    """Enable or disable all automated replies for one tenant contact."""
+    conversation = db.query(Conversation).options(
+        selectinload(Conversation.messages)
+    ).join(Bot).filter(
+        Conversation.id == conversation_id,
+        Bot.tenant_id == current_tenant.id,
+    ).first()
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Konuşma bulunamadı",
+        )
+
+    conversation.ai_reply_enabled = body.enabled
+    tags = [tag for tag in (conversation.tags or []) if tag != "ai_reply_excluded"]
+    if not body.enabled:
+        tags.append("ai_reply_excluded")
+    conversation.tags = tags
+    db.commit()
+    db.refresh(conversation)
+    return conversation

@@ -119,3 +119,16 @@ def test_quality_gate_does_not_handoff_for_ordinary_unknown_question():
 
     assert result.requires_handoff is False
     assert result.reasons == ()
+
+
+def test_quality_gate_removes_near_duplicate_sentences():
+    reply = (
+        "Web tasarım ve dijital pazarlama hizmeti veriyoruz. "
+        "Web tasarımı ve dijital pazarlama hizmetleri veriyoruz. "
+        "Hangi hizmetle ilgileniyorsunuz?"
+    )
+
+    cleaned = AIResponseQualityService._remove_redundant_sentences(reply)
+
+    assert cleaned.count("dijital pazarlama") == 1
+    assert "Hangi hizmetle ilgileniyorsunuz?" in cleaned

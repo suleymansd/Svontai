@@ -27,6 +27,14 @@ class Message(Base):
     __table_args__ = (
         Index("ix_messages_conversation_created", "conversation_id", "created_at"),
         Index("uq_messages_conversation_external_id", "conversation_id", "external_id", unique=True),
+        Index("ix_messages_automation_run_id", "automation_run_id"),
+        Index("uq_messages_automation_delivery_key", "automation_delivery_key", unique=True),
+        Index(
+            "uq_messages_conversation_reply_to_external_id",
+            "conversation_id",
+            "reply_to_external_id",
+            unique=True,
+        ),
     )
     
     id: Mapped[uuid.UUID] = mapped_column(
@@ -49,6 +57,21 @@ class Message(Base):
         String(255),
         nullable=True,
         index=True
+    )
+    automation_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+        comment="n8n automation run that produced this outbound message",
+    )
+    automation_delivery_key: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+        comment="Unique run and delivery-kind key for exactly-once automated sends",
+    )
+    reply_to_external_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Inbound provider message ID answered by this outbound message",
     )
     raw_payload: Mapped[dict | None] = mapped_column(
         JSON,

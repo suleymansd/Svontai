@@ -350,10 +350,14 @@ async def process_whatsapp_reply_in_background(
             },
             n8n_workflow_id=n8n_workflow_id,
         )
-        if run_status and run_status not in {
-            AutomationRunStatus.FAILED.value,
-            AutomationRunStatus.TIMEOUT.value,
-        }:
+        if run_status != AutomationRunStatus.FAILED.value:
+            if run_status in {None, AutomationRunStatus.TIMEOUT.value}:
+                logger.warning(
+                    "whatsapp.n8n_delivery_uncertain_no_fallback tenant_id=%s message_id=%s status=%s",
+                    tenant_id,
+                    message_id,
+                    run_status,
+                )
             return
         logger.warning(
             "whatsapp.n8n_fallback tenant_id=%s message_id=%s workflow_id=%s",
@@ -380,7 +384,27 @@ async def process_whatsapp_reply_in_background(
                 message_id,
             )
             return
-        if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+        if (
+            not conversation.ai_reply_enabled
+            or conversation.is_ai_paused
+            or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
+        ):
+            logger.info(
+                "whatsapp.direct_reply_blocked_by_contact_policy tenant_id=%s conversation_id=%s",
+                tenant_id,
+                conversation_id,
+            )
+            return
+        existing_reply = db.query(Message.id).filter(
+            Message.conversation_id == conversation.id,
+            Message.reply_to_external_id == message_id,
+        ).first()
+        if existing_reply:
+            logger.info(
+                "whatsapp.direct_reply_duplicate_suppressed tenant_id=%s message_id=%s",
+                tenant_id,
+                message_id,
+            )
             return
 
         account_query = db.query(WhatsAppAccount).filter(
@@ -473,6 +497,7 @@ async def process_whatsapp_reply_in_background(
                 sender=MessageSender.BOT.value,
                 content=reply,
                 external_id=send_result.get("message_id"),
+                reply_to_external_id=message_id,
                 raw_payload={
                     "provider": provider,
                     "reply_to_message_id": message_id,
@@ -499,6 +524,7 @@ async def process_whatsapp_reply_in_background(
                 sender=MessageSender.BOT.value,
                 content=f"[{selected_media.asset.media_type}:{selected_media.asset.title}]",
                 external_id=media_message_id,
+                reply_to_external_id=message_id if not reply.strip() else None,
                 raw_payload={
                     "provider": provider,
                     "media_asset_id": str(selected_media.asset.id),
@@ -1032,6 +1058,7 @@ async def handle_incoming_message(
                 Conversation.id,
                 Conversation.is_ai_paused,
                 Conversation.status,
+                Conversation.ai_reply_enabled,
                 Conversation.extra_data,
             )
             .filter(
@@ -1046,7 +1073,8 @@ async def handle_incoming_message(
             conversation_id = conversation_row[0]
             conversation_is_ai_paused = bool(conversation_row[1])
             conversation_status = conversation_row[2] or ConversationStatus.AI_ACTIVE.value
-            existing_extra_data = dict(conversation_row[3] or {})
+            conversation_ai_reply_enabled = bool(conversation_row[3])
+            existing_extra_data = dict(conversation_row[4] or {})
             updated_extra_data = {**existing_extra_data, "phone_number": from_number}
             existing_name = _clean_contact_name(
                 existing_extra_data.get("contact_name"),
@@ -1077,6 +1105,7 @@ async def handle_incoming_message(
             conversation_id = uuid.uuid4()
             conversation_is_ai_paused = False
             conversation_status = ConversationStatus.AI_ACTIVE.value
+            conversation_ai_reply_enabled = True
 
             new_conversation = Conversation(
                 id=conversation_id,
@@ -1085,6 +1114,7 @@ async def handle_incoming_message(
                 source=ConversationSource.WHATSAPP.value,
                 status=ConversationStatus.AI_ACTIVE.value,
                 is_ai_paused=False,
+                ai_reply_enabled=True,
                 extra_data={
                     "contact_name": contact_name,
                     "contact_name_source": contact_name_source,
@@ -1135,6 +1165,20 @@ async def handle_incoming_message(
         except Exception as meter_exc:
             logger.warning("Usage counter increment failed tenant_id=%s error=%s", tenant_id_str, meter_exc)
 
+        if (
+            not conversation_ai_reply_enabled
+            or conversation_is_ai_paused
+            or conversation_status == ConversationStatus.HUMAN_TAKEOVER.value
+        ):
+            logger.info(
+                "whatsapp.automation_skipped_by_contact_policy tenant_id=%s message_id=%s enabled=%s paused=%s",
+                tenant_id_str,
+                message_id,
+                conversation_ai_reply_enabled,
+                conversation_is_ai_paused,
+            )
+            return
+
         try:
             from app.services.voice_automation_service import VoiceAutomationService
 
@@ -1156,10 +1200,6 @@ async def handle_incoming_message(
                 voice_exc,
                 exc_info=True,
             )
-
-        if conversation_is_ai_paused or conversation_status == ConversationStatus.HUMAN_TAKEOVER.value:
-            logger.info("Legacy AI branch skipped for message %s", message_id)
-            return
 
         n8n_client = get_n8n_client(db)
         logger.info("Settings.USE_N8N: %s", settings.USE_N8N)

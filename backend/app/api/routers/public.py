@@ -319,7 +319,11 @@ async def send_chat_message(
     db.add(user_message)
     db.commit()
     
-    if conversation.is_ai_paused or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value:
+    if (
+        not conversation.ai_reply_enabled
+        or conversation.is_ai_paused
+        or conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
+    ):
         return ChatSendResponse(
             user_message_id=user_message.id,
             reply_message_id=None,

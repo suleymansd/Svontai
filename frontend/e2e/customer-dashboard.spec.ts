@@ -28,6 +28,7 @@ const verificationResult = {
 }
 
 async function mockBackend(page: Page) {
+  let aiReplyEnabled = true
   await page.addInitScript(() => {
     localStorage.setItem('ui-storage', JSON.stringify({ state: { sidebarOpen: false, theme: 'light' }, version: 0 }))
   })
@@ -176,7 +177,58 @@ async function mockBackend(page: Page) {
         },
         knowledge_items_created: 1,
       }
-    } else if (path === '/conversations' || path === '/leads' || path === '/calls' || path === '/voice-automation/intents' || path === '/voice-automation/jobs') {
+    } else if (path === '/conversations') {
+      body = [{
+        id: 'conversation-1',
+        bot_id: 'bot-1',
+        external_user_id: '905551112233',
+        source: 'whatsapp',
+        status: 'ai_active',
+        ai_reply_enabled: aiReplyEnabled,
+        customer_name: 'Ayşe Yılmaz',
+        customer_phone: '+90 555 111 22 33',
+        last_message: 'Merhaba',
+        last_message_at: new Date().toISOString(),
+        extra_data: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }]
+    } else if (path === '/conversations/conversation-1/ai-reply' && request.method() === 'PATCH') {
+      aiReplyEnabled = Boolean(request.postDataJSON()?.enabled)
+      body = {
+        id: 'conversation-1',
+        bot_id: 'bot-1',
+        external_user_id: '905551112233',
+        source: 'whatsapp',
+        status: 'ai_active',
+        ai_reply_enabled: aiReplyEnabled,
+        customer_name: 'Ayşe Yılmaz',
+        customer_phone: '+90 555 111 22 33',
+        last_message: 'Merhaba',
+        last_message_at: new Date().toISOString(),
+        messages: [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }],
+        extra_data: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    } else if (path === '/conversations/conversation-1') {
+      body = {
+        id: 'conversation-1',
+        bot_id: 'bot-1',
+        external_user_id: '905551112233',
+        source: 'whatsapp',
+        status: 'ai_active',
+        ai_reply_enabled: aiReplyEnabled,
+        customer_name: 'Ayşe Yılmaz',
+        customer_phone: '+90 555 111 22 33',
+        last_message: 'Merhaba',
+        last_message_at: new Date().toISOString(),
+        messages: [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }],
+        extra_data: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    } else if (path === '/leads' || path === '/calls' || path === '/voice-automation/intents' || path === '/voice-automation/jobs') {
       body = []
     } else if (path === '/voice-automation/capabilities') {
       body = { mode: 'live', live_ready: true, provider: 'twilio', supported_providers: ['twilio'] }
@@ -325,6 +377,20 @@ test('assistant simulator previews a reply without creating customer data', asyn
       (path) => !path.startsWith('/product-analytics/') && path !== '/api/auth/refresh',
     ),
   ).toEqual(['/bots/bot-1/simulate'])
+  await expectNoHorizontalOverflow(page)
+})
+
+test('contact can be excluded from AI replies in conversations', async ({ page }) => {
+  await openAuthenticated(page, '/dashboard/conversations')
+  await page.getByRole('button', { name: /Ayşe Yılmaz/ }).click()
+
+  const aiSwitch = page.getByRole('switch', { name: 'Bu kişi için AI otomatik yanıt' })
+  await expect(aiSwitch).toBeChecked()
+  await aiSwitch.click()
+
+  await expect(aiSwitch).not.toBeChecked()
+  await expect(page.getByText('Kişi AI yanıtlarından hariç tutuldu', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bu kişi hariç tutuldu')).toBeVisible()
   await expectNoHorizontalOverflow(page)
 })
 
