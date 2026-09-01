@@ -63,6 +63,12 @@ SvontAi/
 
 ## 🚀 Getting Started
 
+Production deployment and the no-feature-loss Railway/Vercel migration package
+for Oracle Ampere A1 are documented in
+[`deploy/oracle/README.md`](deploy/oracle/README.md). It includes the ARM64
+Compose stack, secret validation, PostgreSQL/OpenWA/n8n data transfer, encrypted
+R2 volume backups, HTTPS ingress, verification, and rollback procedure.
+
 ### Prerequisites
 
 - Python 3.12+

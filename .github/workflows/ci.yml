@@ -87,3 +87,20 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  oracle-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate deployment scripts
+        run: |
+          bash -n deploy/oracle/scripts/*.sh
+          python3 -m py_compile deploy/oracle/scripts/*.py
+      - name: Validate production Compose contract
+        run: |
+          cp deploy/oracle/.env.oracle.example deploy/oracle/.env.oracle
+          chmod 600 deploy/oracle/.env.oracle
+          docker compose \
+            --env-file deploy/oracle/.env.oracle \
+            -f deploy/oracle/docker-compose.yml \
+            config --quiet
