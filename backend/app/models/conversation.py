@@ -64,6 +64,12 @@ class Conversation(Base):
         default=False,
         nullable=False
     )
+    ai_reply_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Whether automated AI and workflow replies may be sent to this contact",
+    )
     operator_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True

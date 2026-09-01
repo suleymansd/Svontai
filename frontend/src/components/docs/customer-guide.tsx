@@ -206,6 +206,7 @@ export function CustomerGuide() {
           <GuideSection id="mesajlar" eyebrow="Günlük operasyon" title="Mesajları ve müşteri kayıtlarını izleyin" description="Mesajlar ekranı konuşma geçmişini; Müşteriler ekranı ise AI tarafından yakalanan iletişim bilgilerini ve talepleri gösterir.">
             <div className="mt-6 grid gap-px overflow-hidden border border-border bg-border sm:grid-cols-3">{[
               ['Mesajlar', 'Kim yazdı, ne konuşuldu ve AI ne yanıtladı bilgisini inceleyin.'],
+              ['AI hariç tutma', 'Aile, ekip veya özel kişilerde konuşmayı açıp “AI otomatik yanıt” anahtarını kapatın. Mesaj görünür kalır; AI, n8n ve otomatik arama bu kişiye yanıt üretmez.'],
               ['Müşteriler', 'Telefon, isim, ilgi alanı ve müşteri durumunu takip edin.'],
               ['İnsan desteği', 'AI çözemediğinde oluşan destek kaydını Destek bölümünden yönetin.'],
             ].map(([title, text]) => <div key={title} className="bg-background p-5"><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p></div>)}</div>

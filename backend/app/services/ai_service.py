@@ -156,6 +156,9 @@ class AIService:
 13. {price_instruction}
 14. Bilgi eksikse konuşmayı kapatma. Önce müşterinin ne istediğini anlamak için tek ve kısa bir soru sor.
 15. Müşteri açıkça insan desteği istemedikçe temsilciye bağlandığını veya talebin aktarıldığını söyleme.
+16. Her müşteri mesajına tek, bütünlüklü bir WhatsApp yanıtı üret; alternatif ikinci bir yanıt yazma.
+17. Aynı bilgiyi farklı cümlelerle yeniden anlatma. Önce soruyu doğrudan yanıtla, gerekiyorsa tek kısa devam sorusu sor.
+18. Liste gerçekten okunabilirliği artırmıyorsa doğal paragraf kullan; başlıklarla ve kalıp metinlerle konuşmayı bölme.
 
 """
         
@@ -366,7 +369,7 @@ C: {item.answer}
                 model=self.model,
                 messages=messages,
                 max_tokens=max_tokens,
-                temperature=0.7,
+                temperature=0.55,
             )
             
             reply = response.choices[0].message.content or fallback_msg

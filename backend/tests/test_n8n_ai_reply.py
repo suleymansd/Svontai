@@ -113,6 +113,39 @@ def test_n8n_ai_reply_stops_during_human_takeover():
     generate.assert_not_awaited()
 
 
+def test_n8n_ai_reply_stops_for_excluded_contact():
+    tenant_id = uuid.uuid4()
+    bot_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    bot = MagicMock()
+    conversation = MagicMock(
+        ai_reply_enabled=False,
+        is_ai_paused=False,
+        status=ConversationStatus.AI_ACTIVE.value,
+    )
+    db = MagicMock()
+    db.query.side_effect = [
+        _query_returning(first=bot),
+        _query_returning(first=conversation),
+    ]
+    body = AIReplyRequest(
+        tenantId=str(tenant_id),
+        botId=str(bot_id),
+        conversationId=str(conversation_id),
+        message="Hizmetleriniz nelerdir?",
+    )
+
+    with patch("app.api.routers.n8n_tools._verify_tenant", new=AsyncMock()), patch.object(
+        ai_service,
+        "generate_reply",
+        new=AsyncMock(),
+    ) as generate:
+        result = asyncio.run(generate_ai_reply(request=MagicMock(), body=body, db=db))
+
+    assert result.should_reply is False
+    generate.assert_not_awaited()
+
+
 def test_n8n_tool_generation_uses_allowlisted_prompt():
     body = AIGenerateRequest(
         tenantId=str(uuid.uuid4()),

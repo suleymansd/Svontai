@@ -33,6 +33,7 @@ from app.models.automation import (
     TenantAutomationSettings
 )
 from app.models.tenant import Tenant
+from app.models.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,20 @@ class N8NClient:
         self.base_url = settings.N8N_BASE_URL.rstrip('/')
         self.timeout = settings.N8N_TIMEOUT_SECONDS
         self.max_retries = settings.N8N_RETRY_COUNT
+
+    def _preserve_confirmed_delivery(self, run: AutomationRun) -> bool:
+        """Never downgrade a run after its channel delivery was persisted."""
+        delivery = self.db.query(Message).filter(
+            Message.automation_run_id == str(run.id),
+        ).order_by(Message.created_at.asc()).first()
+        if not isinstance(delivery, Message):
+            return False
+        run.mark_success({
+            "delivery_confirmed": True,
+            "message_id": delivery.external_id,
+        })
+        self.db.commit()
+        return True
 
     def is_n8n_enabled_globally(self) -> bool:
         """Check if n8n is enabled globally via settings."""
@@ -505,6 +520,8 @@ class N8NClient:
                         error_message = str(raw_error.get("message") or raw_error.get("code") or "n8n workflow failed")
                     else:
                         error_message = str(raw_error or "n8n workflow failed")
+                    if self._preserve_confirmed_delivery(run):
+                        return {"success": True, "deliveryConfirmed": True}
                     run.mark_failed(error_message, response_data)
                     self.db.commit()
                     logger.warning(
@@ -534,6 +551,8 @@ class N8NClient:
                 return response_data
 
         except httpx.TimeoutException as e:
+            if self._preserve_confirmed_delivery(run):
+                return {"success": True, "deliveryConfirmed": True}
             run.mark_timeout()
             self.db.commit()
             SystemEventService(self.db).log(
@@ -549,6 +568,8 @@ class N8NClient:
             raise N8NTimeoutError(f"Request timed out: {e}")
 
         except httpx.ConnectError as e:
+            if self._preserve_confirmed_delivery(run):
+                return {"success": True, "deliveryConfirmed": True}
             run.mark_failed(f"Connection error: {e}")
             self.db.commit()
             SystemEventService(self.db).log(
@@ -564,6 +585,8 @@ class N8NClient:
             raise N8NConnectionError(f"Connection error: {e}")
 
         except httpx.HTTPStatusError as e:
+            if self._preserve_confirmed_delivery(run):
+                return {"success": True, "deliveryConfirmed": True}
             error_msg = f"HTTP {e.response.status_code}: {e.response.text[:500]}"
             run.mark_failed(error_msg, {"status_code": e.response.status_code})
             self.db.commit()
@@ -580,6 +603,8 @@ class N8NClient:
             raise N8NClientError(error_msg)
 
         except Exception as e:
+            if self._preserve_confirmed_delivery(run):
+                return {"success": True, "deliveryConfirmed": True}
             run.mark_failed(str(e))
             self.db.commit()
             SystemEventService(self.db).log(
