@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "SvontAI",
+    "slug": "svontai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "svontai",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.svontai.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "SvontAI hesabınızı güvenli biçimde açmak için Face ID kullanılır."
+      }
+    },
+    "android": {
+      "package": "com.svontai.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1220",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F7F9FC",
+          "image": "./assets/images/svontai-logo.png",
+          "imageWidth": 112
+        }
+      ],
+      "expo-secure-store",
+      "expo-local-authentication"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "apiUrl": "https://svontai-production.up.railway.app"
+    }
+  }
+}

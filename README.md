@@ -34,6 +34,9 @@ SvontAi/
 │   │   ├── components/
 │   │   └── lib/       # Utils, API, store
 │   └── package.json
+├── mobile/            # Expo React Native iOS/Android operations client
+│   ├── src/app/       # Expo Router screens
+│   └── src/lib/       # Secure auth and typed API client
 ├── widget/            # Vanilla JS chat widget
 │   └── index.js
 └── docs/              # Documentation
@@ -60,6 +63,12 @@ SvontAi/
 ### Widget
 - Vanilla JavaScript
 - Shadow DOM
+
+### Mobile
+- Expo + React Native
+- Expo Router
+- TanStack Query
+- SecureStore-backed rotating sessions
 
 ## 🚀 Getting Started
 

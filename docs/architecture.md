@@ -3,6 +3,7 @@
 ### Repo scan summary
 - Frontend uses Next.js App Router under `frontend/src/app` with shared UI in `frontend/src/components/ui`.
 - Backend is FastAPI with routers in `backend/app/api/routers`, SQLAlchemy models in `backend/app/models`, Pydantic schemas in `backend/app/schemas`, and Alembic migrations in `backend/alembic/versions`.
+- Mobile is a separate Expo/React Native client under `mobile/`; it shares the FastAPI backend and never embeds the web dashboard. See `docs/mobile_architecture.md`.
 - Auth currently uses JWT access/refresh tokens via `Authorization: Bearer` and localStorage (`frontend/src/lib/api.ts`, `backend/app/core/security.py`).
 - Tenant isolation is currently owner-based (`backend/app/models/tenant.py`, `backend/app/dependencies/auth.py`).
 
