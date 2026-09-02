@@ -9,8 +9,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.svontai.mobile",
+      "buildNumber": "1",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "SvontAI hesabınızı güvenli biçimde açmak için Face ID kullanılır."
       }
     },
