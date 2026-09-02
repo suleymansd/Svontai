@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status, Request
+from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -55,6 +55,8 @@ from app.schemas.auth import (
     TwoFactorSetupResponse,
     TwoFactorStatusResponse,
     AccessTokenResponse,
+    MobileAccessTokenResponse,
+    RefreshTokenRequest,
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.password_reset import (
@@ -286,13 +288,13 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=AccessTokenResponse)
+@router.post("/login", response_model=MobileAccessTokenResponse | AccessTokenResponse)
 async def login(
     credentials: LoginRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db)
-) -> AccessTokenResponse:
+) -> MobileAccessTokenResponse | AccessTokenResponse:
     """
     Login and return a short-lived access token. Refresh stays in an HttpOnly cookie.
     
@@ -438,21 +440,35 @@ async def login(
     
     # Create tokens + session
     portal_value = credentials.portal or "tenant"
-    refresh_token = create_refresh_token(data={"sub": str(user.id), "portal": portal_value, "mfa": bool(user.two_factor_enabled)})
+    token_claims = {
+        "sub": str(user.id),
+        "portal": portal_value,
+        "mfa": bool(user.two_factor_enabled),
+        "client": credentials.client,
+    }
+    if credentials.client == "mobile":
+        token_claims["device_id"] = credentials.device_id
+
+    refresh_token = create_refresh_token(data=token_claims)
     session_service = SessionService(db)
+    session_user_agent = request.headers.get("User-Agent")
+    if credentials.client == "mobile":
+        device_label = (credentials.device_name or "Mobil cihaz").strip()
+        version_label = (credentials.app_version or "unknown").strip()
+        session_user_agent = f"SvontAI Mobile/{version_label} ({credentials.platform}; {device_label})"[:500]
     session = session_service.create_session(
         user_id=user.id,
         refresh_token=refresh_token,
         ip_address=client_ip(request),
-        user_agent=request.headers.get("User-Agent")
+        user_agent=session_user_agent,
     )
     refresh_token = create_refresh_token(
-        data={"sub": str(user.id), "portal": portal_value, "mfa": bool(user.two_factor_enabled)},
+        data=token_claims,
         session_id=str(session.id),
     )
     session_service.rotate_session(session, refresh_token)
     access_token = create_access_token(
-        data={"sub": str(user.id), "portal": portal_value, "sid": str(session.id), "mfa": bool(user.two_factor_enabled)}
+        data={**token_claims, "sid": str(session.id)}
     )
 
     if credentials.portal == "super_admin":
@@ -477,8 +493,16 @@ async def login(
 
     user.last_login = utc_now_naive()
     db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    if credentials.client == "mobile":
+        return MobileAccessTokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
+
     _set_refresh_cookie(response, refresh_token)
-    
     return AccessTokenResponse(access_token=access_token)
 
 
@@ -542,13 +566,14 @@ async def enable_super_admin_two_factor(
     return {"enabled": True}
 
 
-@router.post("/refresh", response_model=AccessTokenResponse)
+@router.post("/refresh", response_model=MobileAccessTokenResponse | AccessTokenResponse)
 async def refresh_token(
     request: Request,
     response: Response,
+    refresh_request: RefreshTokenRequest | None = Body(default=None),
     cookie_refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
     db: Session = Depends(get_db)
-) -> AccessTokenResponse:
+) -> MobileAccessTokenResponse | AccessTokenResponse:
     """
     Refresh access token using refresh token.
     
@@ -564,7 +589,13 @@ async def refresh_token(
         "Çok fazla token yenileme denemesi. Lütfen daha sonra tekrar deneyin.",
     )
     _require_allowed_refresh_origin(request)
-    incoming_refresh_token = cookie_refresh_token
+    is_mobile_refresh = bool(
+        refresh_request
+        and refresh_request.refresh_token
+        and refresh_request.device_id
+    )
+    mobile_device_id = refresh_request.device_id if refresh_request else None
+    incoming_refresh_token = refresh_request.refresh_token if is_mobile_refresh else cookie_refresh_token
     if not incoming_refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -587,6 +618,18 @@ async def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Geçersiz token türü",
             headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    if is_mobile_refresh:
+        if payload.get("client") != "mobile" or payload.get("device_id") != mobile_device_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mobil oturum bu cihazla eşleşmiyor",
+            )
+    elif payload.get("client") == "mobile":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Mobil oturum güvenli yenileme gövdesi gerektirir",
         )
     
     user_id = payload.get("sub")
@@ -617,6 +660,15 @@ async def refresh_token(
     session_id = payload.get("sid")
     portal_value = (payload.get("portal") or "tenant").strip()
     mfa_value = bool(payload.get("mfa"))
+    client_value = (payload.get("client") or "web").strip()
+    token_claims = {
+        "sub": str(user.id),
+        "portal": portal_value,
+        "mfa": mfa_value,
+        "client": client_value,
+    }
+    if client_value == "mobile":
+        token_claims["device_id"] = payload.get("device_id")
 
     if session_id:
         try:
@@ -642,7 +694,7 @@ async def refresh_token(
                 detail="Refresh token geçersiz"
             )
         refresh_token_value = create_refresh_token(
-            data={"sub": str(user.id), "portal": portal_value, "mfa": mfa_value},
+            data=token_claims,
             session_id=str(session.id),
         )
         session_service.rotate_session(session, refresh_token_value)
@@ -652,21 +704,25 @@ async def refresh_token(
             refresh_token=refresh_token_value
         )
         refresh_token_value = create_refresh_token(
-            data={"sub": str(user.id), "portal": portal_value, "mfa": mfa_value},
+            data=token_claims,
             session_id=str(session.id),
         )
         session_service.rotate_session(session, refresh_token_value)
 
     # Create new access token
     access_token = create_access_token(
-        data={
-            "sub": str(user.id),
-            "portal": portal_value,
-            "sid": str(session.id),
-            "mfa": mfa_value,
-        }
+        data={**token_claims, "sid": str(session.id)}
     )
-    
+
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    if is_mobile_refresh:
+        return MobileAccessTokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token_value,
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
+
     _set_refresh_cookie(response, refresh_token_value)
     return AccessTokenResponse(access_token=access_token)
 

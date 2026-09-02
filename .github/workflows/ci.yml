@@ -87,3 +87,23 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  mobile:
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true'
+      EXPO_NO_TELEMETRY: '1'
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run check
+      - run: npx --no-install expo export --platform ios --platform android --output-dir dist-check

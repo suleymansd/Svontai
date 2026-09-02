@@ -8,6 +8,7 @@ from typing import Any
 import jwt
 from jwt import InvalidTokenError as JWTError
 import hashlib
+import secrets
 import bcrypt
 
 from app.core.config import settings
@@ -68,7 +69,7 @@ def create_refresh_token(data: dict[str, Any], session_id: str | None = None) ->
     if session_id:
         to_encode.update({"sid": session_id})
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_urlsafe(16)})
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
