@@ -6,7 +6,7 @@ import { palette, radius, spacing } from '@/constants/theme';
 type ButtonProps = ComponentProps<typeof Pressable> & {
   label: string;
   loading?: boolean;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'dark';
   icon?: ReactNode;
 };
 
@@ -45,6 +45,7 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: palette.primary, borderColor: palette.primary },
   secondary: { backgroundColor: palette.surface, borderColor: palette.border },
   danger: { backgroundColor: palette.danger, borderColor: palette.danger },
+  dark: { backgroundColor: palette.navy, borderColor: palette.navy },
   label: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   secondaryLabel: { color: palette.ink },
   disabled: { opacity: 0.55 },

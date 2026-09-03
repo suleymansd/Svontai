@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { StyleSheet, View, ViewProps } from 'react-native';
 
-import { palette, radius, shadow, spacing } from '@/constants/theme';
+import { palette, radius, shadowSoft, spacing } from '@/constants/theme';
 
 export function Card({ children, style, ...props }: PropsWithChildren<ViewProps>) {
   return (
@@ -18,6 +18,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
     padding: spacing.lg,
-    ...shadow,
+    ...shadowSoft,
   },
 });
