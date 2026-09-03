@@ -1,25 +1,30 @@
 import { Platform } from 'react-native';
 
 export const palette = {
-  ink: '#111827',
+  ink: '#17202F',
   inkMuted: '#667085',
   inkSubtle: '#98A2B3',
-  canvas: '#F5F7FA',
+  canvas: '#F4F6F8',
   surface: '#FFFFFF',
-  surfaceMuted: '#EEF2F6',
-  border: '#E1E7EF',
-  primary: '#119DB4',
-  primaryDark: '#08798C',
-  primarySoft: '#E8F8FA',
-  violet: '#7656F6',
-  violetSoft: '#F0EDFF',
+  surfaceMuted: '#EEF1F5',
+  surfaceRaised: '#F9FAFB',
+  border: '#E2E7ED',
+  borderStrong: '#D2D9E2',
+  primary: '#08A4BD',
+  primaryDark: '#087C91',
+  primarySoft: '#E7F8FA',
+  violet: '#7357E8',
+  violetSoft: '#F0EDFC',
   success: '#168B63',
   successSoft: '#E7F7F0',
-  warning: '#C77700',
-  warningSoft: '#FFF4DE',
-  danger: '#D93F4B',
-  dangerSoft: '#FDECEE',
-  navy: '#101828',
+  warning: '#B96A00',
+  warningSoft: '#FFF2D8',
+  danger: '#CF3F4C',
+  dangerSoft: '#FDECEF',
+  coral: '#E8675A',
+  coralSoft: '#FFF0EE',
+  navy: '#0B1220',
+  navySoft: '#182235',
 } as const;
 
 export const spacing = {
@@ -32,19 +37,30 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 6,
+  sm: 5,
   md: 8,
-  lg: 12,
+  lg: 8,
   pill: 999,
 } as const;
 
 export const shadow = Platform.select({
-  web: { boxShadow: '0 4px 12px rgba(16, 24, 40, 0.08)' },
+  web: { boxShadow: '0 8px 24px rgba(11, 18, 32, 0.08)' },
   default: {
-    shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 2,
+  },
+});
+
+export const shadowSoft = Platform.select({
+  web: { boxShadow: '0 2px 10px rgba(11, 18, 32, 0.05)' },
+  default: {
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 9,
+    elevation: 1,
   },
 });

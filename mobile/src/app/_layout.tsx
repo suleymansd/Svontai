@@ -51,7 +51,15 @@ function Navigation() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="conversation/[id]"
-          options={{ headerShown: true, title: 'Konuşma', headerBackTitle: 'Mesajlar' }}
+          options={{
+            headerShown: true,
+            title: 'Konuşma',
+            headerBackTitle: 'Mesajlar',
+            headerTintColor: palette.navy,
+            headerTitleStyle: { color: palette.navy, fontSize: 16, fontWeight: '800' },
+            headerStyle: { backgroundColor: palette.surface },
+            headerShadowVisible: false,
+          }}
         />
       </Stack>
       {launchVisible && <AnimatedLaunchScreen ready={appReady} onFinish={finishLaunch} />}

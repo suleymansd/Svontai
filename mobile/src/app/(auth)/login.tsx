@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native';
+import { Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -65,12 +65,19 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brandWrap}>
             <Brand />
-            <Text style={styles.eyebrow}>İŞLETME OPERASYON MERKEZİ</Text>
+            <View style={styles.productBadge}>
+              <View style={styles.productDot} />
+              <Text style={styles.eyebrow}>İŞLETME OPERASYON MERKEZİ</Text>
+            </View>
             <Text style={styles.title}>İşletmenize güvenli giriş yapın</Text>
             <Text style={styles.subtitle}>Mesajlarınızı, randevularınızı ve AI operasyonunuzu tek yerden yönetin.</Text>
           </View>
 
           <View style={styles.formCard}>
+            <View style={styles.formHeading}>
+              <Text style={styles.formTitle}>Hesabınıza giriş yapın</Text>
+              <View style={styles.encryptedBadge}><ShieldCheck size={13} color={palette.success} /><Text style={styles.encryptedText}>Şifreli</Text></View>
+            </View>
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>E-posta</Text>
               <View style={styles.inputWrap}>
@@ -128,10 +135,13 @@ export default function LoginScreen() {
             )}
 
             {error && <Text style={styles.error}>{error}</Text>}
-            <Button label="Giriş yap" loading={loading} onPress={submit} />
+            <Button label="Giriş yap" variant="dark" loading={loading} icon={!loading ? <Check size={18} color={palette.surface} /> : undefined} onPress={submit} />
           </View>
 
-          <Text style={styles.security}>Oturum bilgileriniz cihazınızın güvenli kasasında saklanır.</Text>
+          <View style={styles.securityRow}>
+            <ShieldCheck size={14} color={palette.inkSubtle} />
+            <Text style={styles.security}>Oturum bilgileriniz cihazınızın güvenli kasasında saklanır.</Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -143,15 +153,22 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { width: '100%', maxWidth: 560, alignSelf: 'center', flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.xl },
   brandWrap: { width: '100%', alignItems: 'center', gap: spacing.md },
-  eyebrow: { color: palette.primaryDark, fontSize: 11, fontWeight: '800', letterSpacing: 0, marginTop: spacing.sm },
-  title: { color: palette.ink, fontSize: 28, lineHeight: 34, fontWeight: '800', textAlign: 'center' },
-  subtitle: { color: palette.inkMuted, fontSize: 15, lineHeight: 23, textAlign: 'center', maxWidth: 360 },
+  productBadge: { marginTop: spacing.sm, minHeight: 27, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 14, backgroundColor: palette.primarySoft },
+  productDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary },
+  eyebrow: { color: palette.primaryDark, fontSize: 9, lineHeight: 13, fontWeight: '900', letterSpacing: 0 },
+  title: { color: palette.navy, fontSize: 27, lineHeight: 33, fontWeight: '900', textAlign: 'center' },
+  subtitle: { color: palette.inkMuted, fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 340 },
   formCard: { width: '100%', backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.xl, gap: spacing.lg, ...shadow },
+  formHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  formTitle: { color: palette.ink, fontSize: 16, lineHeight: 22, fontWeight: '900' },
+  encryptedBadge: { minHeight: 26, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 13, backgroundColor: palette.successSoft },
+  encryptedText: { color: palette.success, fontSize: 9, lineHeight: 12, fontWeight: '900' },
   fieldGroup: { gap: spacing.sm },
   label: { color: palette.ink, fontSize: 14, fontWeight: '700' },
-  inputWrap: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, paddingHorizontal: spacing.lg, backgroundColor: palette.surface },
+  inputWrap: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: palette.borderStrong, borderRadius: radius.md, paddingHorizontal: spacing.lg, backgroundColor: palette.surfaceRaised },
   input: { flex: 1, color: palette.ink, fontSize: 16, paddingVertical: 12 },
   codeInput: { letterSpacing: 0, fontWeight: '700', fontVariant: ['tabular-nums'] },
   error: { color: palette.danger, backgroundColor: palette.dangerSoft, padding: spacing.md, borderRadius: radius.md, fontSize: 13, lineHeight: 19 },
-  security: { color: palette.inkSubtle, textAlign: 'center', fontSize: 12 },
+  securityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  security: { color: palette.inkSubtle, textAlign: 'center', fontSize: 11 },
 });

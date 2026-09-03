@@ -10,21 +10,26 @@ export function PageHeader({ title, subtitle }: { title: string; subtitle?: stri
       <View style={styles.topRow}>
         <Brand compact />
         <View style={styles.securityBadge}>
+          <View style={styles.liveDot} />
           <ShieldCheck size={14} color={palette.success} />
-          <Text style={styles.securityText}>Güvenli</Text>
+          <Text style={styles.securityText}>Güvenli bağlantı</Text>
         </View>
       </View>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      <View style={styles.titleBlock}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: palette.surface, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.xs },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  securityBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, height: 30, borderRadius: 15, backgroundColor: palette.successSoft },
-  securityText: { color: palette.success, fontSize: 11, fontWeight: '800' },
-  title: { color: palette.ink, fontSize: 24, lineHeight: 30, fontWeight: '800' },
+  header: { backgroundColor: palette.surface, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md },
+  topRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  securityBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, height: 28, borderRadius: 14, backgroundColor: palette.successSoft },
+  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: palette.success },
+  securityText: { color: palette.success, fontSize: 10, fontWeight: '800' },
+  titleBlock: { marginTop: spacing.sm, gap: 2 },
+  title: { color: palette.ink, fontSize: 23, lineHeight: 29, fontWeight: '900' },
   subtitle: { color: palette.inkMuted, fontSize: 13, lineHeight: 19 },
 });

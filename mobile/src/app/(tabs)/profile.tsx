@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Building2, LogOut, Mail, ShieldCheck, Smartphone } from 'lucide-react-native';
+import { Building2, Check, Fingerprint, LogOut, Mail, ShieldCheck, Smartphone } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
@@ -32,13 +32,20 @@ export default function ProfileScreen() {
 
   return (
     <Screen header={<PageHeader title="Hesap" subtitle="Güvenlik ve çalışma alanı" />}>
-      <Card style={styles.identityCard}>
-        <View style={styles.avatar}><Text style={styles.avatarText}>{initials(fullName)}</Text></View>
-        <View style={styles.copy}>
-          <Text style={styles.name}>{fullName}</Text>
-          <Text style={styles.muted}>{me?.tenant?.name || 'İşletme kurulumu bekleniyor'}</Text>
+      <View style={styles.identityCard}>
+        <View style={styles.identityTop}>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{initials(fullName)}</Text></View>
+          <View style={styles.copy}>
+            <Text style={styles.name}>{fullName}</Text>
+            <Text style={styles.identityMuted}>{me?.tenant?.name || 'İşletme kurulumu bekleniyor'}</Text>
+          </View>
+          <View style={styles.verified}><Check size={13} color={palette.navy} strokeWidth={3} /></View>
         </View>
-      </Card>
+        <View style={styles.securityLine}>
+          <Fingerprint size={16} color="#74DCC5" />
+          <Text style={styles.securityLineText}>Bu cihazda güvenli oturum açık</Text>
+        </View>
+      </View>
 
       <Text style={styles.sectionTitle}>Hesap bilgileri</Text>
       <Card style={styles.detailsCard}>
@@ -46,7 +53,7 @@ export default function ProfileScreen() {
         <View style={styles.divider} />
         <DetailRow icon={<Building2 size={19} color={palette.violet} />} label="Çalışma alanı" value={me?.tenant?.name || 'Tanımlanmadı'} />
         <View style={styles.divider} />
-        <DetailRow icon={<ShieldCheck size={19} color={palette.success} />} label="Oturum" value="Cihaz kasasıyla korunuyor" />
+        <DetailRow icon={<ShieldCheck size={19} color={palette.success} />} label="Oturum güvenliği" value="Cihaz kasasıyla korunuyor" />
       </Card>
 
       <Text style={styles.sectionTitle}>Uygulama</Text>
@@ -72,17 +79,22 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
 }
 
 const styles = StyleSheet.create({
-  identityCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
-  avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: palette.violetSoft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: palette.violet, fontSize: 18, fontWeight: '800' },
+  identityCard: { padding: spacing.lg, borderRadius: radius.lg, backgroundColor: palette.navy },
+  identityTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  avatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: palette.primary, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: palette.surface, fontSize: 17, fontWeight: '900' },
   copy: { flex: 1, gap: spacing.xs },
-  name: { color: palette.ink, fontSize: 18, fontWeight: '800' },
+  name: { color: palette.surface, fontSize: 17, fontWeight: '900' },
+  identityMuted: { color: '#9EA9BA', fontSize: 12 },
+  verified: { width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#74DCC5' },
+  securityLine: { marginTop: spacing.lg, paddingTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderTopWidth: 1, borderTopColor: '#293448' },
+  securityLineText: { color: '#B2BECE', fontSize: 10, lineHeight: 14, fontWeight: '700' },
   muted: { color: palette.inkMuted, fontSize: 13 },
-  sectionTitle: { color: palette.ink, fontSize: 16, fontWeight: '800' },
-  detailsCard: { paddingVertical: spacing.sm },
+  sectionTitle: { marginTop: spacing.sm, color: palette.ink, fontSize: 15, lineHeight: 21, fontWeight: '900' },
+  detailsCard: { paddingVertical: 2, paddingHorizontal: spacing.md },
   detailRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.sm },
-  detailIcon: { width: 38, height: 38, borderRadius: radius.md, backgroundColor: palette.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  detailIcon: { width: 38, height: 38, borderRadius: radius.md, backgroundColor: palette.surfaceRaised, borderWidth: 1, borderColor: palette.border, alignItems: 'center', justifyContent: 'center' },
   detailLabel: { color: palette.inkSubtle, fontSize: 11 },
-  detailValue: { color: palette.ink, fontSize: 14, fontWeight: '600' },
+  detailValue: { color: palette.ink, fontSize: 13, fontWeight: '700' },
   divider: { height: 1, backgroundColor: palette.border, marginLeft: 58 },
 });
