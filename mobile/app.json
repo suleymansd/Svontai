@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.svontai.mobile",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,8 @@
         {
           "backgroundColor": "#F7F9FC",
           "image": "./assets/images/svontai-logo.png",
-          "imageWidth": 112
+          "imageWidth": 112,
+          "resizeMode": "contain"
         }
       ],
       "expo-secure-store",

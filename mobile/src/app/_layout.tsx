@@ -1,26 +1,52 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 
+import { AnimatedLaunchScreen } from '@/components/launch/animated-launch-screen';
 import { palette } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { FirstRunProvider, useFirstRun } from '@/lib/onboarding/first-run-context';
 
 void SplashScreen.preventAutoHideAsync();
+SplashScreen.setOptions({ duration: 300, fade: true });
 
 function Navigation() {
-  const { status } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+  const { status: authStatus } = useAuth();
+  const { status: firstRunStatus, hasCompletedOnboarding } = useFirstRun();
+  const [launchVisible, setLaunchVisible] = useState(true);
+  const appReady = authStatus !== 'loading' && firstRunStatus === 'ready';
 
   useEffect(() => {
-    if (status !== 'loading') void SplashScreen.hideAsync();
-  }, [status]);
+    const frame = requestAnimationFrame(() => void SplashScreen.hideAsync());
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (launchVisible || !appReady) return;
+
+    const isOnboarding = segments[0] === 'onboarding';
+    if (!hasCompletedOnboarding && !isOnboarding) {
+      router.replace('/onboarding');
+      return;
+    }
+    if (hasCompletedOnboarding && isOnboarding) {
+      if (authStatus === 'authenticated') router.replace('/(tabs)');
+      else router.replace('/(auth)/login');
+    }
+  }, [appReady, authStatus, hasCompletedOnboarding, launchVisible, router, segments]);
+
+  const finishLaunch = useCallback(() => setLaunchVisible(false), []);
 
   return (
     <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.canvas } }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
@@ -28,6 +54,7 @@ function Navigation() {
           options={{ headerShown: true, title: 'Konuşma', headerBackTitle: 'Mesajlar' }}
         />
       </Stack>
+      {launchVisible && <AnimatedLaunchScreen ready={appReady} onFinish={finishLaunch} />}
     </>
   );
 }
@@ -45,9 +72,11 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Navigation />
-      </AuthProvider>
+      <FirstRunProvider>
+        <AuthProvider>
+          <Navigation />
+        </AuthProvider>
+      </FirstRunProvider>
     </QueryClientProvider>
   );
 }
