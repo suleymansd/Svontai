@@ -12,7 +12,9 @@ import type {
   MeContext,
   Message,
   MobileTokenResponse,
+  OperationalReport,
   OperatorSendResult,
+  WorkspaceNote,
 } from './types';
 
 export async function login(email: string, password: string, twoFactorCode?: string): Promise<void> {
@@ -56,6 +58,22 @@ export const setConversationAIReply = (id: string, enabled: boolean) =>
     body: JSON.stringify({ enabled }),
   });
 export const getAppointments = () => apiRequest<Appointment[]>('/appointments');
+export const getOperationalReport = (period: 'today' | 'week') =>
+  apiRequest<OperationalReport>(`/analytics/operational-report?period=${period}`);
+export const getWorkspaceNotes = () => apiRequest<WorkspaceNote[]>('/notes?archived=false');
+export const createWorkspaceNote = (data: {
+  title: string;
+  content: string;
+  color?: WorkspaceNote['color'];
+  pinned?: boolean;
+}) => apiRequest<WorkspaceNote>('/notes', { method: 'POST', body: JSON.stringify(data) });
+export const updateWorkspaceNote = (
+  id: string,
+  data: Partial<Pick<WorkspaceNote, 'title' | 'content' | 'color' | 'pinned' | 'archived'>>,
+) => apiRequest<WorkspaceNote>(`/notes/${encodeURIComponent(id)}`, {
+  method: 'PATCH',
+  body: JSON.stringify(data),
+});
 export const sendOperatorMessage = (conversationId: string, content: string) =>
   apiRequest<OperatorSendResult>('/operator/send-message', {
     method: 'POST',
