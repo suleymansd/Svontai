@@ -35,6 +35,7 @@ npm run ios
 - Conversation search and AI reply policy control
 - Conversation history and manual WhatsApp reply
 - Appointment list
+- Live daily/weekly reports and tenant-scoped important notes
 - Tenant and secure-session profile
 
 Push notifications, biometric app lock, offline outbox and app-store signing are tracked as the next delivery phase.

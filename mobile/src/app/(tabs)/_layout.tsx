@@ -1,4 +1,4 @@
-import { CalendarDays, House, MessageCircle, UserRound } from 'lucide-react-native';
+import { CalendarDays, House, MessageCircle, NotebookTabs, UserRound } from 'lucide-react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -28,6 +28,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="appointments"
         options={{ title: 'Randevular', tabBarIcon: ({ color, focused }) => <TabIcon focused={focused}><CalendarDays size={20} color={color} strokeWidth={focused ? 2.6 : 2} /></TabIcon> }}
+      />
+      <Tabs.Screen
+        name="notes"
+        options={{ title: 'Notlar', tabBarIcon: ({ color, focused }) => <TabIcon focused={focused}><NotebookTabs size={20} color={color} strokeWidth={focused ? 2.6 : 2} /></TabIcon> }}
       />
       <Tabs.Screen name="profile" options={{ title: 'Hesap', tabBarIcon: ({ color, focused }) => <TabIcon focused={focused}><UserRound size={20} color={color} strokeWidth={focused ? 2.6 : 2} /></TabIcon> }} />
     </Tabs>
