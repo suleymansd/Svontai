@@ -85,24 +85,32 @@ def _google_item(
     granted_scopes: list[str],
     expires_at: datetime | None,
     configured: bool,
+    public_oauth_enabled: bool,
 ) -> IntegrationStatusItem:
     required_scopes = GOOGLE_SCOPE_MAP[key]
-    if token_state == "expired" and granted_scopes:
+    is_calendar = key == "google_calendar"
+    can_start_oauth = configured and public_oauth_enabled and is_calendar
+    scope_ready = (
+        GoogleCalendarService.has_required_calendar_scopes(granted_scopes)
+        if is_calendar
+        else _has_any_scope(granted_scopes, required_scopes)
+    )
+    if token_state == "expired" and scope_ready:
         return IntegrationStatusItem(
             status="expired",
             required_scopes=required_scopes,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
-            connectable=configured,
+            required=is_calendar,
+            connectable=can_start_oauth,
             manageable=True,
-            message="Google erişim süresi doldu. Gerekli izinleri yenilemek için tekrar bağlayın.",
+            message=(
+                "Google Calendar erişim süresi doldu. Bağlantıyı yenileyin."
+                if can_start_oauth
+                else "Google erişim süresi doldu. Yenileme işlemi sistem yöneticisi tarafından açılmalıdır."
+            ),
         )
 
-    scope_ready = (
-        GoogleCalendarService.has_required_calendar_scopes(granted_scopes)
-        if key == "google_calendar"
-        else _has_any_scope(granted_scopes, required_scopes)
-    )
     if not granted_scopes or not scope_ready:
         has_partial_google_connection = bool(granted_scopes)
         return IntegrationStatusItem(
@@ -110,13 +118,18 @@ def _google_item(
             required_scopes=required_scopes,
             granted_scopes=granted_scopes,
             expires_at=expires_at,
-            connectable=configured,
-            manageable=bool(granted_scopes),
+            required=is_calendar,
+            connectable=can_start_oauth,
+            manageable=is_calendar and bool(granted_scopes),
             message=(
                 "Google Calendar uygunluk izni eksik. Randevu saatlerini doğrulamak için hesabı yeniden bağlayın."
-                if key == "google_calendar" and has_partial_google_connection
-                else "Google bağlantısını bir kez tamamladığınızda Drive, Gmail, Sheets ve Calendar birlikte açılır."
-                if configured
+                if is_calendar and has_partial_google_connection and can_start_oauth
+                else "Google Calendar bağlantısı doğrulama tamamlanana kadar yeni hesaplara kapalı."
+                if is_calendar and configured and not public_oauth_enabled
+                else "Google Calendar bağlantısı hazır."
+                if is_calendar and configured
+                else "Bu servis için müşteri bağlantısı henüz kullanıma açık değil."
+                if not is_calendar
                 else "Google OAuth sunucu ayarları henüz tamamlanmadı. Sistem yöneticisinin Google Client bilgilerini eklemesi gerekiyor."
             ),
         )
@@ -126,9 +139,14 @@ def _google_item(
         required_scopes=required_scopes,
         granted_scopes=granted_scopes,
         expires_at=expires_at,
-        connectable=configured,
+        required=is_calendar,
+        connectable=can_start_oauth,
         manageable=True,
-        message="Google servisleri tek güvenli bağlantı üzerinden çalışıyor.",
+        message=(
+            "Google Calendar randevu uygunluğu ve takvim kaydı için bağlı."
+            if is_calendar
+            else "Bu Google servisi mevcut yetkilerle bağlı."
+        ),
     )
 
 
@@ -143,6 +161,7 @@ async def get_integrations_status(
 
     google_token_service = GoogleOAuthTokenService(db)
     google_configured = GoogleCalendarService.is_configured()
+    google_public_oauth_enabled = GoogleCalendarService.is_public_oauth_enabled()
     google_token = db.query(GoogleOAuthToken).filter(
         GoogleOAuthToken.tenant_id == current_tenant.id,
         GoogleOAuthToken.provider == "google",
@@ -183,6 +202,7 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
             configured=google_configured,
+            public_oauth_enabled=google_public_oauth_enabled,
         ),
         gmail=_google_item(
             key="gmail",
@@ -190,6 +210,7 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
             configured=google_configured,
+            public_oauth_enabled=google_public_oauth_enabled,
         ),
         google_sheets=_google_item(
             key="google_sheets",
@@ -197,6 +218,7 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
             configured=google_configured,
+            public_oauth_enabled=google_public_oauth_enabled,
         ),
         google_calendar=_google_item(
             key="google_calendar",
@@ -204,6 +226,7 @@ async def get_integrations_status(
             granted_scopes=granted_scopes,
             expires_at=expires_at,
             configured=google_configured,
+            public_oauth_enabled=google_public_oauth_enabled,
         ),
         # Keep ``openai`` for older clients while tools use the provider-neutral key.
         openai=IntegrationStatusItem(
@@ -249,7 +272,7 @@ async def start_google_oauth(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["settings:write"])),
 ) -> dict:
-    """Start one Google OAuth flow covering Drive, Gmail, Sheets and Calendar."""
+    """Start the minimum-scope Google Calendar OAuth flow."""
     try:
         return GoogleCalendarService(db).get_oauth_start(current_tenant.id, current_user.id)
     except GoogleCalendarError as exc:

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Building2, CalendarCheck2, FileDown, FileText, Plus, Save, Send, UploadCloud } from 'lucide-react'
 import { realEstateApi } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-error'
 import { useToast } from '@/components/ui/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -218,7 +219,11 @@ export function RealEstatePackPanel() {
       }
     },
     onError: (error: any) => {
-      toast({ title: 'Google Calendar', description: error.response?.data?.detail || 'Bağlantı başlatılamadı.', variant: 'destructive' })
+      toast({
+        title: 'Google Calendar',
+        description: getApiErrorMessage(error, 'Bağlantı başlatılamadı.'),
+        variant: 'destructive',
+      })
     },
   })
 
@@ -1065,8 +1070,15 @@ export function RealEstatePackPanel() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={googleStatusQuery.data?.connected ? 'default' : 'outline'}>
-              {googleStatusQuery.data?.connected ? 'Google Calendar Bağlı' : 'Google Calendar Bağlı Değil'}
+              {googleStatusQuery.data?.connected
+                ? 'Google Calendar Bağlı'
+                : googleStatusQuery.data?.oauth_available === false
+                  ? 'Google Onayı Bekleniyor'
+                  : 'Google Calendar Bağlı Değil'}
             </Badge>
+            {googleStatusQuery.data?.message ? (
+              <p className="basis-full text-sm text-muted-foreground">{googleStatusQuery.data.message}</p>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -1082,7 +1094,7 @@ export function RealEstatePackPanel() {
               type="button"
               variant="outline"
               onClick={() => googleConnectMutation.mutate()}
-              disabled={googleConnectMutation.isPending}
+              disabled={googleConnectMutation.isPending || googleStatusQuery.data?.oauth_available === false}
             >
               <CalendarCheck2 className="mr-2 h-4 w-4" />
               Google Calendar Bağla

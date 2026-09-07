@@ -159,6 +159,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/real-estate/calendar/google/callback"
+    # Keep public OAuth disabled until Google's production verification is complete.
+    # Development and test environments remain available without this flag.
+    GOOGLE_OAUTH_PUBLIC_ENABLED: bool = False
 
     # Browser/PWA push notifications (free Web Push protocol)
     WEB_PUSH_VAPID_PUBLIC_KEY: str = ""

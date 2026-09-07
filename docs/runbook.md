@@ -127,7 +127,7 @@ Use this flow after Railway/Vercel deploys and before a sales demo.
 
 ### OpenWA runtime
 
-- Pin the gateway image to `ghcr.io/rmyndharis/openwa:0.10.0` and keep its `/app/data` volume attached.
+- Pin the gateway image to `ghcr.io/rmyndharis/openwa:0.23.4` and keep its `/app/data` volume attached.
 - A `qr_ready` state is not an outage. It requires the customer to scan the QR once from the setup screen.
 - Repeated reconnect attempts without a QR must create a single action-required notification, not an endless incident stream.
 - OpenWA is an unofficial WhatsApp Web connection. Account restriction risk must remain visible in the Terms and customer setup consent.

@@ -70,6 +70,10 @@ class GoogleCalendarService:
         return bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REDIRECT_URI)
 
     @staticmethod
+    def is_public_oauth_enabled() -> bool:
+        return settings.ENVIRONMENT != "prod" or settings.GOOGLE_OAUTH_PUBLIC_ENABLED
+
+    @staticmethod
     def _is_placeholder(value: str) -> bool:
         normalized = (value or "").strip().upper()
         if not normalized:
@@ -129,6 +133,10 @@ class GoogleCalendarService:
 
     def get_oauth_start(self, tenant_id: UUID, agent_id: UUID) -> dict:
         self.validate_config()
+        if not self.is_public_oauth_enabled():
+            raise GoogleCalendarError(
+                "Google Calendar bağlantısı Google production doğrulaması tamamlanana kadar yeni hesaplara kapalıdır."
+            )
 
         state = OAuthStateService(self.db).issue(
             provider="google",

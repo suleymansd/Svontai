@@ -279,6 +279,9 @@ def test_integrations_status_endpoint(client):
     assert payload["google_sheets"]["status"] == "missing"
     assert payload["google_calendar"]["status"] == "missing"
     assert payload["google_drive"]["required_scopes"]
+    assert payload["google_sheets"]["required"] is False
+    assert payload["google_sheets"]["connectable"] is False
+    assert payload["google_calendar"]["required"] is True
 
 
 def test_integrations_status_expired_google_token(client):
@@ -293,7 +296,10 @@ def test_integrations_status_expired_google_token(client):
             GoogleOAuthToken(
                 tenant_id=UUID(tenant_id),
                 provider="google",
-                scopes_json=["https://www.googleapis.com/auth/calendar.events"],
+                scopes_json=[
+                    "https://www.googleapis.com/auth/calendar.events",
+                    "https://www.googleapis.com/auth/calendar.events.freebusy",
+                ],
                 access_token_encrypted=encrypt_token("expired-token"),
                 refresh_token_encrypted=None,
                 expires_at=utc_now_naive() - timedelta(minutes=5),

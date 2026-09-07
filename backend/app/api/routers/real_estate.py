@@ -202,6 +202,8 @@ class GoogleCalendarStatusResponse(BaseModel):
     connected: bool
     status: str
     calendar_id: str | None
+    oauth_available: bool
+    message: str | None = None
 
 
 class GoogleCalendarDiagnosticsResponse(BaseModel):
@@ -903,7 +905,18 @@ async def get_google_calendar_status(
         RealEstateGoogleCalendarIntegration.agent_id == resolved_agent_id,
     ).first()
     if not integration:
-        return GoogleCalendarStatusResponse(connected=False, status="inactive", calendar_id=None)
+        oauth_available = GoogleCalendarService.is_public_oauth_enabled()
+        return GoogleCalendarStatusResponse(
+            connected=False,
+            status="inactive",
+            calendar_id=None,
+            oauth_available=oauth_available,
+            message=(
+                None
+                if oauth_available
+                else "Google Calendar bağlantısı production doğrulaması tamamlanana kadar yeni hesaplara kapalı."
+            ),
+        )
     token = db.query(GoogleOAuthToken).filter(
         GoogleOAuthToken.tenant_id == current_tenant.id,
         GoogleOAuthToken.provider == "google",
@@ -915,6 +928,8 @@ async def get_google_calendar_status(
         connected=integration.status == "active" and scopes_ready,
         status=integration.status if scopes_ready else "reauthorization_required",
         calendar_id=integration.calendar_id,
+        oauth_available=GoogleCalendarService.is_public_oauth_enabled(),
+        message=None,
     )
 
 

@@ -391,6 +391,13 @@ def test_openwa_qr_state_requires_user_action_instead_of_reconnect():
         previous_failures=1,
         previous_health="disconnected",
     ) == "wait"
+    assert _openwa_recovery_action(
+        status="authenticating",
+        connected=False,
+        was_active=False,
+        previous_failures=0,
+        previous_health="connecting",
+    ) == "wait"
     assert _openwa_qr_is_ready({"status": "qr_ready", "qrCode": "data:image/png;base64,dGVzdA=="})
     assert not _openwa_qr_is_ready({"status": "initializing", "qrCode": None})
 
@@ -563,3 +570,71 @@ def test_openwa_missing_remote_session_is_recreated_for_qr(client, monkeypatch):
         assert account.token_status == "pending"
     finally:
         db.close()
+
+
+def test_openwa_authenticating_state_waits_without_fetching_or_rotating_qr(client, monkeypatch):
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.openwa_client import openwa_client
+
+    token, tenant_id = _create_tenant(client)
+    headers = _headers(token, tenant_id)
+    monkeypatch.setattr(settings, "OPENWA_ENABLED", True)
+    monkeypatch.setattr(settings, "OPENWA_WEBHOOK_SECRET", "test-openwa-secret")
+    monkeypatch.setattr(openwa_client, "base_url", "https://openwa.test")
+    monkeypatch.setattr(openwa_client, "api_key", "test-api-key")
+    monkeypatch.setattr(
+        openwa_client,
+        "get_session",
+        AsyncMock(return_value={"id": "pairing-session", "status": "authenticating"}),
+    )
+    get_qr = AsyncMock(return_value={"status": "qr_ready", "qrCode": "stale-qr"})
+    monkeypatch.setattr(openwa_client, "get_qr", get_qr)
+
+    db = SessionLocal()
+    try:
+        db.add(WhatsAppAccount(
+            tenant_id=UUID(tenant_id),
+            provider="openwa",
+            provider_session_id="pairing-session",
+            token_status="pending",
+            webhook_status="verified",
+            is_active=False,
+            is_verified=True,
+            provider_metadata_json={"risk_accepted": True, "health_status": "connecting"},
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/onboarding/whatsapp/openwa/qr", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "authenticating"
+    assert response.json()["connected"] is False
+    assert response.json()["qr_code"] is None
+    get_qr.assert_not_awaited()
+
+
+def test_openwa_session_uses_bounded_reconnect_configuration(client, monkeypatch):
+    from app.services.openwa_client import openwa_client
+
+    _ = client
+    request = AsyncMock(return_value={"id": "session-1", "status": "created"})
+    monkeypatch.setattr(openwa_client, "_request", request)
+
+    result = asyncio.run(openwa_client.create_or_get_session("tenant-session"))
+
+    assert result["id"] == "session-1"
+    request.assert_awaited_once_with(
+        "POST",
+        "/api/sessions",
+        json={
+            "name": "tenant-session",
+            "config": {
+                "reconnectBaseDelay": 5000,
+                "maxReconnectAttempts": 10,
+            },
+        },
+    )
