@@ -106,7 +106,13 @@ class OpenWAClient:
             result = await self._request(
                 "POST",
                 "/api/sessions",
-                json={"name": name, "config": {"autoReconnect": True}},
+                json={
+                    "name": name,
+                    "config": {
+                        "reconnectBaseDelay": 5000,
+                        "maxReconnectAttempts": 10,
+                    },
+                },
             )
             return result if isinstance(result, dict) else {}
         except OpenWAError as exc:

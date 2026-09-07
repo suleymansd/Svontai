@@ -1,0 +1,239 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Activity, ShieldCheck } from 'lucide-react'
+import { ContentContainer } from '@/components/shared/content-container'
+import { PageHeader } from '@/components/shared/page-header'
+import { SectionCard } from '@/components/shared/section-card'
+import { MetaRow } from '@/components/shared/meta-row'
+import { DataTable, DataColumn } from '@/components/shared/data-table'
+import { EmptyState } from '@/components/shared/empty-state'
+import { Badge } from '@/components/ui/badge'
+import { adminApi } from '@/lib/api'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/use-toast'
+import { openAdminCustomerPreview } from '@/lib/admin-customer-preview'
+import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
+import { getApiErrorMessage } from '@/lib/api-error'
+
+export function TenantDetailView({ tenantId }: { tenantId: string }) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [flagInput, setFlagInput] = useState('')
+  const [isOpeningCustomerPanel, setIsOpeningCustomerPanel] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState<'free' | 'pro' | 'premium' | 'enterprise'>('free')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-tenant', tenantId],
+    queryFn: () => adminApi.getTenant(tenantId).then((res) => res.data),
+    enabled: Boolean(tenantId),
+  })
+
+  useEffect(() => {
+    const currentPlan = String(data?.plan_name || 'free').toLowerCase()
+    if (['free', 'pro', 'premium', 'enterprise'].includes(currentPlan)) {
+      setSelectedPlan(currentPlan as typeof selectedPlan)
+    }
+  }, [data?.plan_name])
+
+  const suspendMutation = useMutation({
+    mutationFn: () => adminApi.suspendTenant(tenantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
+      toast({ title: 'Tenant askıya alındı' })
+    },
+    onError: (error: unknown) => toast({
+      title: 'Tenant askıya alınamadı',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
+  })
+
+  const unsuspendMutation = useMutation({
+    mutationFn: () => adminApi.unsuspendTenant(tenantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
+      toast({ title: 'Tenant aktif' })
+    },
+    onError: (error: unknown) => toast({
+      title: 'Tenant aktifleştirilemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
+  })
+
+  const updateFlagsMutation = useMutation({
+    mutationFn: (flags: string[]) => adminApi.updateTenantFeatureFlags(tenantId, flags),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
+      toast({ title: 'Feature flags güncellendi' })
+    },
+    onError: (error: unknown) => toast({
+      title: 'Feature flags güncellenemedi',
+      description: getApiErrorMessage(error, 'Lütfen tekrar deneyin.'),
+      variant: 'destructive',
+    }),
+  })
+
+  const updatePlanMutation = useMutation({
+    mutationFn: () => adminApi.updateTenantPlan(tenantId, {
+      plan_type: selectedPlan,
+      note: 'Müşteri görüşmesi sonrasında manuel plan aktivasyonu',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant', tenantId] })
+      toast({ title: 'Plan etkinleştirildi', description: `${selectedPlan} planı tenant hesabına tanımlandı.` })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Plan güncellenemedi',
+        description: getApiErrorMessage(error, 'İşlem başarısız oldu.'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const runsColumns: DataColumn<any>[] = [
+    { key: 'id', header: 'Run', render: (row) => <span className="font-medium">{row.id}</span> },
+    { key: 'status', header: 'Durum', render: (row) => <Badge variant={row.status === 'success' ? 'success' : 'secondary'}>{row.status}</Badge> },
+    { key: 'created_at', header: 'Zaman', render: (row) => <span className="text-sm text-muted-foreground">{row.created_at}</span> },
+  ]
+
+  const incidentColumns: DataColumn<any>[] = [
+    { key: 'title', header: 'Incident', render: (row) => <span className="font-medium">{row.title}</span> },
+    { key: 'severity', header: 'Seviye', render: (row) => <Badge variant="outline">{row.severity}</Badge> },
+    { key: 'status', header: 'Durum', render: (row) => <Badge variant={row.status === 'resolved' ? 'success' : 'secondary'}>{row.status}</Badge> },
+  ]
+
+  const handleOpenCustomerPanel = async () => {
+    if (!data?.tenant?.id) {
+      return
+    }
+    setIsOpeningCustomerPanel(true)
+    try {
+      await openAdminCustomerPreview({
+        tenantId: data.tenant.id,
+        tenantName: data.tenant.name,
+        queryClient,
+      })
+    } catch (error) {
+      setIsOpeningCustomerPanel(false)
+      toast({
+        title: 'Müşteri paneli açılamadı',
+        description: getApiErrorMessage(error, 'Müşteri oturumu doğrulanamadı. Lütfen tekrar deneyin.'),
+        variant: 'destructive',
+      })
+    }
+  }
+
+  return (
+    <ContentContainer>
+      <div className="space-y-6">
+        <PageHeader
+          title={data?.tenant?.name || 'Tenant'}
+          description={data?.owner_email || 'Tenant detayları'}
+          icon={<Icon3DBadge icon={ShieldCheck} from="from-emerald-500" to="to-teal-500" />}
+          actions={(
+            <Link href="/admin/tenants">
+              <Button variant="outline">Geri Dön</Button>
+            </Link>
+          )}
+        />
+
+        <SectionCard
+          title="Tenant Profili"
+          description="Plan ve özellik durumları"
+          actions={<Badge variant="outline">{data?.plan_name || 'Plan yok'}</Badge>}
+        >
+          <div className="grid gap-3">
+            <MetaRow label="Owner" value={data?.owner_name || '-'} />
+            <MetaRow label="Owner Email" value={data?.owner_email || '-'} />
+            <MetaRow label="Plan" value={data?.plan_name || '-'} />
+            <MetaRow label="Feature Flags" value={data?.feature_flags?.join(', ') || '-'} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Tenant Actions" description="Operasyonel kontroller">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void handleOpenCustomerPanel()} disabled={isOpeningCustomerPanel || !data?.tenant?.id}>
+              {isOpeningCustomerPanel ? 'Panel Açılıyor...' : 'Müşteri Paneline Geç'}
+            </Button>
+            <Button variant="outline" onClick={() => suspendMutation.mutate()} disabled={suspendMutation.isPending}>
+              Suspend
+            </Button>
+            <Button variant="outline" onClick={() => unsuspendMutation.mutate()} disabled={unsuspendMutation.isPending}>
+              Unsuspend
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center">
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={selectedPlan}
+              onChange={(event) => setSelectedPlan(event.target.value as typeof selectedPlan)}
+              aria-label="Tenant planı"
+            >
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="premium">Premium</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+            <Button
+              onClick={() => {
+                if (window.confirm(`${selectedPlan} planını bu müşteri için etkinleştirmek istediğinize emin misiniz?`)) {
+                  updatePlanMutation.mutate()
+                }
+              }}
+              disabled={updatePlanMutation.isPending || selectedPlan === String(data?.plan_name || '').toLowerCase()}
+            >
+              Planı Etkinleştir
+            </Button>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Feature Flags" description="Tenant bazlı özellik yönetimi">
+          <div className="flex flex-wrap gap-2">
+            {(data?.feature_flags || []).map((flag: string) => (
+              <Badge key={flag} variant="outline">{flag}</Badge>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+              placeholder="Yeni flag ekle (ör. analytics)"
+              value={flagInput}
+              onChange={(e) => setFlagInput(e.target.value)}
+            />
+            <Button
+              onClick={() => updateFlagsMutation.mutate([...(data?.feature_flags || []), flagInput].filter(Boolean))}
+              disabled={!flagInput}
+            >
+              Ekle
+            </Button>
+          </div>
+        </SectionCard>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SectionCard title="Recent Runs" description="Son otomasyon koşumları">
+            <DataTable
+              columns={runsColumns}
+              data={data?.recent_runs || []}
+              loading={isLoading}
+              emptyState={<EmptyState icon={<Activity className="h-5 w-5 text-primary" />} title="Run yok" />}
+            />
+          </SectionCard>
+
+          <SectionCard title="Recent Incidents" description="Son incident kayıtları">
+            <DataTable
+              columns={incidentColumns}
+              data={data?.recent_incidents || []}
+              loading={isLoading}
+              emptyState={<EmptyState icon={<ShieldCheck className="h-5 w-5 text-primary" />} title="Incident yok" />}
+            />
+          </SectionCard>
+        </div>
+      </div>
+    </ContentContainer>
+  )
+}

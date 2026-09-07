@@ -30,10 +30,7 @@ type IntegrationStatusItem = {
 type IntegrationStatusMap = Record<string, IntegrationStatusItem>
 
 const TITLES: Record<string, string> = {
-  google_drive: 'Google Drive',
-  gmail: 'Gmail',
   openai: 'Yapay Zeka',
-  google_sheets: 'Google Sheets',
   document_converter: 'Document Converter',
   whatsapp_cloud: 'WhatsApp Cloud',
   whatsapp_qr: 'WhatsApp QR',
@@ -77,8 +74,8 @@ export default function IntegrationsPage() {
       googlePopupRef.current = null
       refetch()
       toast({
-        title: 'Google bağlantısı tamamlandı',
-        description: 'Drive, Gmail, Sheets ve Calendar izinleri güncellendi.',
+        title: 'Google Calendar bağlandı',
+        description: 'Randevu uygunluğu ve takvim kaydı kullanıma hazır.',
       })
     }
     window.addEventListener('message', handleOAuthMessage)
@@ -91,7 +88,7 @@ export default function IntegrationsPage() {
         router.push('/dashboard/setup/whatsapp')
         return
       }
-      if (key === 'google_drive' || key === 'gmail' || key === 'google_sheets' || key === 'google_calendar') {
+      if (key === 'google_calendar') {
         const response = await integrationsApi.startGoogleOAuth()
         const url = response.data?.auth_url
         if (!url) {
@@ -130,7 +127,7 @@ export default function IntegrationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Bağlantı Durumu</CardTitle>
-            <CardDescription>Google tek bağlantıyla, WhatsApp seçtiğiniz sağlayıcıyla çalışır.</CardDescription>
+            <CardDescription>Yalnızca kullandığınız servisler için gerekli izinleri verin.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading && <p className="text-sm text-muted-foreground">Yükleniyor...</p>}

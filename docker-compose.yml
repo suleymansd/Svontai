@@ -220,7 +220,7 @@ services:
   # ===========================================
   openwa:
     profiles: ["openwa"]
-    image: ghcr.io/rmyndharis/openwa:0.8.17
+    image: ghcr.io/rmyndharis/openwa:0.23.4
     container_name: svontai-openwa
     restart: unless-stopped
     ports:

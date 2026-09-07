@@ -61,6 +61,8 @@
 - `OPENWA_RECONNECT_BASE_BACKOFF_SECONDS` (default `900`)
 - `OPENWA_RECONNECT_MAX_BACKOFF_SECONDS` (default `21600`)
 - `GOOGLE_CALENDAR_SYNC_INTERVAL_SECONDS` (production minimum `300`, default `600`)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+- `GOOGLE_OAUTH_PUBLIC_ENABLED` (keep `false` until Google's production verification is complete)
 - `WEBHOOK_INBOX_POLL_INTERVAL_SECONDS` (durable inbound event polling, production range `1-10`)
 - `WEBHOOK_INBOX_MAX_ATTEMPTS` (provider event retry budget, production range `3-20`)
 - `REAL_ESTATE_CONNECTOR_ALLOWED_HOSTS` (comma-separated provider host allowlist; required before enabling a production connector)

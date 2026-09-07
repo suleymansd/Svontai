@@ -8,7 +8,7 @@ SmartWA, OpenWA'yı ayrı bir WhatsApp gateway servisi olarak kullanır. Müşte
 2. Kaynak olarak Docker image seçin:
 
 ```text
-ghcr.io/rmyndharis/openwa:0.10.0
+ghcr.io/rmyndharis/openwa:0.23.4
 ```
 
 3. `/app/data` mount path'i için kalıcı volume ekleyin.

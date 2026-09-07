@@ -421,12 +421,21 @@ class OnboardingService:
                 StepStatus.IN_PROGRESS,
                 message="WhatsApp oturumu kapandı. Yeni QR kodunu tarayın.",
             )
-        elif status_value in {"created", "initializing", "connecting", "starting"}:
+        elif status_value in {"created", "initializing", "authenticating", "connecting", "starting"}:
             account.is_active = False
             account.token_status = TokenStatus.PENDING.value
             account.provider_metadata_json = {
                 **(account.provider_metadata_json or {}),
                 "health_status": "connecting",
+            }
+            account.last_error = None
+            self.db.commit()
+        elif status_value == "action_required":
+            account.is_active = False
+            account.token_status = TokenStatus.PENDING.value
+            account.provider_metadata_json = {
+                **(account.provider_metadata_json or {}),
+                "health_status": "action_required",
             }
             self.db.commit()
         elif status_value in {"failed", "disconnected", "stopped", "error"}:
@@ -455,6 +464,8 @@ class OnboardingService:
                 raise
             status_payload = await self.reconnect_openwa(tenant_id)
         if status_payload["status"] == "ready":
+            return {**status_payload, "qr_code": None}
+        if status_payload["status"] in {"created", "initializing", "authenticating", "connecting", "starting"}:
             return {**status_payload, "qr_code": None}
 
         account = self.get_whatsapp_account(tenant_id)
@@ -528,10 +539,10 @@ class OnboardingService:
         elif event == "session.status" and status_value:
             health_status = (
                 "action_required"
-                if status_value in {"qr_ready", "qr", "authentication_required", "logged_out"}
+                if status_value in {"qr_ready", "qr", "authentication_required", "logged_out", "action_required"}
                 else "connecting"
             )
-            if health_status == "action_required":
+            if status_value != "ready":
                 account.is_active = False
                 account.token_status = TokenStatus.PENDING.value
             account.provider_metadata_json = {
@@ -595,7 +606,7 @@ class OnboardingService:
         return {
             "provider": "openwa",
             "session_id": account.provider_session_id,
-            "status": session.get("status") or metadata.get("engine_status") or "created",
+            "status": str(session.get("status") or metadata.get("engine_status") or "created").lower(),
             "connected": bool(account.is_active),
             "phone_number": account.display_phone_number,
             "push_name": session.get("pushName") or metadata.get("push_name"),

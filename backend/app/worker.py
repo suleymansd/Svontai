@@ -46,7 +46,7 @@ configure_observability("worker")
 
 _OPENWA_QR_STATUSES = {"qr_ready", "qr", "authentication_required", "logged_out"}
 _OPENWA_RECONNECTABLE_STATUSES = {"failed", "disconnected", "stopped", "error"}
-_OPENWA_TRANSITIONAL_STATUSES = {"created", "initializing", "connecting", "starting"}
+_OPENWA_TRANSITIONAL_STATUSES = {"created", "initializing", "authenticating", "connecting", "starting"}
 
 
 def _openwa_recovery_action(

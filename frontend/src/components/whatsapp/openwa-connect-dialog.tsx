@@ -47,6 +47,14 @@ const QR_REQUIRED_STATUSES = new Set([
   'logged_out',
 ])
 
+const CONNECTING_STATUSES = new Set([
+  'created',
+  'initializing',
+  'authenticating',
+  'connecting',
+  'starting',
+])
+
 export function OpenWAConnectDialog({
   enabled,
   connected = false,
@@ -123,7 +131,9 @@ export function OpenWAConnectDialog({
   const status = qrQuery.data || refreshQrMutation.data || reconnectMutation.data || startMutation.data
   const isConnected = qrQuery.isSuccess ? Boolean(qrQuery.data.connected) : connected
   const hasSession = !hasNoSession && Boolean(status?.session_id)
-  const needsQr = QR_REQUIRED_STATUSES.has(status?.status || providerStatus || '')
+  const normalizedStatus = (status?.status || providerStatus || '').toLowerCase()
+  const needsQr = QR_REQUIRED_STATUSES.has(normalizedStatus)
+  const isConnecting = CONNECTING_STATUSES.has(normalizedStatus)
   const isWorking = startMutation.isPending || reconnectMutation.isPending || refreshQrMutation.isPending
 
   useEffect(() => {
@@ -218,6 +228,18 @@ export function OpenWAConnectDialog({
                 Telefonunuzdaki onay bekleniyor
               </div>
             </div>
+          ) : hasSession && isConnecting ? (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-5 text-center dark:border-blue-900 dark:bg-blue-950/30">
+              <Loader2 className="mx-auto mb-3 h-9 w-9 animate-spin text-blue-600" />
+              <p className="font-semibold">
+                {normalizedStatus === 'authenticating' ? 'QR onaylandı' : 'WhatsApp hazırlanıyor'}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {normalizedStatus === 'authenticating'
+                  ? 'Telefonunuz doğrulanıyor. Bu sırada pencereyi açık tutun ve yeni QR üretmeyin.'
+                  : 'Güvenli bağlantı kuruluyor. QR kodu birkaç saniye içinde hazır olacak.'}
+              </p>
+            </div>
           ) : hasSession ? (
             <div className="space-y-4">
               <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
@@ -280,13 +302,13 @@ export function OpenWAConnectDialog({
                 QR Oluştur
               </Button>
             ) : null}
-            {hasSession && !isConnected && !status?.qr_code ? (
+            {hasSession && !isConnected && !status?.qr_code && !isConnecting ? (
               <Button onClick={() => reconnectMutation.mutate()} disabled={isWorking}>
                 {reconnectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                 Oturumu Toparla
               </Button>
             ) : null}
-            {hasSession && !isConnected ? (
+            {hasSession && !isConnected && !isConnecting ? (
               <Button variant="outline" onClick={() => refreshQrMutation.mutate()} disabled={isWorking}>
                 {refreshQrMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
                 Yeni QR
