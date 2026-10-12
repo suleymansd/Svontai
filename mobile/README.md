@@ -4,7 +4,7 @@ Native iOS and Android operations client for SvontAI. The app uses the existing 
 
 ## Requirements
 
-- Node.js 20 or 22
+- Node.js 22.13 or newer (CI uses Node 22)
 - npm 10+
 - Xcode for local iOS builds
 - Android Studio for local Android builds
@@ -25,8 +25,11 @@ npm run ios
 - Access tokens live only in process memory.
 - Rotating refresh tokens are stored with Expo SecureStore (iOS Keychain / Android Keystore).
 - Refresh tokens are bound to a persistent installation ID.
-- A failed refresh clears the local session and returns the user to login.
+- Rejected refresh credentials (401/403) clear the session; temporary connectivity,
+  rate-limit and server failures preserve credentials for a retry.
 - Super-admin login is intentionally unavailable in the mobile client.
+- Dependency security backports are applied and hash-checked during `npm ci`.
+  See [dependency security status](SECURITY.md) for remaining upstream audit warnings.
 
 ## Current first release
 
@@ -43,5 +46,6 @@ Push notifications, biometric app lock, offline outbox and app-store signing are
 
 ```bash
 npm run check
+npm test
 npx expo export --platform ios --platform android --output-dir dist-check
 ```

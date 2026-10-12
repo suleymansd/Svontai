@@ -1,0 +1,25 @@
+{
+  "braces": {
+    "version": "3.0.3",
+    "files": {
+      "lib/parse.js": "b93103fec0f53836f5a64eec37b1c124d530f760e9e708f3aaff7e2b0076f99a",
+      "lib/compile.js": "f0428d14ffb123a0e2bbadea3d5456ecf6b8f8680215ece39105d67ef182f35a",
+      "lib/expand.js": "acdca5c6d0c48d2512081d8816e3962f016cbea83940c107cff738f33c05d88a",
+      "lib/stringify.js": "d1f8222908074f8e33eef60664129d72d94c029c4329123e9e1f5b550e94cedb"
+    }
+  },
+  "node-forge": {
+    "version": "1.4.0",
+    "files": {
+      "lib/rsa.js": "9beca3180efa1ed5f27079eab44d2fdf86fa7b7a5ae2567c4e89cdb694f566da"
+    }
+  },
+  "query-string": {
+    "version": "7.1.3",
+    "files": {
+      "index.js": "fc1ca6e1961ba005e554b1bc0de932d6454bf59bfaea03d02c7261dbdcafcdbd"
+    }
+  },
+  "decode-uri-component": { "version": "0.5.0", "files": {} },
+  "uuid": { "version": "11.1.1", "files": {} }
+}

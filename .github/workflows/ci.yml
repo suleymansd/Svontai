@@ -108,7 +108,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
+      - run: npm run security:verify
+      - run: npm test
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run check
-      - run: npm test
       - run: npx --no-install expo export --platform ios --platform android --output-dir dist-check

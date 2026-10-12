@@ -117,11 +117,17 @@ provider responses; Expo export is not an IPA build or physical-device acceptanc
 Audit counts are a point-in-time tool result, not a claim that unreported issues
 do not exist.
 
+Mobile security follow-up: published fixes now address the URI decoder, UUID and
+development-only brace-expansion findings. Reproducible local patches and
+regression tests mitigate the remaining braces/forge defects. The raw production
+audit still lists 19 high findings from those two upstream advisories; its CI gate
+has not been suppressed. See [Mobile Dependency Security](../mobile/SECURITY.md).
+
 ## Remaining Gates And Risks
 
-1. Resolve or formally assess the mobile dependency findings without suppressing
-   CI or applying incompatible forced downgrades. A larger Expo upgrade requires
-   native build and device regression testing. No new IPA was produced.
+1. Independently review the mobile braces/forge security backports and replace them
+   with compatible official fixes when available. The raw audit gate remains open;
+   no unrestricted release approval or new IPA is implied by passing regression tests.
 2. Review this batch through a PR and require all intended CI checks.
    Branch protection was not changed. Verify that automatic deployments cannot
    bypass the release gate.
