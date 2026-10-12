@@ -6,15 +6,21 @@ import { StatusBar } from 'expo-status-bar';
 
 import { palette } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { ErrorState } from '@/components/ui/feedback';
+import { Screen } from '@/components/ui/screen';
 
 void SplashScreen.preventAutoHideAsync();
 
 function Navigation() {
-  const { status } = useAuth();
+  const { status, retrySession } = useAuth();
 
   useEffect(() => {
     if (status !== 'loading') void SplashScreen.hideAsync();
   }, [status]);
+
+  if (status === 'offline') {
+    return <Screen scroll={false}><ErrorState message="Bağlantı kurulamadı. Oturumunuz korunuyor." onRetry={retrySession} /></Screen>;
+  }
 
   return (
     <>

@@ -1,6 +1,16 @@
 # SvontAI Sales Readiness
 
-Last reviewed: 26 August 2026
+Last reviewed: 12 October 2026
+
+## Current release status
+
+Production currently runs commit `1ecd0bb` at migration `055`. Public readiness,
+API/worker alignment and an independent restore of the latest R2 backup passed
+on 12 October. The reliability and private-demo batch remains on its working branch and undeployed;
+mobile dependency findings and real provider acceptance checks are still open.
+See [Reliability Release Status](RELIABILITY_RELEASE_2026-10-12.md) for the evidence,
+local test results and remaining release gates. The capabilities below describe
+code scope, not blanket production acceptance.
 
 ## Launch scope
 

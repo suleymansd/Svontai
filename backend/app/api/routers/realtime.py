@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import monotonic
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -68,9 +69,27 @@ async def tenant_realtime_events(
     tenant_id: str = Depends(resolve_realtime_tenant_id),
 ) -> StreamingResponse:
     async def stream():
-        yield _sse("ready", {"tenant_id": tenant_id})
+        last_auth = monotonic()
+
+        async def still_authorized() -> bool:
+            nonlocal last_auth
+            if monotonic() - last_auth < 30:
+                return True
+            last_auth = monotonic()
+            try:
+                header = request.headers.get("authorization", "")
+                scheme, token = header.split(" ", 1)
+                resolved = await resolve_realtime_tenant_id(
+                    credentials=HTTPAuthorizationCredentials(scheme=scheme, credentials=token),
+                    x_tenant_id=UUID(request.headers["x-tenant-id"]) if request.headers.get("x-tenant-id") else None,
+                )
+                return resolved == tenant_id
+            except (HTTPException, ValueError):
+                return False
+
         if async_redis is None or settings.RATE_LIMIT_BACKEND != "redis":
-            while not await request.is_disconnected():
+            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id})
+            while not await request.is_disconnected() and await still_authorized():
                 await asyncio.sleep(15)
                 yield ": heartbeat\n\n"
             return
@@ -84,7 +103,8 @@ async def tenant_realtime_events(
         pubsub = client.pubsub()
         try:
             await pubsub.subscribe(realtime_channel(tenant_id))
-            while not await request.is_disconnected():
+            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id})
+            while not await request.is_disconnected() and await still_authorized():
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15)
                 if message and message.get("type") == "message":
                     raw_data = message.get("data")

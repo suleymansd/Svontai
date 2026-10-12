@@ -206,7 +206,6 @@ async function mockBackend(page: Page) {
         customer_phone: '+90 555 111 22 33',
         last_message: 'Merhaba',
         last_message_at: new Date().toISOString(),
-        messages: [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }],
         extra_data: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -252,7 +251,7 @@ async function mockBackend(page: Page) {
       status: 200,
       contentType: 'application/json',
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:3100',
+        'Access-Control-Allow-Origin': request.headers().origin || new URL(page.url()).origin,
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Tenant-ID',
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
@@ -331,6 +330,24 @@ test.beforeEach(async ({ page }) => {
   await mockBackend(page)
 })
 
+test('temporary session refresh failure preserves the customer and can be retried', async ({ page }) => {
+  let refreshAttempts = 0
+  await page.route('**/api/auth/refresh', async (route) => {
+    refreshAttempts += 1
+    await route.fulfill({
+      status: refreshAttempts === 1 ? 503 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(refreshAttempts === 1 ? { detail: 'Temporarily unavailable' } : { access_token: 'test-access-token' }),
+    })
+  })
+  await openAuthenticated(page, '/dashboard/bots')
+  await expect(page.getByRole('heading', { name: 'Bağlantı kurulamadı' })).toBeVisible()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id)).toBe('user-1')
+  await page.getByRole('button', { name: 'Yeniden Dene', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Yanıtı Dene' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bağlantı kurulamadı' })).toBeHidden()
+})
+
 test('customer dashboard shows real outcomes without overflow', async ({ page }) => {
   await openAuthenticated(page, '/dashboard')
   await expect(page.getByRole('heading', { name: 'Bugün' })).toBeVisible()
@@ -391,6 +408,7 @@ test('contact can be excluded from AI replies in conversations', async ({ page }
   await expect(aiSwitch).not.toBeChecked()
   await expect(page.getByText('Kişi AI yanıtlarından hariç tutuldu', { exact: true })).toBeVisible()
   await expect(page.getByText('Bu kişi hariç tutuldu')).toBeVisible()
+  await expect(page.getByText('Merhaba', { exact: true }).last()).toBeVisible()
   await expectNoHorizontalOverflow(page)
 })
 

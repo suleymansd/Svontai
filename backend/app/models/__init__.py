@@ -1,5 +1,6 @@
 # Models module
 from app.models.user import User
+from app.models.demo_access import DemoAccess
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.knowledge import BotKnowledgeItem

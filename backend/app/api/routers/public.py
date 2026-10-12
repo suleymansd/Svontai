@@ -50,7 +50,9 @@ from app.core.rate_limit import (
 )
 from app.core.widget_session import InvalidWidgetSession, issue_widget_session, verify_widget_session
 from app.services.subscription_service import SubscriptionService
-from app.services.usage_counter_service import UsageCounterService
+from app.services.reply_usage_service import record_delivered_reply
+
+from app.services.demo_access_service import prevent_public_demo_bot
 
 router = APIRouter(prefix="/public", tags=["Public Chat"])
 logger = logging.getLogger(__name__)
@@ -192,6 +194,8 @@ async def init_chat(
             detail="Bot bulunamadı veya aktif değil"
         )
     
+    prevent_public_demo_bot(db, bot)
+
     # Each initialization receives a new opaque identity. Resuming a previous
     # conversation requires its signed session token, not a caller-chosen ID.
     external_user_id = generate_external_user_id()
@@ -304,11 +308,6 @@ async def send_chat_message(
         f"public-chat-tenant:{bot.tenant_id}",
         "İşletme mesaj kapasitesi geçici olarak dolu. Lütfen daha sonra tekrar deneyin.",
     )
-    allowed, limit_message = SubscriptionService(db).check_message_limit(bot.tenant_id)
-    if not allowed:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=limit_message)
-    SubscriptionService(db).increment_message_count(bot.tenant_id)
-    UsageCounterService(db).increment_message_count(bot.tenant_id, 1)
     
     # Save user message
     user_message = Message(
@@ -334,6 +333,10 @@ async def send_chat_message(
             is_ai_paused=conversation.is_ai_paused
         )
     
+    allowed, limit_message = SubscriptionService(db).check_message_limit(bot.tenant_id)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=limit_message)
+
     # Get knowledge items
     knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
     
@@ -344,17 +347,22 @@ async def send_chat_message(
     tenant = db.query(Tenant).filter(Tenant.id == bot.tenant_id).first()
     appointment_service = AppointmentAvailabilityService(db)
     assistant_profile_service = AssistantProfileService(db)
-    ai_response = await ai_service.generate_reply(
-        bot=bot,
-        knowledge_items=knowledge_items,
-        conversation=conversation,
-        last_user_message=request.message,
-        bot_settings=bot.settings,
-        runtime_context=(
-            assistant_profile_service.build_runtime_context(tenant, bot)
-            if tenant else None
-        ),
-    )
+    try:
+        ai_response = await ai_service.generate_reply(
+            bot=bot,
+            knowledge_items=knowledge_items,
+            conversation=conversation,
+            last_user_message=request.message,
+            bot_settings=bot.settings,
+            runtime_context=(
+                assistant_profile_service.build_runtime_context(tenant, bot)
+                if tenant else None
+            ),
+            raise_on_provider_error=True,
+        )
+    except Exception as exc:
+        logger.exception("Widget AI provider unavailable for tenant %s", bot.tenant_id)
+        raise HTTPException(status_code=503, detail="Yanıt servisi geçici olarak kullanılamıyor. Lütfen tekrar deneyin.") from exc
     appointment = None
     if tenant and assistant_profile_service.capability_enabled(bot, "appointment_management"):
         ai_response, appointment = appointment_service.apply_ai_action(
@@ -381,6 +389,7 @@ async def send_chat_message(
         content=ai_response
     )
     db.add(bot_message)
+    record_delivered_reply(db, bot.tenant_id, bot_message, source_message_id=user_message.id)
     db.commit()
     db.refresh(bot_message)
     

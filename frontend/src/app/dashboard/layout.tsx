@@ -68,7 +68,8 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, tenant, isAuthenticated, sessionReady, logout } = useAuthStore()
+  const { user, tenant, entitlements, isAuthenticated, sessionReady, logout } = useAuthStore()
+  const isDemo = Boolean(entitlements.demo_access)
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = useState(false)
@@ -121,7 +122,7 @@ export default function DashboardLayout({
   }, [authHydrated, sessionReady, isAuthenticated, user?.is_admin, router])
 
   useEffect(() => {
-    if (!mounted || !isAuthenticated || !onboardingStatus) return
+    if (!mounted || !isAuthenticated || !onboardingStatus || isDemo) return
     if (
       !onboardingStatus.is_completed &&
       !pathname.startsWith('/dashboard/onboarding') &&
@@ -129,7 +130,7 @@ export default function DashboardLayout({
     ) {
       router.replace('/dashboard/onboarding')
     }
-  }, [isAuthenticated, mounted, onboardingStatus, pathname, router])
+  }, [isAuthenticated, isDemo, mounted, onboardingStatus, pathname, router])
 
   useEffect(() => {
     if (!mounted || !isAuthenticated) return
@@ -175,7 +176,7 @@ export default function DashboardLayout({
     return null
   }
 
-  const showOnboardingBanner = onboardingStatus && !onboardingStatus.is_completed && !onboardingStatus.dismissed
+  const showOnboardingBanner = !isDemo && onboardingStatus && !onboardingStatus.is_completed && !onboardingStatus.dismissed
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -426,7 +427,7 @@ export default function DashboardLayout({
                 {user?.is_admin && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => window.location.assign('/admin/tenants')}>Tenant yönetimine git</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push('/admin/tenants')}>Tenant yönetimine git</DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>

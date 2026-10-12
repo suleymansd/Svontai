@@ -38,9 +38,9 @@ export default function ConversationsPage() {
   const [message, setMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const { connected: realtimeConnected } = useRealtimeEvents((event) => {
-    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
+    if (event.type !== 'ready' && !event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
     queryClient.invalidateQueries({ queryKey: ['conversations'] })
-    if (selectedConversation && event.conversation_id === selectedConversation) {
+    if (selectedConversation && (event.type === 'ready' || event.conversation_id === selectedConversation)) {
       queryClient.invalidateQueries({ queryKey: ['conversation', selectedConversation] })
     }
   })
@@ -60,7 +60,7 @@ export default function ConversationsPage() {
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       conversationApi.updateAIReplyPolicy(id, enabled),
     onSuccess: (response) => {
-      queryClient.setQueryData(['conversation', response.data.id], response.data)
+      queryClient.invalidateQueries({ queryKey: ['conversation', response.data.id] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       toast({
         title: response.data.ai_reply_enabled ? 'AI yanıtları açıldı' : 'Kişi AI yanıtlarından hariç tutuldu',

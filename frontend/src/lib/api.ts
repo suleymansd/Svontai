@@ -47,7 +47,7 @@ api.interceptors.response.use(
     const requestUrl = String(originalRequest?.url || '')
     const isAuthRoute = requestUrl.startsWith('/auth/')
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true
 
       try {
@@ -56,11 +56,16 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access_token}`
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh failed, redirect to login
-        clearAccessToken()
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login'
+        const status = (refreshError as { response?: { status?: number } }).response?.status
+        if (status === 401 || status === 403) {
+          clearAccessToken()
+          if (typeof window !== 'undefined') {
+            // Expired credentials require clearing the whole authenticated tree.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.href = '/login'
+          }
         }
+        return Promise.reject(refreshError)
       }
     }
 
@@ -94,7 +99,7 @@ export async function refreshAccessToken(): Promise<string> {
       return token
     })
     .catch((error) => {
-      clearAccessToken()
+      if (error.response?.status === 401 || error.response?.status === 403) clearAccessToken()
       throw error
     })
     .finally(() => setRefreshPromise(null))

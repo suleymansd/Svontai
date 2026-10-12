@@ -30,6 +30,8 @@ export async function openAdminCustomerPreview({
 
     await queryClient.cancelQueries()
     queryClient.clear()
+    // A tenant boundary change must discard all mounted tenant-specific state.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign('/dashboard')
   } catch (error) {
     if (previousContext?.id) {
@@ -45,5 +47,7 @@ export async function closeAdminCustomerPreview(queryClient: QueryClient): Promi
   clearAdminTenantContext()
   await queryClient.cancelQueries()
   queryClient.clear()
+  // Discard the customer's mounted state before returning to the admin portal.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign('/admin')
 }

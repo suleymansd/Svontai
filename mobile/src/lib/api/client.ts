@@ -64,7 +64,7 @@ async function refreshAccessToken(): Promise<string> {
     const [refreshToken, deviceId] = await Promise.all([getRefreshToken(), getOrCreateDeviceId()]);
     if (!refreshToken) throw new ApiError('Oturum bulunamadı.', 401);
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
+    const response = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken, device_id: deviceId }),
@@ -78,9 +78,11 @@ async function refreshAccessToken(): Promise<string> {
   try {
     return await refreshPromise;
   } catch (error) {
-    accessToken = null;
-    await clearRefreshToken();
-    onSessionExpired?.();
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      accessToken = null;
+      await clearRefreshToken();
+      onSessionExpired?.();
+    }
     throw error;
   } finally {
     refreshPromise = null;
@@ -88,6 +90,20 @@ async function refreshAccessToken(): Promise<string> {
 }
 
 type RequestOptions = RequestInit & { authenticated?: boolean; retry?: boolean };
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (options.signal?.aborted) abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, 20_000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
+  }
+}
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (!API_URL) throw new ApiError('Mobil API adresi yapılandırılmamış.', 500);
@@ -100,7 +116,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
   if (authenticated && accessToken) requestHeaders.set('Authorization', `Bearer ${accessToken}`);
 
-  const response = await fetch(`${API_URL}${path}`, { ...requestOptions, headers: requestHeaders });
+  const response = await fetchWithTimeout(`${API_URL}${path}`, { ...requestOptions, headers: requestHeaders });
   if (response.status === 401 && authenticated && retry) {
     const token = await refreshAccessToken();
     requestHeaders.set('Authorization', `Bearer ${token}`);

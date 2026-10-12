@@ -43,7 +43,14 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
     "check": "npm run lint && npm run typecheck"
+  },
+  "overrides": {
+    "shell-quote": "1.12.0",
+    "compression": "1.8.2",
+    "source-map-js": "1.2.2",
+    "brace-expansion@>=5.0.0": "5.0.12"
   },
   "private": true
 }

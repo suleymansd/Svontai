@@ -79,7 +79,10 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
               .join('\n')
             if (!data) return
             try {
-              callbackRef.current(JSON.parse(data) as RealtimeEvent)
+              const payload = JSON.parse(data)
+              const eventName = frame.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim()
+              const type = payload.type || (eventName === 'ready' ? 'ready' : undefined)
+              if (typeof type === 'string') callbackRef.current({ ...payload, type } as RealtimeEvent)
             } catch {
               // Ignore malformed third-party proxy frames.
             }

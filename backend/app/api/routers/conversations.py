@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func, select
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_tenant
@@ -25,6 +26,27 @@ class ConversationAIReplyPolicyUpdate(BaseModel):
     enabled: bool
 
 
+def _serialize_previews(db: Session, conversations: list[Conversation]) -> list[dict]:
+    """Fetch indexed last-message projections, not entire chat histories."""
+    if not conversations:
+        return []
+    def latest(column):
+        return select(column).where(Message.conversation_id == Conversation.id).order_by(
+            Message.created_at.desc(), Message.id.desc(),
+        ).limit(1).correlate(Conversation).scalar_subquery()
+    previews = {
+        row.id: (row.content, row.sent_at)
+        for row in db.query(
+            Conversation.id, latest(func.substr(Message.content, 1, 500)).label("content"),
+            latest(Message.created_at).label("sent_at"),
+        ).filter(Conversation.id.in_([item.id for item in conversations])).all()
+    }
+    return [{
+        **{name: getattr(item, name) for name in ConversationResponse.model_fields if name not in {"last_message", "last_message_at"}},
+        "last_message": previews[item.id][0], "last_message_at": previews[item.id][1],
+    } for item in conversations]
+
+
 @router.get("/conversations", response_model=list[ConversationResponse])
 async def list_all_conversations(
     skip: int = Query(0, ge=0),
@@ -32,7 +54,7 @@ async def list_all_conversations(
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"]))
-) -> list[Conversation]:
+) -> list[dict]:
     """
     List all conversations for the tenant's bots.
     
@@ -45,15 +67,13 @@ async def list_all_conversations(
     Returns:
         List of conversations.
     """
-    conversations = db.query(Conversation).options(
-        selectinload(Conversation.messages)
-    ).join(Bot).filter(
+    conversations = db.query(Conversation).join(Bot).filter(
         Bot.tenant_id == current_tenant.id
     ).order_by(
         Conversation.updated_at.desc()
     ).offset(skip).limit(limit).all()
     
-    return conversations
+    return _serialize_previews(db, conversations)
 
 
 @router.get("/bots/{bot_id}/conversations", response_model=list[ConversationResponse])
@@ -64,7 +84,7 @@ async def list_bot_conversations(
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"]))
-) -> list[Conversation]:
+) -> list[dict]:
     """
     List conversations for a specific bot.
     
@@ -90,15 +110,13 @@ async def list_bot_conversations(
             detail="Bot bulunamadı"
         )
     
-    conversations = db.query(Conversation).options(
-        selectinload(Conversation.messages)
-    ).filter(
+    conversations = db.query(Conversation).filter(
         Conversation.bot_id == bot_id
     ).order_by(
         Conversation.updated_at.desc()
     ).offset(skip).limit(limit).all()
     
-    return conversations
+    return _serialize_previews(db, conversations)
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationWithMessages)

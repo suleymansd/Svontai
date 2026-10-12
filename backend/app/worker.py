@@ -647,27 +647,32 @@ def _run_data_retention() -> None:
             tenants = db.query(Tenant.id).all()
             completed = 0
             for (tenant_id,) in tenants:
-                result = service.run(tenant_id)
-                if result.get("status") == "completed":
-                    completed += 1
+                try:
+                    result = service.run(tenant_id)
+                    if result.get("status") == "completed":
+                        completed += 1
+                except Exception as exc:
+                    db.rollback()
+                    logger.exception("data_retention failed tenant=%s", tenant_id)
+                    capture_exception(exc)
             logger.info("data_retention_cycle tenants=%s completed=%s", len(tenants), completed)
     finally:
         db.close()
 
 
 def _process_webhook_inbox() -> None:
-    claim_db = SessionLocal()
-    try:
-        event_ids = WebhookInboxService(claim_db).claim_batch(limit=20, lease_seconds=180)
-    finally:
-        claim_db.close()
-
-    for event_id in event_ids:
+    for _ in range(20):
+        # Claim only work that can start now; queued batch leases can expire.
         event_db = SessionLocal()
         try:
-            asyncio.run(WebhookInboxService(event_db).process_claimed(event_id))
+            service = WebhookInboxService(event_db)
+            event_ids = service.claim_batch(limit=1, lease_seconds=180)
+            if not event_ids:
+                break
+            event_id = event_ids[0]
+            asyncio.run(service.process_claimed(event_id))
         except Exception as exc:
-            logger.error("webhook_inbox event_id=%s failed: %s", event_id, exc)
+            logger.error("webhook_inbox processing failed: %s", exc)
             capture_exception(exc)
         finally:
             event_db.close()

@@ -1,6 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Check, Star } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
@@ -36,6 +37,7 @@ const plans = [
 ]
 
 export default function PricingPage() {
+  const router = useRouter()
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
   const [activeCheckoutPlan, setActiveCheckoutPlan] = useState<'pro' | 'premium' | null>(null)
   const { toast } = useToast()
@@ -85,12 +87,18 @@ export default function PricingPage() {
     if (typeof window === 'undefined') return
     if (billingConfig?.mode !== 'stripe' || !billingConfig.payments_enabled) {
       const contactUrl = billingConfig?.contact_url || '/contact'
-      window.location.href = `${contactUrl}?plan=${plan}&interval=${billing}`
+      const destination = `${contactUrl}?plan=${plan}&interval=${billing}`
+      if (contactUrl.startsWith('/') && !contactUrl.startsWith('//')) {
+        router.push(destination)
+      } else {
+        const external = new URL(destination, window.location.origin)
+        if (external.protocol === 'https:') window.location.assign(external.href)
+      }
       return
     }
     const token = getAccessToken()
     if (!token) {
-      window.location.href = '/login?next=/pricing'
+      router.push('/login?next=/pricing')
       return
     }
     setActiveCheckoutPlan(plan)

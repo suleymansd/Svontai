@@ -102,6 +102,9 @@ class AssistantTrainerService:
         if session.status != "ready" or not session.proposal_json:
             raise ValueError("Uzman taslağı henüz onaya hazır değil")
 
+        from app.services.subscription_service import SubscriptionService
+
+        SubscriptionService(self.db).require_bot_capacity(tenant.id)
         proposal = AssistantTrainerProposal.model_validate(session.proposal_json)
         bot = Bot(
             tenant_id=tenant.id,

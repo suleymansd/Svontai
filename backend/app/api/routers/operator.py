@@ -313,8 +313,9 @@ async def send_operator_message(
 @router.get("/conversation/{conversation_id}/messages")
 async def get_conversation_messages(
     conversation_id: UUID,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    newest: bool = True,
     current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
@@ -339,9 +340,13 @@ async def get_conversation_messages(
             detail="Bu konuşmaya erişim izniniz yok"
         )
     
-    messages = db.query(Message).filter(
+    query = db.query(Message).filter(
         Message.conversation_id == conversation_id
-    ).order_by(Message.created_at).offset(skip).limit(limit).all()
+    )
+    order = (Message.created_at.desc(), Message.id.desc()) if newest else (Message.created_at.asc(), Message.id.asc())
+    messages = query.order_by(*order).offset(skip).limit(limit).all()
+    if newest:
+        messages.reverse()
     
     return [
         {
