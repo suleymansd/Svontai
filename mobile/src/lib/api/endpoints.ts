@@ -1,5 +1,6 @@
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 
 import { getOrCreateDeviceId, setRefreshToken } from '@/lib/auth/session-vault';
@@ -8,9 +9,9 @@ import type {
   ActionCenter,
   Appointment,
   Conversation,
+  ConversationPage,
   DashboardStats,
   MeContext,
-  Message,
   MobileTokenResponse,
   OperationalReport,
   OperatorSendResult,
@@ -50,8 +51,8 @@ export const getMe = () => apiRequest<MeContext>('/api/me');
 export const getDashboardStats = () => apiRequest<DashboardStats>('/analytics/dashboard');
 export const getActionCenter = () => apiRequest<ActionCenter>('/analytics/action-center');
 export const getConversations = () => apiRequest<Conversation[]>('/conversations?limit=100');
-export const getConversationMessages = (id: string) =>
-  apiRequest<Message[]>(`/operator/conversation/${encodeURIComponent(id)}/messages?limit=100`);
+export const getConversationMessages = (id: string, before?: string | null) =>
+  apiRequest<ConversationPage>(`/conversations/${encodeURIComponent(id)}?limit=100${before ? `&before_message_id=${encodeURIComponent(before)}` : ''}`);
 export const setConversationAIReply = (id: string, enabled: boolean) =>
   apiRequest<Conversation>(`/conversations/${encodeURIComponent(id)}/ai-reply`, {
     method: 'PATCH',
@@ -74,10 +75,10 @@ export const updateWorkspaceNote = (
   method: 'PATCH',
   body: JSON.stringify(data),
 });
-export const sendOperatorMessage = (conversationId: string, content: string) =>
+export const sendOperatorMessage = (conversationId: string, content: string, requestId = Crypto.randomUUID()) =>
   apiRequest<OperatorSendResult>('/operator/send-message', {
     method: 'POST',
-    body: JSON.stringify({ conversation_id: conversationId, content }),
+    body: JSON.stringify({ conversation_id: conversationId, content, request_id: requestId }),
   });
 
 export async function requestEmailVerification(email: string) {

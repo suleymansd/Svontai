@@ -650,6 +650,10 @@ def _prepare_automation_delivery(
     if not run_id:
         return None, None
 
+    from app.services.reply_quota_service import lock_subscription, reserve_reply
+    parsed_tenant_id = uuid.UUID(str(tenant_id))
+    lock_subscription(db, parsed_tenant_id)
+
     run = db.query(AutomationRun).filter(
         AutomationRun.id == run_id,
         AutomationRun.tenant_id == tenant_id,
@@ -658,6 +662,15 @@ def _prepare_automation_delivery(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Automation run not found")
     if _phone_key(run.from_number) != _phone_key(to_number):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Automation recipient mismatch")
+
+    source = db.query(Message.id).join(Conversation).join(Bot).filter(
+        Bot.tenant_id == parsed_tenant_id, Message.external_id == run.message_id,
+        Message.sender == "user", Conversation.external_user_id.in_([to_number, to_number.lstrip("+"), "+" + to_number.lstrip("+")]),
+    ).first()
+    if source:
+        allowed, reason = reserve_reply(db, parsed_tenant_id, source.id)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
 
     existing = db.query(Message).filter(
         Message.automation_delivery_key == _delivery_key(run_id, delivery_kind),

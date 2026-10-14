@@ -12,6 +12,8 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.subscription import TenantSubscription
 from app.services.usage_counter_service import UsageCounterService
+from app.services.reply_quota_service import lock_subscription
+from app.models.reply_reservation import ReplyReservation
 
 
 def record_delivered_reply(
@@ -38,6 +40,7 @@ def record_delivered_reply(
         if source:
             anchor_id = source.id
 
+    lock_subscription(db, tenant_id)
     anchor = db.query(Message).filter(Message.id == anchor_id).populate_existing().with_for_update().one()
     payload = dict(anchor.raw_payload or {})
     if payload.get("reply_usage"):
@@ -52,5 +55,8 @@ def record_delivered_reply(
     anchor.raw_payload = {**payload, "reply_usage": {
         "period": period, "charged_at": now.isoformat(), "reply_message_id": str(reply.id),
     }}
+    reservation = db.get(ReplyReservation, anchor_id)
+    if reservation and reservation.tenant_id == tenant_id:
+        reservation.state = "consumed"
     db.flush()
     return True

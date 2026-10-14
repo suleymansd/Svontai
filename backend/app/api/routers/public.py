@@ -333,15 +333,14 @@ async def send_chat_message(
             is_ai_paused=conversation.is_ai_paused
         )
     
-    allowed, limit_message = SubscriptionService(db).check_message_limit(bot.tenant_id)
+    from app.services.reply_quota_service import reserve_reply, release_reply
+    allowed, limit_message = reserve_reply(db, bot.tenant_id, user_message.id)
+    db.commit()
     if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=limit_message)
 
     # Get knowledge items
     knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
-    
-    # Refresh conversation to get latest messages
-    db.refresh(conversation, ["messages"])
     
     # Generate AI response
     tenant = db.query(Tenant).filter(Tenant.id == bot.tenant_id).first()
@@ -361,6 +360,9 @@ async def send_chat_message(
             raise_on_provider_error=True,
         )
     except Exception as exc:
+        db.rollback()
+        release_reply(db, bot.tenant_id, user_message.id)
+        db.commit()
         logger.exception("Widget AI provider unavailable for tenant %s", bot.tenant_id)
         raise HTTPException(status_code=503, detail="Yanıt servisi geçici olarak kullanılamıyor. Lütfen tekrar deneyin.") from exc
     appointment = None

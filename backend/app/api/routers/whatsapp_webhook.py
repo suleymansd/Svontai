@@ -330,9 +330,14 @@ async def _process_whatsapp_reply(
         subscription_service = SubscriptionService(limit_db)
         if subscription_service.get_subscription(tenant_id) is None:
             subscription_service.create_subscription(tenant_id, "free")
-        can_reply, limit_message = subscription_service.check_message_limit(
-            tenant_id,
-        )
+        from app.services.reply_quota_service import reserve_reply
+        source_id = limit_db.query(Message.id).filter(
+            Message.conversation_id == conversation_id,
+            Message.external_id == message_id,
+            Message.sender == "user",
+        ).scalar()
+        can_reply, limit_message = reserve_reply(limit_db, tenant_id, source_id)
+        limit_db.commit()
         if not can_reply:
             logger.warning(
                 "whatsapp.reply_skipped_by_plan_limit tenant_id=%s message_id=%s reason=%s",
@@ -455,7 +460,6 @@ async def _process_whatsapp_reply(
             return
         appointment_service = AppointmentAvailabilityService(db)
         assistant_profile_service = AssistantProfileService(db)
-        db.refresh(conversation, ["messages"])
         reply = await ai_service.generate_reply(
             bot=bot,
             knowledge_items=knowledge_items,
@@ -506,6 +510,7 @@ async def _process_whatsapp_reply(
 
         send_result = {"message_id": None, "raw": None}
         metered_reply = None
+        delivery_guard.prepare(reply, str(selected_media.asset.id) if selected_media else None)
         delivery_guard.set_status("dispatching")
         if reply.strip():
             send_result = await whatsapp_gateway_service.send_text(

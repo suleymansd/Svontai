@@ -93,6 +93,136 @@ def test_conversation_list_does_not_load_entire_message_relationship(client, wor
         assert inspect(conversation).attrs.messages.loaded_value is NO_VALUE
 
 
+def test_conversation_detail_pages_are_stable_and_include_operator_messages(client, workspace):
+    from app.core.time import utc_now_naive
+    from app.db.session import SessionLocal
+    from app.models.message import Message
+    headers, _, _, conversation_id = workspace
+    now = utc_now_naive()
+    with SessionLocal() as db:
+        db.add_all([Message(id=UUID(int=i + 1), conversation_id=conversation_id,
+                            sender="operator" if i == 104 else "user", content=f"page-{i}",
+                            created_at=now) for i in range(105)])
+        db.commit()
+    url = f"/conversations/{conversation_id}"
+    response = client.get(url, headers=headers)
+    assert response.status_code == 200, response.text
+    page = response.json()
+    assert len(page["messages"]) == 100
+    assert page["messages"][0]["content"] == "page-5"
+    assert page["messages"][-1]["sender"] == "operator"
+    assert page["has_more_messages"] is True
+    with SessionLocal() as db:
+        db.add(Message(conversation_id=conversation_id, sender="user", content="New arrival",
+                       created_at=now + timedelta(seconds=1)))
+        db.commit()
+    older = client.get(url, params={"before_message_id": page["next_message_cursor"]}, headers=headers).json()
+    assert [item["content"] for item in older["messages"]] == [f"page-{i}" for i in range(5)]
+    assert older["has_more_messages"] is False
+    assert older["next_message_cursor"] is None
+    assert older["last_message"] == "New arrival"
+    assert client.get(url, params={"limit": 201}, headers=headers).status_code == 422
+    assert client.get(url, params={"limit": 0}, headers=headers).status_code == 422
+
+
+def test_conversation_cursor_cannot_read_another_conversation(client, workspace):
+    from app.db.session import SessionLocal
+    from app.models.conversation import Conversation
+    from app.models.message import Message
+    headers, _, bot_id, conversation_id = workspace
+    with SessionLocal() as db:
+        other = Conversation(bot_id=bot_id, external_user_id="other")
+        db.add(other)
+        db.flush()
+        message = Message(conversation_id=other.id, sender="user", content="Not this conversation")
+        db.add(message)
+        db.commit()
+        message_id = message.id
+    assert client.get(f"/conversations/{conversation_id}", params={"before_message_id": str(message_id)}, headers=headers).status_code == 404
+    other_token, other_tenant = _create_tenant(client, email="other@example.com")
+    assert client.get(f"/conversations/{conversation_id}", headers=_headers(other_token, other_tenant)).status_code == 404
+
+
+def test_conversation_detail_and_policy_never_populate_message_relationship(client, workspace):
+    from sqlalchemy import inspect
+    from sqlalchemy.orm.attributes import NO_VALUE
+    from app.api.routers.conversations import get_conversation, update_conversation_ai_reply_policy, ConversationAIReplyPolicyUpdate
+    from app.db.session import SessionLocal
+    from app.models.message import Message
+    from app.models.conversation import Conversation
+    from app.models.tenant import Tenant
+    _, tenant_id, _, conversation_id = workspace
+    with SessionLocal() as db:
+        db.add_all([Message(conversation_id=conversation_id, sender="operator", content="Operator") for _ in range(105)])
+        db.commit()
+        conversation = db.get(Conversation, conversation_id)
+        tenant = db.get(Tenant, tenant_id)
+        result = asyncio.run(get_conversation(conversation_id, before_message_id=None, limit=20, current_tenant=tenant, db=db, _=None))
+        assert len(result["messages"]) == 20
+        assert inspect(conversation).attrs.messages.loaded_value is NO_VALUE
+        result = asyncio.run(update_conversation_ai_reply_policy(conversation_id, ConversationAIReplyPolicyUpdate(enabled=False), current_tenant=tenant, db=db, _=None))
+        assert result["ai_reply_enabled"] is False
+        assert inspect(conversation).attrs.messages.loaded_value is NO_VALUE
+        assert db.query(Message).filter_by(conversation_id=conversation_id).count() == 105
+
+
+def test_ai_history_is_bounded_and_quality_does_not_lazy_load(client, workspace, monkeypatch):
+    from types import SimpleNamespace
+    from sqlalchemy import inspect
+    from sqlalchemy.orm.attributes import NO_VALUE
+    from app.core.time import utc_now_naive
+    from app.db.session import SessionLocal
+    from app.models.message import Message
+    from app.models.conversation import Conversation
+    from app.models.bot import Bot
+    from app.services.ai_service import AIService
+    from app.services.ai_response_quality_service import AIResponseQualityService
+    _, _, bot_id, conversation_id = workspace
+    now = utc_now_naive()
+    with SessionLocal() as db:
+        db.add_all([Message(conversation_id=conversation_id, sender="bot" if i == 0 else "user", content=f"history-{i}", created_at=now + timedelta(seconds=i)) for i in range(105)])
+        db.commit()
+        conversation = db.get(Conversation, conversation_id)
+        service = AIService()
+        create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Merhaba, detayları kontrol edebilirim."))]))
+        monkeypatch.setattr(service, "_get_client", lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+        monkeypatch.setattr(service, "_check_rate_limit", lambda *args: (True, "ok"))
+        reply = asyncio.run(service.generate_reply(db.get(Bot, bot_id), [], conversation, "history-104"))
+        sent = create.call_args.kwargs["messages"]
+        assert len(sent) == 12
+        assert sent[1]["content"] == "history-94"
+        assert sum(item["content"] == "history-104" for item in sent) == 1
+        assert not reply.startswith("Merhaba")
+        AIResponseQualityService().assess(reply=reply, conversation=conversation, knowledge_items=[], bot_settings=None, appointment_confirmed=False)
+        assert inspect(conversation).attrs.messages.loaded_value is NO_VALUE
+
+
+@pytest.mark.parametrize("content", ["", "   \n", "x" * 2001])
+def test_operator_message_rejects_empty_or_oversized_content(client, workspace, content):
+    headers, _, _, conversation_id = workspace
+    assert client.post("/operator/send-message", headers=headers, json={"conversation_id": str(conversation_id), "content": content}).status_code == 422
+
+
+def test_operator_message_does_not_break_conversation_detail(client, workspace):
+    headers, _, _, conversation_id = workspace
+    response = client.post("/operator/send-message", headers=headers, json={"conversation_id": str(conversation_id), "content": "  Operator reply  "})
+    assert response.status_code == 200, response.text
+    assert response.json()["delivered"] is False
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["messages"][0]["content"] == "Operator reply"
+    assert detail.json()["messages"][0]["sender"] == "operator"
+
+
+def test_ai_context_handles_disabled_memory_and_operator_role():
+    from app.models.message import Message
+    from app.services.ai_service import AIService
+    service = AIService()
+    messages = [Message(sender="operator", content="Our confirmed hours")]
+    assert service._build_conversation_context(messages, 0) == []
+    assert service._build_conversation_context(messages, 10) == [{"role": "assistant", "content": "Our confirmed hours"}]
+
+
 def test_old_worker_cannot_complete_or_fail_new_owners_lease(client):
     from app.core.time import utc_now
     from app.db.session import SessionLocal

@@ -13,6 +13,7 @@ class MessageSender(str, Enum):
     """Message sender types."""
     USER = "user"
     BOT = "bot"
+    OPERATOR = "operator"
     SYSTEM = "system"
 
 

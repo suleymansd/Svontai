@@ -17,6 +17,7 @@ class MessageSender(str, Enum):
     """Message sender types."""
     USER = "user"
     BOT = "bot"
+    OPERATOR = "operator"
     SYSTEM = "system"
 
 
@@ -26,6 +27,7 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_messages_sender_created", "sender", "created_at"),
         Index("uq_messages_conversation_external_id", "conversation_id", "external_id", unique=True),
         Index("ix_messages_automation_run_id", "automation_run_id"),
         Index("uq_messages_automation_delivery_key", "automation_delivery_key", unique=True),

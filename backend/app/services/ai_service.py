@@ -16,6 +16,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.bot_settings import BotSettings, ResponseTone, EmojiUsage
 from app.services.conversation_policy import requests_human_support
+from app.services.conversation_history import recent_messages
 
 logger = logging.getLogger(__name__)
 
@@ -239,11 +240,13 @@ C: {item.answer}
         max_messages: int = 10
     ) -> list[dict]:
         """Build conversation history for context with memory window."""
+        if max_messages <= 0:
+            return []
         context = []
         recent_messages = messages[-max_messages:] if len(messages) > max_messages else messages
         
         for msg in recent_messages:
-            role = "assistant" if msg.sender == "bot" else "user"
+            role = "assistant" if msg.sender in {"bot", "operator"} else "user"
             context.append({
                 "role": role,
                 "content": msg.content
@@ -311,7 +314,7 @@ C: {item.answer}
         settings_obj = bot_settings or BotSettings()
         enable_guardrails = settings_obj.enable_guardrails if bot_settings else True
         fallback_msg = settings_obj.fallback_message if bot_settings else "Üzgünüm, bu konuda size yardımcı olamıyorum. Lütfen bizimle iletişime geçin."
-        memory_window = settings_obj.memory_window if bot_settings else 10
+        memory_window = max(0, min(settings_obj.memory_window or 0, 50)) if bot_settings else 10
         requested_max_tokens = settings_obj.max_response_length if bot_settings else 500
         max_tokens = max(100, min(requested_max_tokens, settings.AI_MAX_REPLY_TOKENS))
         rate_per_minute = settings_obj.rate_limit_per_minute if bot_settings else 20
@@ -350,10 +353,10 @@ C: {item.answer}
         messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation context with memory window
-        if conversation.messages:
-            context_messages = conversation.messages
+        context_messages = recent_messages(conversation, memory_window + 1) if memory_window else []
+        if context_messages:
             last_message = context_messages[-1]
-            if last_message.sender != "bot" and last_message.content == last_user_message:
+            if last_message.sender == "user" and last_message.content == last_user_message:
                 context_messages = context_messages[:-1]
             context = self._build_conversation_context(context_messages, memory_window)
             messages.extend(context)
@@ -370,7 +373,7 @@ C: {item.answer}
             )
             
             reply = response.choices[0].message.content or fallback_msg
-            reply = self._remove_repeated_greeting(reply, list(conversation.messages or []))
+            reply = self._remove_repeated_greeting(reply, recent_messages(conversation, 1, sender="bot"))
             reply = self._repair_unrequested_handoff(reply, last_user_message)
             
             return reply

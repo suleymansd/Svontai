@@ -47,10 +47,15 @@ def _check_database() -> dict[str, Any]:
             if last_success
             else None
         )
+        pipeline_health = None
+        if inspector.has_table("operator_deliveries"):
+            from app.services.delivery_health_service import delivery_health
+            pipeline_health = delivery_health(db)
         return {
             "migration_heads": migration_heads,
             "worker_commit": str(worker_meta.get("release_sha") or "unknown"),
             "worker_heartbeat_age_seconds": age_seconds,
+            "pipeline_health": pipeline_health,
         }
     finally:
         db.close()

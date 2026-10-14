@@ -10,15 +10,17 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Screen } from '@/components/ui/screen';
 import { palette, radius, spacing } from '@/constants/theme';
 import { getConversations, setConversationAIReply } from '@/lib/api/endpoints';
+import { useRealtimeConnected } from '@/lib/api/realtime';
 import type { Conversation } from '@/lib/api/types';
 import { formatRelativeTime, initials } from '@/lib/format';
 
 export default function ConversationsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const realtimeConnected = useRealtimeConnected();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'ai' | 'manual'>('all');
-  const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations, refetchInterval: 30_000 });
+  const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations, refetchInterval: realtimeConnected ? false : 60_000, refetchIntervalInBackground: false });
   const togglePolicy = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setConversationAIReply(id, enabled),
     onMutate: async ({ id, enabled }) => {

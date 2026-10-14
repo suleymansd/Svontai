@@ -21,6 +21,7 @@ from app.dependencies.auth import (
     security,
 )
 from app.services.realtime_service import realtime_channel  # Registers SQLAlchemy listeners.
+from app.services.realtime_capacity import RealtimeLease
 
 try:
     import redis.asyncio as async_redis
@@ -68,6 +69,21 @@ async def tenant_realtime_events(
     request: Request,
     tenant_id: str = Depends(resolve_realtime_tenant_id),
 ) -> StreamingResponse:
+    client = None
+    lease = None
+    if async_redis is not None and settings.RATE_LIMIT_BACKEND == "redis":
+        client = async_redis.Redis.from_url(settings.REDIS_URL, decode_responses=True,
+                                          socket_connect_timeout=2, socket_timeout=20)
+        lease = RealtimeLease(client, tenant_id)
+        try:
+            acquired = await lease.acquire(settings.REALTIME_MAX_CONNECTIONS_PER_TENANT)
+        except Exception:
+            await client.aclose()
+            raise HTTPException(status_code=503, detail="Canli baglanti gecici olarak kullanilamiyor.")
+        if not acquired:
+            await client.aclose()
+            raise HTTPException(status_code=429, detail="Canli baglanti sinirina ulasildi.", headers={"Retry-After": "30"})
+
     async def stream():
         last_auth = monotonic()
 
@@ -87,24 +103,20 @@ async def tenant_realtime_events(
             except (HTTPException, ValueError):
                 return False
 
-        if async_redis is None or settings.RATE_LIMIT_BACKEND != "redis":
-            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id})
+        if client is None:
+            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id, "live": False})
             while not await request.is_disconnected() and await still_authorized():
                 await asyncio.sleep(15)
                 yield ": heartbeat\n\n"
             return
 
-        client = async_redis.Redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=20,
-        )
         pubsub = client.pubsub()
         try:
             await pubsub.subscribe(realtime_channel(tenant_id))
-            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id})
+            yield _sse("ready", {"type": "ready", "tenant_id": tenant_id, "live": True})
             while not await request.is_disconnected() and await still_authorized():
+                if not await lease.renew():
+                    break
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15)
                 if message and message.get("type") == "message":
                     raw_data = message.get("data")
@@ -116,9 +128,13 @@ async def tenant_realtime_events(
                 else:
                     yield ": heartbeat\n\n"
         finally:
-            await pubsub.unsubscribe(realtime_channel(tenant_id))
-            await pubsub.aclose()
-            await client.aclose()
+            try:
+                await lease.release()
+            finally:
+                try:
+                    await pubsub.aclose()
+                finally:
+                    await client.aclose()
 
     return StreamingResponse(
         stream(),

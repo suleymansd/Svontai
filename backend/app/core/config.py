@@ -11,7 +11,7 @@ from typing import Literal, Optional
 from urllib.parse import quote_plus, urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
@@ -198,6 +198,7 @@ class Settings(BaseSettings):
     # Redis (optional)
     REDIS_URL: str = "redis://localhost:6379"
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
+    REALTIME_MAX_CONNECTIONS_PER_TENANT: int = Field(default=20, ge=1, le=200)
     RATE_LIMIT_REDIS_PREFIX: str = "svontai:rate-limit"
     RATE_LIMIT_FAIL_CLOSED: bool = False
     TRUSTED_PROXY_CIDRS: str = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"

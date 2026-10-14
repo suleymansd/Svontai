@@ -88,11 +88,18 @@ export type Message = {
   created_at: string;
 };
 
+export type ConversationPage = Conversation & {
+  messages: Message[];
+  has_more_messages: boolean;
+  next_message_cursor: string | null;
+};
+
 export type OperatorSendResult = {
   success: boolean;
   message_id: string;
   sent_at: string;
   delivered: boolean;
+  delivery_status?: 'queued' | 'dispatching' | 'sent' | 'uncertain' | 'failed';
   note: string | null;
 };
 

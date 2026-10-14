@@ -314,7 +314,8 @@ export const conversationApi = {
     api.get('/conversations', { params }),
   listByBot: (botId: string, params?: { skip?: number; limit?: number }) =>
     api.get(`/bots/${botId}/conversations`, { params }),
-  get: (id: string) => api.get(`/conversations/${id}`),
+  get: (id: string, params?: { before_message_id?: string; limit?: number }) =>
+    api.get(`/conversations/${id}`, { params }),
   getMessages: (id: string, params?: { skip?: number; limit?: number }) =>
     api.get(`/conversations/${id}/messages`, { params }),
   updateAIReplyPolicy: (id: string, enabled: boolean) =>
@@ -655,8 +656,11 @@ export const operatorApi = {
     api.post('/operator/takeover', { conversation_id: conversationId }),
   releaseConversation: (conversationId: string) => 
     api.post('/operator/release', { conversation_id: conversationId }),
-  sendMessage: (conversationId: string, content: string) => 
-    api.post('/operator/send-message', { conversation_id: conversationId, content }),
+  sendMessage: (conversationId: string, content: string, requestId?: string) =>
+    api.post('/operator/send-message', { conversation_id: conversationId, content, request_id: requestId || crypto.randomUUID() }),
+  deliveries: (conversationId: string) => api.get('/operator/deliveries', { params: { conversation_id: conversationId } }),
+  resolveDelivery: (messageId: string, outcome: 'sent' | 'not_sent', kind: 'operator' | 'ai' = 'operator') =>
+    api.post(`/operator/deliveries/${messageId}/resolve`, { outcome, kind, checked_whatsapp: true }),
   getConversationMessages: (conversationId: string, skip?: number, limit?: number) =>
     api.get(`/operator/conversation/${conversationId}/messages`, { params: { skip, limit } }),
 }

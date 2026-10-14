@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AppState } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
@@ -10,6 +11,7 @@ import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 import { ErrorState } from '@/components/ui/feedback';
 import { Screen } from '@/components/ui/screen';
 import { FirstRunProvider, useFirstRun } from '@/lib/onboarding/first-run-context';
+import { RealtimeContext, useMobileRealtime } from '@/lib/api/realtime';
 
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 300, fade: true });
@@ -18,6 +20,7 @@ function Navigation() {
   const router = useRouter();
   const segments = useSegments();
   const { status: authStatus, retrySession } = useAuth();
+  const realtimeConnected = useMobileRealtime(authStatus === 'authenticated');
   const { status: firstRunStatus, hasCompletedOnboarding } = useFirstRun();
   const [launchVisible, setLaunchVisible] = useState(true);
   const appReady = authStatus !== 'loading' && firstRunStatus === 'ready';
@@ -48,7 +51,7 @@ function Navigation() {
   }
 
   return (
-    <>
+    <RealtimeContext.Provider value={realtimeConnected}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.canvas } }}>
         <Stack.Screen name="index" />
@@ -69,11 +72,16 @@ function Navigation() {
         />
       </Stack>
       {launchVisible && <AnimatedLaunchScreen ready={appReady} onFinish={finishLaunch} />}
-    </>
+    </RealtimeContext.Provider>
   );
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    focusManager.setFocused(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (state) => focusManager.setFocused(state === 'active'));
+    return () => subscription.remove();
+  }, []);
   const [queryClient] = useState(
     () =>
       new QueryClient({

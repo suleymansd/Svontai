@@ -678,11 +678,24 @@ def _process_webhook_inbox() -> None:
             event_db.close()
 
 
+def _process_operator_outbox() -> None:
+    from app.models.operator_delivery import OperatorDelivery
+    from app.services.operator_delivery_service import dispatch_operator_message, mark_stale_deliveries
+    with SessionLocal() as db:
+        mark_stale_deliveries(db)
+        pending = db.query(OperatorDelivery.message_id).filter_by(status="queued").order_by(
+            OperatorDelivery.updated_at,
+        ).limit(20).all()
+    for item in pending:
+        asyncio.run(dispatch_operator_message(item.message_id))
+
+
 async def main() -> None:
     logger.info("SmartWA worker starting")
     await asyncio.to_thread(_wait_for_database_schema)
     tasks = [
         asyncio.create_task(_run_every("worker_heartbeat", 30, _record_worker_heartbeat)),
+        asyncio.create_task(_run_every("operator_outbox", 5, _process_operator_outbox)),
         asyncio.create_task(_run_every("webhook_inbox", settings.WEBHOOK_INBOX_POLL_INTERVAL_SECONDS, _process_webhook_inbox)),
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),

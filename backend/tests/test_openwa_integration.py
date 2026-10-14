@@ -13,8 +13,7 @@ def _extract_code(message: str) -> str:
     return match.group(1)
 
 
-def _create_tenant(client) -> tuple[str, str]:
-    email = "openwa@example.com"
+def _create_tenant(client, email: str = "openwa@example.com") -> tuple[str, str]:
     password = "Password123!"
     assert client.post(
         "/auth/register",

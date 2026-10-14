@@ -1,51 +1,71 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Send } from 'lucide-react-native';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowUp, Bot, Send } from 'lucide-react-native';
 import { Redirect, useLocalSearchParams } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { palette, radius, spacing } from '@/constants/theme';
-import { getConversationMessages, getConversations, sendOperatorMessage, setConversationAIReply } from '@/lib/api/endpoints';
+import { getConversationMessages, sendOperatorMessage, setConversationAIReply } from '@/lib/api/endpoints';
+import { chronologicalMessages } from '@/lib/api/conversation-history';
+import type { Message } from '@/lib/api/types';
+import { useRealtimeConnected } from '@/lib/api/realtime';
 import { useAuth } from '@/lib/auth/auth-context';
 import { initials } from '@/lib/format';
 
 export default function ConversationDetailScreen() {
   const { status } = useAuth();
+  const realtimeConnected = useRealtimeConnected();
   const params = useLocalSearchParams<{ id: string }>();
   const id = String(params.id || '');
   const queryClient = useQueryClient();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList<Message>>(null);
+  const atBottom = useRef(true);
+  const request = useRef<{ content: string; id: string; key: string } | null>(null);
   const [draft, setDraft] = useState('');
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
-  const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations });
-  const messages = useQuery({
+  const messages = useInfiniteQuery({
     queryKey: ['conversation-messages', id],
-    queryFn: () => getConversationMessages(id),
-    enabled: Boolean(id),
-    refetchInterval: 5_000,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => getConversationMessages(id, pageParam),
+    getNextPageParam: (lastPage) => lastPage.next_message_cursor || undefined,
+    enabled: Boolean(id) && status === 'authenticated',
+    refetchInterval: realtimeConnected ? false : 60_000,
+    refetchIntervalInBackground: false,
   });
-  const conversation = useMemo(() => conversations.data?.find((item) => item.id === id), [conversations.data, id]);
+  const conversation = messages.data?.pages[0];
+  const items = useMemo(() => chronologicalMessages(messages.data?.pages), [messages.data]);
   const togglePolicy = useMutation({
     mutationFn: (enabled: boolean) => setConversationAIReply(id, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['conversation-messages', id] });
+    },
+    onError: () => setDeliveryError('AI yanıt tercihi kaydedilemedi. Tekrar deneyin.'),
   });
   const send = useMutation({
-    mutationFn: (content: string) => sendOperatorMessage(id, content),
+    mutationFn: (content: string) => {
+      if (!request.current || request.current.content !== content || request.current.id !== id) {
+        request.current = { content, id, key: Crypto.randomUUID() };
+      }
+      return sendOperatorMessage(id, content, request.current.key);
+    },
     onSuccess: (result) => {
-      setDraft('');
-      setDeliveryError(result.delivered ? null : result.note || 'Mesaj WhatsApp’a iletilemedi.');
+      if (result.delivered || result.delivery_status === 'failed') request.current = null;
+      if (result.delivered) setDraft('');
+      setDeliveryError(result.delivered ? null : result.note || 'Teslimat doğrulanamadı. Tekrar göndermeden önce konuşmayı kontrol edin.');
       void queryClient.invalidateQueries({ queryKey: ['conversation-messages', id] });
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
-    onError: () => setDeliveryError('Mesaj gönderilemedi. Bağlantınızı kontrol edin.'),
+    onError: () => setDeliveryError('Gönderim doğrulanamadı. Mesajınız korunuyor; tekrar göndermeden önce konuşmayı kontrol edin.'),
   });
 
   if (status === 'unauthenticated') return <Redirect href="/(auth)/login" />;
   if (messages.isLoading) return <SafeAreaView style={styles.safeArea}><LoadingState label="Mesajlar yükleniyor" /></SafeAreaView>;
-  if (messages.error) return <SafeAreaView style={styles.safeArea}><ErrorState message="Mesaj geçmişi alınamadı." onRetry={() => void messages.refetch()} /></SafeAreaView>;
+  if (messages.error && !conversation) return <SafeAreaView style={styles.safeArea}><ErrorState message="Mesaj geçmişi alınamadı." onRetry={() => void messages.refetch()} /></SafeAreaView>;
 
   const name = conversation?.customer_name || conversation?.customer_phone || 'Konuşma';
   return (
@@ -69,8 +89,21 @@ export default function ConversationDetailScreen() {
           />
         </View>
 
-        <ScrollView ref={scrollRef} style={styles.flex} contentContainerStyle={styles.messages} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
-          {(messages.data || []).map((message) => {
+        <FlatList
+          ref={scrollRef}
+          style={styles.flex}
+          contentContainerStyle={styles.messages}
+          data={items}
+          keyExtractor={(message) => message.id}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          onScroll={({ nativeEvent }) => {
+            atBottom.current = nativeEvent.contentSize.height - nativeEvent.contentOffset.y - nativeEvent.layoutMeasurement.height < 80;
+          }}
+          scrollEventThrottle={100}
+          onContentSizeChange={() => { if (atBottom.current) scrollRef.current?.scrollToEnd({ animated: false }); }}
+          ListHeaderComponent={messages.hasNextPage ? <Button label="Önceki mesajlar" variant="secondary" icon={<ArrowUp size={18} color={palette.ink} />} loading={messages.isFetchingNextPage} disabled={messages.isFetching} onPress={() => { atBottom.current = false; void messages.fetchNextPage(); }} /> : null}
+          ListFooterComponent={messages.error ? <ErrorState message="Mesajlar yenilenemedi." onRetry={() => void messages.refetch()} /> : null}
+          renderItem={({ item: message }) => {
             const outgoing = message.sender !== 'user';
             const automated = message.sender === 'bot';
             return (
@@ -82,8 +115,8 @@ export default function ConversationDetailScreen() {
                 </Text>
               </View>
             );
-          })}
-        </ScrollView>
+          }}
+        />
 
         {deliveryError ? <Text style={styles.deliveryError}>{deliveryError}</Text> : null}
         <View style={styles.composer}>
@@ -93,6 +126,7 @@ export default function ConversationDetailScreen() {
             placeholder="Mesaj yazın"
             placeholderTextColor={palette.inkSubtle}
             multiline
+            editable={!send.isPending}
             maxLength={2000}
             style={styles.composerInput}
           />

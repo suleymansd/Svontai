@@ -2,15 +2,16 @@
 Operator API router for human takeover functionality.
 """
 
-from uuid import UUID
-from datetime import datetime
+from uuid import UUID, uuid4
+from datetime import datetime, timedelta
 from app.core.time import utc_now_naive
-from typing import Optional
+from typing import Annotated, Literal, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, and_
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, get_current_tenant
@@ -23,9 +24,14 @@ from app.models.bot import Bot
 from app.models.whatsapp_account import WhatsAppAccount
 from app.services.subscription_service import SubscriptionService
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
+from app.models.operator_delivery import OperatorDelivery
+from app.models.onboarding import AuditLog
+from app.services.operator_delivery_service import enqueue_operator_message, dispatch_operator_message, delivery_result
+from app.services.reply_delivery_guard import can_reconcile_reply
 
 
 router = APIRouter(prefix="/operator", tags=["operator"])
+logger = logging.getLogger(__name__)
 
 
 # Schemas
@@ -35,7 +41,14 @@ class TakeoverRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     conversation_id: UUID
-    content: str
+    content: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    request_id: UUID = Field(default_factory=uuid4)
+
+
+class DeliveryResolution(BaseModel):
+    outcome: Literal["sent", "not_sent"]
+    checked_whatsapp: Literal[True]
+    kind: Literal["operator", "ai"] = "operator"
 
 
 class ConversationWithStatus(BaseModel):
@@ -242,14 +255,7 @@ async def send_operator_message(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ):
-    """
-    Send a message as operator.
-    
-    NOTE: This is a stub for actual message sending.
-    In production, this would:
-    1. Send message via WhatsApp API if source is whatsapp
-    2. Send via WebSocket if source is widget
-    """
+    """Record an operator message and attempt delivery through the tenant gateway."""
     conversation = db.query(Conversation).filter(
         Conversation.id == request.conversation_id
     ).first()
@@ -268,46 +274,94 @@ async def send_operator_message(
             detail="Bu konuşmaya erişim izniniz yok"
         )
     
-    # Create message record
-    message = Message(
-        conversation_id=conversation.id,
-        sender="operator",
-        content=request.content
-    )
-    db.add(message)
+    message_id = enqueue_operator_message(db, tenant.id, conversation, request.content, request.request_id)
     db.commit()
-    db.refresh(message)
-    
-    delivered = True
-    delivery_note = None
-    
-    if conversation.source == ConversationSource.WHATSAPP.value:
-        account = db.query(WhatsAppAccount).filter(
-            WhatsAppAccount.tenant_id == tenant.id,
-            WhatsAppAccount.is_active == True
-        ).first()
-        
-        if not account:
-            delivered = False
-            delivery_note = "WhatsApp hesabı bağlı değil."
-        else:
-            try:
-                await whatsapp_gateway_service.send_text(
-                    account,
-                    to=conversation.external_user_id,
-                    text=request.content,
-                )
-            except Exception as e:
-                delivered = False
-                delivery_note = f"WhatsApp gönderimi başarısız: {str(e)}"
-    
-    return {
-        "success": True,
-        "message_id": str(message.id),
-        "sent_at": message.created_at.isoformat(),
-        "delivered": delivered,
-        "note": delivery_note
-    }
+    await dispatch_operator_message(message_id)
+    db.expire_all()
+    return delivery_result(db, message_id)
+
+
+@router.get("/deliveries")
+async def list_deliveries(
+    conversation_id: UUID,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["tools:read"])),
+):
+    rows = db.query(OperatorDelivery).join(Message).filter(
+        OperatorDelivery.tenant_id == tenant.id, Message.conversation_id == conversation_id,
+        OperatorDelivery.status.in_(["queued", "dispatching", "uncertain", "failed"]),
+    ).order_by(OperatorDelivery.updated_at.desc()).limit(50).all()
+    items = [{**delivery_result(db, row.message_id), "kind": "operator", "content": db.get(Message, row.message_id).content} for row in rows]
+    pending_ai = db.query(Message).join(Conversation).join(Bot).filter(
+        Bot.tenant_id == tenant.id, Message.conversation_id == conversation_id, Message.sender == "user",
+        Message.raw_payload["reply_delivery"]["status"].as_string().in_(["dispatching", "uncertain"]),
+        Message.created_at < utc_now_naive() - timedelta(minutes=5),
+    ).order_by(Message.created_at.desc()).limit(50).all()
+    for message in pending_ai:
+        if not can_reconcile_reply(message):
+            continue
+        prepared = (message.raw_payload or {}).get("reply_delivery", {}).get("prepared_reply", {})
+        items.append({"message_id": str(message.id), "kind": "ai", "delivery_status": "uncertain",
+                      "content": prepared.get("text") or message.content,
+                      "note": "AI yanitinin teslimati belirsiz. WhatsApp konusmasindan kontrol edin."})
+    return items
+
+
+@router.post("/deliveries/{message_id}/resolve")
+async def resolve_delivery(
+    message_id: UUID, body: DeliveryResolution,
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["dashboard:edit"])),
+):
+    if body.kind == "ai":
+        from app.services.reply_quota_service import lock_subscription, release_reply
+        from app.services.reply_usage_service import record_delivered_reply
+        lock_subscription(db, tenant.id)
+        message = db.query(Message).join(Conversation).join(Bot).filter(
+            Message.id == message_id, Message.sender == "user", Bot.tenant_id == tenant.id,
+        ).with_for_update(of=Message).first()
+        if message is None:
+            raise HTTPException(status_code=404, detail="Gonderim bulunamadi.")
+        payload = dict(message.raw_payload or {})
+        state = payload.get("reply_delivery", {})
+        if not can_reconcile_reply(message):
+            raise HTTPException(status_code=409, detail="Gonderim henuz uzlastirmaya uygun degil.")
+        if body.outcome == "sent" and not payload.get("reply_usage"):
+            prepared = state.get("prepared_reply") or {}
+            reply = Message(conversation_id=message.conversation_id, sender="bot",
+                            content=prepared.get("text") or "Teslimat işletme tarafından doğrulandı.",
+                            reply_to_external_id=message.external_id,
+                            raw_payload={"delivery_confirmed_by_operator": str(current_user.id)})
+            db.add(reply)
+            record_delivered_reply(db, tenant.id, reply, source_message_id=message_id)
+            payload = dict(message.raw_payload or {})
+        elif body.outcome == "not_sent":
+            release_reply(db, tenant.id, message_id)
+            message.conversation.is_ai_paused = True
+            message.conversation.status = ConversationStatus.HUMAN_TAKEOVER.value
+        payload["reply_delivery"] = {**state, "status": "completed", "owner": None,
+                                     "updated_at": utc_now_naive().isoformat(),
+                                     "resolved_by": str(current_user.id), "resolution": body.outcome}
+        message.raw_payload = payload
+        db.add(AuditLog(tenant_id=tenant.id, user_id=current_user.id, action="ai.delivery_resolved",
+                        resource_type="message", resource_id=str(message_id), payload_json={"outcome": body.outcome}))
+        db.commit()
+        return {"success": True, "delivered": body.outcome == "sent", "message_id": str(message_id)}
+    row = db.query(OperatorDelivery).filter_by(message_id=message_id, tenant_id=tenant.id).with_for_update().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Gonderim bulunamadi.")
+    if row.status != "uncertain":
+        raise HTTPException(status_code=409, detail="Yalnizca belirsiz gonderimler uzlastirilabilir.")
+    row.status = "sent" if body.outcome == "sent" else "failed"
+    row.attempt_token = None
+    row.updated_at = utc_now_naive()
+    db.add(AuditLog(tenant_id=tenant.id, user_id=current_user.id, action="operator.delivery_resolved",
+                    resource_type="message", resource_id=str(message_id), payload_json={"outcome": body.outcome}))
+    db.commit()
+    return delivery_result(db, message_id)
 
 
 @router.get("/conversation/{conversation_id}/messages")

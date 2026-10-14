@@ -35,6 +35,23 @@ export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
+export async function openRealtimeStream(signal: AbortSignal): Promise<Response> {
+  const { fetch: streamFetch } = await import('expo/fetch');
+  if (!API_URL) throw new ApiError('Mobil API adresi yapılandırılmamış.', 500);
+  let token = accessToken || await refreshAccessToken();
+  const connect = () => streamFetch(`${API_URL}/realtime/events`, {
+    headers: { Accept: 'text/event-stream', Authorization: `Bearer ${token}` }, signal,
+  });
+  let response = await connect();
+  if (response.status === 401) {
+    await response.text();
+    token = await refreshAccessToken();
+    response = await connect();
+  }
+  if (!response.ok) throw new ApiError('Canlı bağlantı kurulamadı.', response.status);
+  return response;
+}
+
 function errorFromBody(status: number, body: unknown): ApiError {
   const detail = (body as { detail?: unknown } | null)?.detail;
   if (typeof detail === 'string') return new ApiError(detail, status, undefined, body);
