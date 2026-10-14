@@ -43,6 +43,22 @@ test('admin customer detail keeps the route tenant id and survives validation er
       return
     }
 
+    if (path === '/api/me') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user: { id: 'admin-1', email: 'admin@example.com', full_name: 'Test Admin', is_admin: true },
+          tenant: null,
+          role: { id: 'system-admin', name: 'system_admin' },
+          permissions: [],
+          entitlements: {},
+          feature_flags: {},
+        }),
+      })
+      return
+    }
+
     if (path === `/admin/tenants/${tenantId}` && request.method() === 'GET') {
       await route.fulfill({
         status: 200,

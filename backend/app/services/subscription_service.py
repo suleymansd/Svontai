@@ -7,13 +7,16 @@ from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, update
+from fastapi import HTTPException
 
 from app.core.time import utc_now_naive
 from app.core.plans import normalize_plan_code
 from app.models.plan import Plan, DEFAULT_PLANS
 from app.models.subscription import TenantSubscription, SubscriptionStatus
 from app.models.tenant import Tenant
+from app.models.bot import Bot
+from app.models.demo_access import DemoAccess
 from app.models.system_event import SystemEvent
 from app.services.system_event_service import SystemEventService
 
@@ -157,12 +160,24 @@ class SubscriptionService:
     
     def increment_message_count(self, tenant_id: uuid.UUID) -> bool:
         """Increment message count for tenant."""
+        result = self.db.execute(update(TenantSubscription).where(
+            TenantSubscription.tenant_id == tenant_id
+        ).values(messages_used_this_month=TenantSubscription.messages_used_this_month + 1))
+        self.db.commit()
+        return result.rowcount > 0
+
+    def require_bot_capacity(self, tenant_id: uuid.UUID) -> None:
+        """Hold the tenant lock until the caller commits its new bot."""
+        if self.get_subscription(tenant_id) is None:
+            self.create_subscription(tenant_id, "free")
+        self.db.query(Tenant).filter(Tenant.id == tenant_id).with_for_update().one()
         subscription = self.get_subscription(tenant_id)
-        if subscription:
-            subscription.messages_used_this_month += 1
-            self.db.commit()
-            return True
-        return False
+        if not subscription.is_active():
+            raise HTTPException(status_code=403, detail="Aboneliğiniz aktif değil.")
+        count = self.db.query(Bot).filter(Bot.tenant_id == tenant_id).count()
+        allowed, reason = self.check_bot_limit(tenant_id, count)
+        if not allowed:
+            raise HTTPException(status_code=403, detail=reason)
     
     def check_bot_limit(self, tenant_id: uuid.UUID, current_bot_count: int) -> tuple[bool, str]:
         """Check if tenant can create more bots."""
@@ -204,7 +219,9 @@ class SubscriptionService:
         
         plan = subscription.plan
         
+        demo = self.db.query(DemoAccess).filter(DemoAccess.tenant_id == tenant_id).first()
         return {
+            "demo_access": {"expires_at": demo.expires_at.isoformat() + "Z"} if demo else None,
             "plan_name": plan.display_name,
             "plan_type": normalize_plan_code(plan.plan_type),
             "messages_used": subscription.messages_used_this_month,

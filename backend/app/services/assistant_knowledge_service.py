@@ -17,6 +17,7 @@ class AssistantKnowledgeService:
                 db.query(BotKnowledgeItem)
                 .filter(BotKnowledgeItem.bot_id == bot.id)
                 .order_by(BotKnowledgeItem.created_at.asc())
+                .limit(200)
                 .all()
             )
 
@@ -32,5 +33,6 @@ class AssistantKnowledgeService:
                 case((Bot.id == bot.id, 0), else_=1),
                 BotKnowledgeItem.created_at.asc(),
             )
+            .limit(200)
             .all()
         )

@@ -1,5 +1,6 @@
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 
 import { getOrCreateDeviceId, setRefreshToken } from '@/lib/auth/session-vault';
@@ -8,11 +9,13 @@ import type {
   ActionCenter,
   Appointment,
   Conversation,
+  ConversationPage,
   DashboardStats,
   MeContext,
-  Message,
   MobileTokenResponse,
+  OperationalReport,
   OperatorSendResult,
+  WorkspaceNote,
 } from './types';
 
 export async function login(email: string, password: string, twoFactorCode?: string): Promise<void> {
@@ -48,18 +51,34 @@ export const getMe = () => apiRequest<MeContext>('/api/me');
 export const getDashboardStats = () => apiRequest<DashboardStats>('/analytics/dashboard');
 export const getActionCenter = () => apiRequest<ActionCenter>('/analytics/action-center');
 export const getConversations = () => apiRequest<Conversation[]>('/conversations?limit=100');
-export const getConversationMessages = (id: string) =>
-  apiRequest<Message[]>(`/operator/conversation/${encodeURIComponent(id)}/messages?limit=100`);
+export const getConversationMessages = (id: string, before?: string | null) =>
+  apiRequest<ConversationPage>(`/conversations/${encodeURIComponent(id)}?limit=100${before ? `&before_message_id=${encodeURIComponent(before)}` : ''}`);
 export const setConversationAIReply = (id: string, enabled: boolean) =>
   apiRequest<Conversation>(`/conversations/${encodeURIComponent(id)}/ai-reply`, {
     method: 'PATCH',
     body: JSON.stringify({ enabled }),
   });
 export const getAppointments = () => apiRequest<Appointment[]>('/appointments');
-export const sendOperatorMessage = (conversationId: string, content: string) =>
+export const getOperationalReport = (period: 'today' | 'week') =>
+  apiRequest<OperationalReport>(`/analytics/operational-report?period=${period}`);
+export const getWorkspaceNotes = () => apiRequest<WorkspaceNote[]>('/notes?archived=false');
+export const createWorkspaceNote = (data: {
+  title: string;
+  content: string;
+  color?: WorkspaceNote['color'];
+  pinned?: boolean;
+}) => apiRequest<WorkspaceNote>('/notes', { method: 'POST', body: JSON.stringify(data) });
+export const updateWorkspaceNote = (
+  id: string,
+  data: Partial<Pick<WorkspaceNote, 'title' | 'content' | 'color' | 'pinned' | 'archived'>>,
+) => apiRequest<WorkspaceNote>(`/notes/${encodeURIComponent(id)}`, {
+  method: 'PATCH',
+  body: JSON.stringify(data),
+});
+export const sendOperatorMessage = (conversationId: string, content: string, requestId = Crypto.randomUUID()) =>
   apiRequest<OperatorSendResult>('/operator/send-message', {
     method: 'POST',
-    body: JSON.stringify({ conversation_id: conversationId, content }),
+    body: JSON.stringify({ conversation_id: conversationId, content, request_id: requestId }),
   });
 
 export async function requestEmailVerification(email: string) {

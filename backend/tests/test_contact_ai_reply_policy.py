@@ -70,10 +70,11 @@ def test_contact_can_be_excluded_without_hiding_messages():
         _=None,
     ))
 
-    assert updated.ai_reply_enabled is False
-    assert "ai_reply_excluded" in updated.tags
-    assert len(updated.messages) == 1
-    assert _automated_reply_blocked(updated, require_conversation=True) is True
+    assert updated["ai_reply_enabled"] is False
+    db.refresh(conversation)
+    assert "ai_reply_excluded" in conversation.tags
+    assert len(conversation.messages) == 1
+    assert _automated_reply_blocked(conversation, require_conversation=True) is True
 
 
 def test_n8n_delivery_is_idempotent_per_run_and_kind():

@@ -15,6 +15,7 @@ from app.core.time import utc_now_naive
 from sqlalchemy.orm import Session
 
 from app.models.appointment import Appointment
+from app.models.demo_access import DemoAccess
 from app.services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class AppointmentReminderService:
         appointments = self.db.query(Appointment).filter(
             Appointment.status != "cancelled",
             Appointment.customer_email.isnot(None),
+            ~Appointment.tenant_id.in_(self.db.query(DemoAccess.tenant_id)),
         ).all()
 
         to_send_before: list[Appointment] = []
@@ -97,4 +99,3 @@ class AppointmentReminderService:
             )
 
         return ReminderDispatchResult(sent_before=sent_before, sent_after=sent_after)
-

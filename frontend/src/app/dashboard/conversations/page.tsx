@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { DeliveryStatus } from '@/components/conversations/delivery-status'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bot,
   BotOff,
@@ -13,6 +14,8 @@ import {
   Phone,
   Globe,
   Inbox,
+  ArrowUp,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/components/ui/use-toast'
-import { conversationApi } from '@/lib/api'
+import { conversationApi, operatorApi } from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/api-error'
 import { formatDate, cn } from '@/lib/utils'
 import { ContentContainer } from '@/components/shared/content-container'
@@ -32,35 +35,81 @@ import { Icon3DBadge } from '@/components/shared/icon-3d-badge'
 import { useRealtimeEvents } from '@/lib/use-realtime-events'
 
 export default function ConversationsPage() {
+  const request = useRef<{ id: string; content: string; requestId: string } | null>(null)
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('conversation')
+    if (id) setSelectedConversation(id)
+  }, [])
   const { connected: realtimeConnected } = useRealtimeEvents((event) => {
-    if (!event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
+    if (event.type !== 'ready' && !event.type.startsWith('message.') && !event.type.startsWith('conversation.')) return
     queryClient.invalidateQueries({ queryKey: ['conversations'] })
-    if (selectedConversation && event.conversation_id === selectedConversation) {
+    if (selectedConversation && (event.type === 'ready' || event.conversation_id === selectedConversation)) {
       queryClient.invalidateQueries({ queryKey: ['conversation', selectedConversation] })
+      queryClient.invalidateQueries({ queryKey: ['deliveries', selectedConversation] })
     }
   })
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () => conversationApi.list({ limit: 100 }).then((res) => res.data),
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
-  const { data: selectedConvData } = useQuery({
+  const history = useInfiniteQuery({
     queryKey: ['conversation', selectedConversation],
-    queryFn: () => (selectedConversation ? conversationApi.get(selectedConversation).then((res) => res.data) : null),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => conversationApi.get(selectedConversation!, {
+      limit: 100, before_message_id: pageParam || undefined,
+    }).then((res) => res.data),
+    getNextPageParam: (lastPage) => lastPage.next_message_cursor || undefined,
     enabled: !!selectedConversation,
+    refetchInterval: realtimeConnected ? false : 60_000,
+  })
+  const selectedConvData = history.data?.pages[0]
+  const visibleMessages = Array.from(new Map(
+    (history.data?.pages.slice().reverse().flatMap((page) => page.messages || []) || [])
+      .map((item: any) => [item.id, item] as const),
+  ).values())
+
+  const sendMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) => {
+      if (!request.current || request.current.id !== id || request.current.content !== content) {
+        request.current = { id, content, requestId: crypto.randomUUID() }
+      }
+      return operatorApi.sendMessage(id, content, request.current.requestId)
+    },
+    retry: false,
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['conversation', variables.id] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['deliveries', variables.id] })
+      if (response.data.delivered === true) {
+        request.current = null
+        if (selectedConversation === variables.id) setMessage('')
+      } else if (response.data.delivery_status === 'failed') {
+        request.current = null
+        toast({ title: 'Mesaj iletilemedi', description: response.data.note, variant: 'destructive' })
+      } else {
+        toast({ title: 'Teslimat doğrulanamadı', description: response.data.note || 'Tekrar göndermeden önce konuşmayı kontrol edin.', variant: 'destructive' })
+      }
+    },
+    onError: () => toast({
+      title: 'Gönderim doğrulanamadı',
+      description: 'Mesajınız korunuyor. Tekrar göndermeden önce konuşmayı kontrol edin.',
+      variant: 'destructive',
+    }),
   })
 
   const aiReplyMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       conversationApi.updateAIReplyPolicy(id, enabled),
     onSuccess: (response) => {
-      queryClient.setQueryData(['conversation', response.data.id], response.data)
+      queryClient.invalidateQueries({ queryKey: ['conversation', response.data.id] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       toast({
         title: response.data.ai_reply_enabled ? 'AI yanıtları açıldı' : 'Kişi AI yanıtlarından hariç tutuldu',
@@ -155,7 +204,7 @@ export default function ConversationsPage() {
                         'w-full text-left p-4 transition-all duration-200',
                         selectedConversation === conv.id ? 'conv-active' : 'conv-hover'
                       )}
-                      onClick={() => setSelectedConversation(conv.id)}
+                      onClick={() => { setSelectedConversation(conv.id); setMessage('') }}
                     >
                       <div className="flex items-start justify-between">
                         <div>
@@ -189,7 +238,12 @@ export default function ConversationsPage() {
           </Card>
 
           <Card className="lg:col-span-2 flex flex-col border border-border/70 shadow-soft">
-            {isLoading ? (
+            {history.isError && !selectedConvData ? (
+              <div role="alert" className="p-6 space-y-3">
+                <p>Konuşma yüklenemedi.</p>
+                <Button variant="outline" onClick={() => void history.refetch()}>Yeniden Dene</Button>
+              </div>
+            ) : isLoading || (selectedConversation && history.isLoading) ? (
               <div className="p-6 space-y-4">
                 <Skeleton className="h-8 w-1/3" />
                 <Skeleton className="h-4 w-2/3" />
@@ -257,23 +311,32 @@ export default function ConversationsPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                  {(selectedConvData.messages || []).map((msg: any) => (
+                  {history.hasNextPage && (
+                    <div className="flex justify-center">
+                      <Button variant="outline" size="sm" disabled={history.isFetching} onClick={() => void history.fetchNextPage()}>
+                        {history.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUp className="mr-2 h-4 w-4" />}
+                        Önceki mesajlar
+                      </Button>
+                    </div>
+                  )}
+                  {history.isError && <p role="alert" className="text-sm text-destructive">Mesajlar yenilenemedi. Tekrar deneyin.</p>}
+                  {visibleMessages.map((msg: any) => (
                     <div
                       key={msg.id}
                       className={cn(
                         'flex gap-3',
-                        msg.sender === 'bot' ? 'justify-end' : 'justify-start'
+                        ['bot', 'operator'].includes(msg.sender) ? 'justify-end' : 'justify-start'
                       )}
                     >
                       <div
                         className={cn(
-                          'max-w-[70%] rounded-2xl px-4 py-3 text-sm',
-                          msg.sender === 'bot'
+                          'max-w-[85%] break-words rounded-2xl px-4 py-3 text-sm sm:max-w-[70%]',
+                          ['bot', 'operator'].includes(msg.sender)
                             ? 'bubble-bot text-primary-foreground'
                             : 'bg-muted'
                         )}
                       >
-                        {msg.content}
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
                         <div className="mt-2 text-[10px] opacity-70">
                           {formatDate(msg.created_at)}
                         </div>
@@ -282,18 +345,27 @@ export default function ConversationsPage() {
                   ))}
                 </div>
 
-                <div className="border-t border-border/70 p-4">
+                <DeliveryStatus conversationId={selectedConversation!} />
+                <form className="border-t border-border/70 p-4" onSubmit={(event) => {
+                  event.preventDefault()
+                  if (selectedConversation && message.trim() && !sendMutation.isPending) {
+                    sendMutation.mutate({ id: selectedConversation, content: message.trim() })
+                  }
+                }}>
                   <div className="flex items-center gap-2 input-glow rounded-lg transition-all duration-300">
                     <Input
                       placeholder="Mesaj yazın..."
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
+                      maxLength={2000}
+                      disabled={sendMutation.isPending}
+                      aria-label="Mesaj"
                     />
-                    <Button size="icon">
-                      <Send className="w-4 h-4" />
+                    <Button type="submit" size="icon" aria-label="Mesajı gönder" disabled={!message.trim() || sendMutation.isPending}>
+                      {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
                   </div>
-                </div>
+                </form>
               </div>
             )}
           </Card>

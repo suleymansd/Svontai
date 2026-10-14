@@ -47,7 +47,7 @@ api.interceptors.response.use(
     const requestUrl = String(originalRequest?.url || '')
     const isAuthRoute = requestUrl.startsWith('/auth/')
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true
 
       try {
@@ -56,11 +56,16 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access_token}`
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh failed, redirect to login
-        clearAccessToken()
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login'
+        const status = (refreshError as { response?: { status?: number } }).response?.status
+        if (status === 401 || status === 403) {
+          clearAccessToken()
+          if (typeof window !== 'undefined') {
+            // Expired credentials require clearing the whole authenticated tree.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.href = '/login'
+          }
         }
+        return Promise.reject(refreshError)
       }
     }
 
@@ -94,7 +99,7 @@ export async function refreshAccessToken(): Promise<string> {
       return token
     })
     .catch((error) => {
-      clearAccessToken()
+      if (error.response?.status === 401 || error.response?.status === 403) clearAccessToken()
       throw error
     })
     .finally(() => setRefreshPromise(null))
@@ -309,7 +314,8 @@ export const conversationApi = {
     api.get('/conversations', { params }),
   listByBot: (botId: string, params?: { skip?: number; limit?: number }) =>
     api.get(`/bots/${botId}/conversations`, { params }),
-  get: (id: string) => api.get(`/conversations/${id}`),
+  get: (id: string, params?: { before_message_id?: string; limit?: number }) =>
+    api.get(`/conversations/${id}`, { params }),
   getMessages: (id: string, params?: { skip?: number; limit?: number }) =>
     api.get(`/conversations/${id}/messages`, { params }),
   updateAIReplyPolicy: (id: string, enabled: boolean) =>
@@ -650,8 +656,11 @@ export const operatorApi = {
     api.post('/operator/takeover', { conversation_id: conversationId }),
   releaseConversation: (conversationId: string) => 
     api.post('/operator/release', { conversation_id: conversationId }),
-  sendMessage: (conversationId: string, content: string) => 
-    api.post('/operator/send-message', { conversation_id: conversationId, content }),
+  sendMessage: (conversationId: string, content: string, requestId?: string) =>
+    api.post('/operator/send-message', { conversation_id: conversationId, content, request_id: requestId || crypto.randomUUID() }),
+  deliveries: (conversationId: string) => api.get('/operator/deliveries', { params: { conversation_id: conversationId } }),
+  resolveDelivery: (messageId: string, outcome: 'sent' | 'not_sent', kind: 'operator' | 'ai' = 'operator') =>
+    api.post(`/operator/deliveries/${messageId}/resolve`, { outcome, kind, checked_whatsapp: true }),
   getConversationMessages: (conversationId: string, skip?: number, limit?: number) =>
     api.get(`/operator/conversation/${conversationId}/messages`, { params: { skip, limit } }),
 }

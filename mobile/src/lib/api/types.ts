@@ -88,11 +88,18 @@ export type Message = {
   created_at: string;
 };
 
+export type ConversationPage = Conversation & {
+  messages: Message[];
+  has_more_messages: boolean;
+  next_message_cursor: string | null;
+};
+
 export type OperatorSendResult = {
   success: boolean;
   message_id: string;
   sent_at: string;
   delivered: boolean;
+  delivery_status?: 'queued' | 'dispatching' | 'sent' | 'uncertain' | 'failed';
   note: string | null;
 };
 
@@ -105,4 +112,46 @@ export type Appointment = {
   duration_minutes: number;
   status: 'scheduled' | 'completed' | 'cancelled' | string;
   calendar_sync_status: string;
+};
+
+export type WorkspaceNote = {
+  id: string;
+  tenant_id: string;
+  created_by: string | null;
+  title: string;
+  content: string;
+  color: 'slate' | 'blue' | 'amber' | 'emerald' | 'rose' | string;
+  pinned: boolean;
+  position_x: number;
+  position_y: number;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationalReportMetrics = {
+  incoming_messages: number;
+  ai_replies: number;
+  response_rate: number;
+  conversations: number;
+  leads: number;
+  appointments: number;
+  successful_automations: number;
+  failed_automations: number;
+  unresolved_automation_failures: number;
+  recovered_automation_failures: number;
+};
+
+export type OperationalReport = {
+  period: 'today' | 'week';
+  title: string;
+  summary: string;
+  text: string;
+  generated_at: string;
+  timezone: string;
+  health: {
+    healthy: boolean;
+    attention_reasons: string[];
+  };
+  metrics: OperationalReportMetrics;
 };

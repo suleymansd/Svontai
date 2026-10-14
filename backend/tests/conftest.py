@@ -1,7 +1,9 @@
 import pytest
 import os
+import uuid
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -56,11 +58,23 @@ def client(monkeypatch):
     os.environ["WEBHOOK_USERNAME"] = old_webhook_username or "test-webhook"
     os.environ["WEBHOOK_PASSWORD"] = old_webhook_password or "test-webhook-pass"
 
-    engine = create_engine(
-        "sqlite+pysqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    test_url = os.environ.get("TEST_DATABASE_URL", "")
+    schema_engine = None
+    if test_url:
+        url = make_url(test_url)
+        if url.host not in {"127.0.0.1", "localhost"} or not (url.database or "").endswith(("_test", "_ci")):
+            raise RuntimeError("Postgres tests require a local, explicitly named test database")
+        schema = f"test_{uuid.uuid4().hex}"
+        schema_engine = create_engine(test_url)
+        with schema_engine.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_engine(test_url, connect_args={"options": f"-csearch_path={schema}"})
+    else:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     import app.db.session as session_module
@@ -74,7 +88,15 @@ def client(monkeypatch):
     from app.db.base import Base
     import app.models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    if test_url:
+        from alembic import command
+        from alembic.config import Config
+        config = Config("alembic.ini")
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+    else:
+        Base.metadata.create_all(bind=engine)
 
     from app.main import app
     from app.db.session import get_db
@@ -92,7 +114,13 @@ def client(monkeypatch):
         yield test_client
 
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=engine)
+    if not test_url:
+        Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+    if schema_engine:
+        with schema_engine.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        schema_engine.dispose()
     settings.ENVIRONMENT = old_environment
     settings.EMAIL_ENABLED = old_email_enabled
     if old_webhook_username is None:

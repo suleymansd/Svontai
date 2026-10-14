@@ -37,6 +37,7 @@ import {
   Inbox,
   ReceiptText,
   BarChart3,
+  Link2,
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -46,6 +47,7 @@ const navigation = [
   { name: 'Kullanıcılar', href: '/admin/users', icon: Users },
   { name: 'Müşteriler', href: '/admin/customers', icon: Building2 },
   { name: 'Satış Talepleri', href: '/admin/inquiries', icon: Inbox },
+  { name: 'Özel Erişim', href: '/admin/demo-access', icon: Link2 },
   { name: 'Proforma Faturalar', href: '/admin/invoices', icon: ReceiptText },
   { name: 'Tenantlar', href: '/admin/tenants', icon: Building2 },
   { name: 'Planlar', href: '/admin/plans', icon: Package },

@@ -29,6 +29,7 @@ const verificationResult = {
 
 async function mockBackend(page: Page) {
   let aiReplyEnabled = true
+  const operatorMessages: { id: string; sender: string; content: string; created_at: string }[] = []
   await page.addInitScript(() => {
     localStorage.setItem('ui-storage', JSON.stringify({ state: { sidebarOpen: false, theme: 'light' }, version: 0 }))
   })
@@ -206,11 +207,15 @@ async function mockBackend(page: Page) {
         customer_phone: '+90 555 111 22 33',
         last_message: 'Merhaba',
         last_message_at: new Date().toISOString(),
-        messages: [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }],
         extra_data: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
+    } else if (path === '/operator/deliveries') {
+      body = []
+    } else if (path === '/operator/send-message' && request.method() === 'POST') {
+      operatorMessages.push({ id: `operator-${operatorMessages.length}`, sender: 'operator', content: request.postDataJSON().content, created_at: new Date().toISOString() })
+      body = { success: true, delivered: true }
     } else if (path === '/conversations/conversation-1') {
       body = {
         id: 'conversation-1',
@@ -223,7 +228,10 @@ async function mockBackend(page: Page) {
         customer_phone: '+90 555 111 22 33',
         last_message: 'Merhaba',
         last_message_at: new Date().toISOString(),
-        messages: [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }],
+        messages: url.searchParams.has('before_message_id')
+          ? [{ id: 'older-1', sender: 'user', content: 'Geçen haftaki görüşmemiz', created_at: new Date().toISOString() }]
+          : [{ id: 'message-1', conversation_id: 'conversation-1', sender: 'user', content: 'Merhaba', created_at: new Date().toISOString() }, ...operatorMessages],
+        next_message_cursor: url.searchParams.has('before_message_id') ? null : 'message-1',
         extra_data: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -252,7 +260,7 @@ async function mockBackend(page: Page) {
       status: 200,
       contentType: 'application/json',
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:3100',
+        'Access-Control-Allow-Origin': request.headers().origin || new URL(page.url()).origin,
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Tenant-ID',
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
@@ -331,6 +339,24 @@ test.beforeEach(async ({ page }) => {
   await mockBackend(page)
 })
 
+test('temporary session refresh failure preserves the customer and can be retried', async ({ page }) => {
+  let refreshAttempts = 0
+  await page.route('**/api/auth/refresh', async (route) => {
+    refreshAttempts += 1
+    await route.fulfill({
+      status: refreshAttempts === 1 ? 503 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(refreshAttempts === 1 ? { detail: 'Temporarily unavailable' } : { access_token: 'test-access-token' }),
+    })
+  })
+  await openAuthenticated(page, '/dashboard/bots')
+  await expect(page.getByRole('heading', { name: 'Bağlantı kurulamadı' })).toBeVisible()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id)).toBe('user-1')
+  await page.getByRole('button', { name: 'Yeniden Dene', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Yanıtı Dene' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bağlantı kurulamadı' })).toBeHidden()
+})
+
 test('customer dashboard shows real outcomes without overflow', async ({ page }) => {
   await openAuthenticated(page, '/dashboard')
   await expect(page.getByRole('heading', { name: 'Bugün' })).toBeVisible()
@@ -391,7 +417,95 @@ test('contact can be excluded from AI replies in conversations', async ({ page }
   await expect(aiSwitch).not.toBeChecked()
   await expect(page.getByText('Kişi AI yanıtlarından hariç tutuldu', { exact: true })).toBeVisible()
   await expect(page.getByText('Bu kişi hariç tutuldu')).toBeVisible()
+  await expect(page.getByText('Merhaba', { exact: true }).last()).toBeVisible()
   await expectNoHorizontalOverflow(page)
+})
+
+test('conversation history can page backwards without losing the latest messages', async ({ page }, testInfo) => {
+  await openAuthenticated(page, '/dashboard/conversations')
+  await page.getByRole('button', { name: /Ayşe Yılmaz/ }).click()
+  await page.getByRole('button', { name: 'Önceki mesajlar' }).click()
+  await expect(page.getByText('Geçen haftaki görüşmemiz')).toBeVisible()
+  await expect(page.getByText('Merhaba', { exact: true }).last()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Önceki mesajlar' })).toBeHidden()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: testInfo.outputPath('conversation-history.png'), fullPage: true })
+})
+
+test('conversation composer sends once and displays the operator reply', async ({ page }, testInfo) => {
+  const sent: unknown[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/operator/send-message' && request.method() === 'POST') sent.push(request.postDataJSON())
+  })
+  await openAuthenticated(page, '/dashboard/conversations')
+  await page.getByRole('button', { name: /Ayşe Yılmaz/ }).click()
+  const input = page.getByRole('textbox', { name: 'Mesaj', exact: true })
+  await expect(page.getByRole('button', { name: 'Mesajı gönder' })).toBeDisabled()
+  await input.fill('Size yardımcı olabilirim.')
+  await input.press('Enter')
+  await expect(input).toHaveValue('')
+  await expect(page.getByText('Size yardımcı olabilirim.', { exact: true })).toBeVisible()
+  expect(sent).toEqual([{ conversation_id: 'conversation-1', content: 'Size yardımcı olabilirim.', request_id: expect.any(String) }])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: testInfo.outputPath('conversation-send.png'), fullPage: true })
+})
+
+test('unconfirmed operator delivery keeps the draft and does not claim success', async ({ page }) => {
+  const requestIds: string[] = []
+  await page.route('**/operator/send-message', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    requestIds.push(route.request().postDataJSON().request_id)
+    return route.fulfill({
+    status: 200, contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': new URL(page.url()).origin, 'Access-Control-Allow-Credentials': 'true' },
+    body: JSON.stringify({ success: true, delivered: false, note: 'WhatsApp hesabı bağlı değil.' }),
+    })
+  })
+  await openAuthenticated(page, '/dashboard/conversations')
+  await page.getByRole('button', { name: /Ayşe Yılmaz/ }).click()
+  const input = page.getByRole('textbox', { name: 'Mesaj', exact: true })
+  await input.fill('Korunması gereken taslak')
+  await page.getByRole('button', { name: 'Mesajı gönder' }).click()
+  await expect(page.getByText('Teslimat doğrulanamadı', { exact: true })).toBeVisible()
+  await expect(input).toHaveValue('Korunması gereken taslak')
+  await page.getByRole('button', { name: 'Mesajı gönder' }).click()
+  await expect.poll(() => requestIds.length).toBe(2)
+  expect(requestIds[0]).toBeTruthy()
+  expect(requestIds[1]).toBe(requestIds[0])
+})
+
+test('uncertain delivery requires explicit confirmation and never sends again', async ({ page }, testInfo) => {
+  let resolved = false
+  let sends = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/operator/send-message' && request.method() === 'POST') sends++
+  })
+  await page.route('**/operator/deliveries**', async (route) => {
+    const headers = { 'Access-Control-Allow-Origin': new URL(page.url()).origin, 'Access-Control-Allow-Credentials': 'true' }
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ outcome: 'sent', checked_whatsapp: true, kind: 'ai' })
+      resolved = true
+      return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ success: true }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(resolved ? [] : [{
+      message_id: 'pending-1', kind: 'ai', content: 'Randevunuz oluşturuldu.', delivery_status: 'uncertain',
+      note: 'AI yanıtının teslimatı belirsiz. WhatsApp konuşmasından kontrol edin.',
+    }]) })
+  })
+  await openAuthenticated(page, '/dashboard/conversations')
+  await page.getByRole('button', { name: /Ayşe Yılmaz/ }).click()
+  const pending = page.getByRole('region', { name: 'Gönderim durumu' })
+  await expect(pending).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: testInfo.outputPath('delivery-reconciliation.png'), fullPage: true })
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await pending.getByRole('button', { name: 'İletildi', exact: true }).click()
+  expect(resolved).toBe(false)
+  page.once('dialog', (dialog) => dialog.accept())
+  await pending.getByRole('button', { name: 'İletildi', exact: true }).click()
+  await expect(pending).toBeHidden()
+  expect(sends).toBe(0)
 })
 
 test('assistant can create a reviewed specialist through conversation', async ({ page }) => {

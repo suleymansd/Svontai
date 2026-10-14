@@ -221,6 +221,7 @@ class VoiceAppointmentService:
                     tenant=tenant,
                     call=call,
                     reply=action_reply,
+                    confirmation_text=user_text,
                 )
                 if appointment is None:
                     self._save_state(call, {})

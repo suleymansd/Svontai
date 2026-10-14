@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import asyncio
+from contextlib import suppress
 import socket
 import uuid
 from datetime import timedelta
@@ -84,9 +86,10 @@ class WebhookInboxService:
         return claimed
 
     async def process_claimed(self, event_id: uuid.UUID) -> None:
-        row = self.db.query(WebhookInboxEvent).filter(WebhookInboxEvent.id == event_id).first()
-        if row is None or row.status != "processing":
+        row = self._owned(event_id).first()
+        if row is None:
             return
+        heartbeat = asyncio.create_task(self._renew_lease(event_id))
         try:
             if row.provider == "meta_cloud":
                 from app.api.routers.whatsapp_webhook import process_webhook_event
@@ -100,7 +103,33 @@ class WebhookInboxService:
             self.db.rollback()
             self.mark_failed(event_id, exc)
             raise
-        self.mark_processed(event_id)
+        else:
+            self.mark_processed(event_id)
+        finally:
+            heartbeat.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
+
+    def _owned(self, event_id: uuid.UUID):
+        return self.db.query(WebhookInboxEvent).filter(
+            WebhookInboxEvent.id == event_id,
+            WebhookInboxEvent.status == "processing",
+            WebhookInboxEvent.lock_owner == self.owner,
+            WebhookInboxEvent.locked_until > utc_now(),
+        )
+
+    async def _renew_lease(self, event_id: uuid.UUID) -> None:
+        from app.db.session import SessionLocal
+
+        while True:
+            await asyncio.sleep(20)
+            with SessionLocal() as db:
+                changed = WebhookInboxService(db, owner=self.owner)._owned(event_id).update(
+                    {"locked_until": utc_now() + timedelta(seconds=180)}, synchronize_session=False,
+                )
+                db.commit()
+                if not changed:
+                    return
 
     async def _process_openwa(self, row: WebhookInboxEvent) -> None:
         from app.api.routers.whatsapp_webhook import process_openwa_message_event
@@ -132,7 +161,7 @@ class WebhookInboxService:
         )
 
     def mark_processed(self, event_id: uuid.UUID) -> None:
-        row = self.db.query(WebhookInboxEvent).filter(WebhookInboxEvent.id == event_id).first()
+        row = self._owned(event_id).with_for_update().populate_existing().first()
         if row is None:
             return
         now = utc_now()
@@ -147,7 +176,7 @@ class WebhookInboxService:
         self.db.commit()
 
     def mark_failed(self, event_id: uuid.UUID, exc: Exception) -> None:
-        row = self.db.query(WebhookInboxEvent).filter(WebhookInboxEvent.id == event_id).first()
+        row = self._owned(event_id).with_for_update().populate_existing().first()
         if row is None:
             return
         now = utc_now()

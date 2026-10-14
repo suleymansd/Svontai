@@ -28,6 +28,7 @@ import { KPIStat } from '@/components/shared/kpi-stat'
 import { PageHeader } from '@/components/shared/page-header'
 import { OperationalReportCard } from '@/components/dashboard/operational-report-card'
 import { useRealtimeEvents } from '@/lib/use-realtime-events'
+import { useAuthStore } from '@/lib/store'
 
 type ActionCenterItem = {
   id: string
@@ -65,6 +66,8 @@ const actionIcons = {
 }
 
 export default function DashboardPage() {
+  const { tenant, entitlements } = useAuthStore()
+  const isDemo = Boolean(entitlements.demo_access)
   const queryClient = useQueryClient()
   useRealtimeEvents((event) => {
     const affectsDailyWork = ['message.', 'conversation.', 'automation.', 'appointment.', 'voice.']
@@ -79,6 +82,7 @@ export default function DashboardPage() {
   const { data: autopilotStatus, isLoading: autopilotLoading } = useQuery({
     queryKey: ['autopilot-status'],
     queryFn: () => autopilotApi.getStatus().then(res => res.data),
+    enabled: !isDemo,
   })
   const { data: conversations, isLoading: conversationsLoading } = useQuery({
     queryKey: ['customer-dashboard-conversations'],
@@ -122,10 +126,10 @@ export default function DashboardPage() {
     <ContentContainer>
       <div className="space-y-8">
         <PageHeader
-          title="Bugün"
-          description="Müşteri hareketleri ve yalnızca sizin müdahalenizi gerektiren işler."
+          title={isDemo ? 'Premium çalışma alanı' : 'Bugün'}
+          description={isDemo ? tenant?.name : 'Müşteri hareketleri ve yalnızca sizin müdahalenizi gerektiren işler.'}
           icon={<Icon3DBadge icon={ShieldCheck} from="from-primary" to="to-violet-500" />}
-          actions={(
+          actions={isDemo ? <Badge variant="success">Özel erişim</Badge> : (
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={isReady && !systemNeedsAttention ? 'success' : 'warning'}>
                 {isReady && !systemNeedsAttention ? `Sistem çalışıyor • ${healthScore}/100` : `Kontrol gerekiyor • ${healthScore}/100`}
@@ -143,7 +147,13 @@ export default function DashboardPage() {
           )}
         />
 
-        {autopilotLoading || actionCenterLoading ? (
+        {isDemo ? (
+          <section className="flex flex-wrap gap-3 border-y border-border py-5">
+            <Button asChild><Link href="/dashboard/bots">AI asistanını dene<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+            <Button asChild variant="outline"><Link href="/dashboard/leads"><Users className="mr-2 h-4 w-4" />Müşteriler</Link></Button>
+            <Button asChild variant="outline"><Link href="/dashboard/appointments"><CalendarCheck className="mr-2 h-4 w-4" />Randevular</Link></Button>
+          </section>
+        ) : autopilotLoading || actionCenterLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : systemNeedsAttention ? (
           <section className="border-y border-warning/40 bg-warning-subtle/20 py-5">

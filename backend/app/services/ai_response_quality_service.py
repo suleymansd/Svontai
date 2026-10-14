@@ -16,6 +16,7 @@ from app.models.message import MessageSender
 from app.models.ticket import Ticket, TicketMessage
 from app.services.system_event_service import SystemEventService
 from app.services.conversation_policy import requests_human_support
+from app.services.conversation_history import recent_messages
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class AIResponseQualityService:
 
     @staticmethod
     def _remove_repeated_greeting(reply: str, conversation: Conversation) -> str:
-        has_bot_reply = any(message.sender == MessageSender.BOT.value for message in conversation.messages or [])
+        has_bot_reply = bool(recent_messages(conversation, 1, sender=MessageSender.BOT.value))
         if not has_bot_reply:
             return reply.strip()
         cleaned = re.sub(
@@ -95,7 +96,7 @@ class AIResponseQualityService:
             user_message = next(
                 (
                     message.content
-                    for message in reversed(conversation.messages or [])
+                    for message in reversed(recent_messages(conversation, 1, sender=MessageSender.USER.value))
                     if message.sender == MessageSender.USER.value and message.content
                 ),
                 "",
@@ -172,9 +173,9 @@ class AIResponseQualityService:
         normalized = self._normalize(cleaned)
         previous_bot_messages = [
             message.content
-            for message in (conversation.messages or [])
+            for message in recent_messages(conversation, 4, sender=MessageSender.BOT.value)
             if message.sender == MessageSender.BOT.value and message.content
-        ][-4:]
+        ]
         for previous in previous_bot_messages:
             similarity = SequenceMatcher(None, normalized, self._normalize(previous)).ratio()
             if len(normalized) >= 24 and similarity >= 0.92:

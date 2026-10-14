@@ -15,6 +15,8 @@ from app.core.time import utc_now_naive
 from app.models.appointment import Appointment
 from app.models.call import Call, CallDirection
 from app.models.conversation import Conversation
+from app.models.message import Message
+from app.services.booking_confirmation import is_explicit_confirmation
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.tenant import Tenant
 from app.services.google_calendar_service import GoogleCalendarError, GoogleCalendarService
@@ -258,6 +260,7 @@ class AppointmentAvailabilityService:
         conversation: Conversation | None = None,
         call: Call | None = None,
         reply: str,
+        confirmation_text: str | None = None,
     ) -> tuple[str, Appointment | None]:
         match = ACTION_RE.search(reply or "")
         clean_reply = ACTION_RE.sub("", reply or "").strip()
@@ -331,11 +334,46 @@ class AppointmentAvailabilityService:
                 message += f" Güncel seçenekler: {labels}."
             return message, None
 
+        # Model-generated actions are proposals, never evidence of consent.
+        if conversation is not None:
+            latest = self.db.query(Message).filter(
+                Message.conversation_id == conversation.id, Message.sender == "user",
+            ).order_by(Message.created_at.desc(), Message.id.desc()).first()
+            pending = (conversation.extra_data or {}).get("pending_booking", {})
+            confirmed = bool(
+                latest
+                and pending.get("start_at") == selected.isoformat()
+                and pending.get("service_id") == service_id
+                and pending.get("source_message_id") != str(latest.id)
+                and pending.get("expires_at", "") > utc_now_naive().isoformat()
+                and is_explicit_confirmation(latest.content)
+            )
+            if not confirmed:
+                conversation.extra_data = {**(conversation.extra_data or {}), "pending_booking": {
+                    "start_at": selected.isoformat(), "service_id": service_id,
+                    "source_message_id": str(latest.id) if latest else None,
+                    "expires_at": (utc_now_naive() + timedelta(minutes=15)).isoformat(),
+                }}
+                self.db.commit()
+                label = selected.replace(tzinfo=timezone.utc).astimezone(local_tz).strftime("%d.%m.%Y %H:%M")
+                return f"{valid_slot['service_name']} için {label} uygun. Randevuyu onaylıyor musunuz?", None
+        else:
+            pending = (call.meta_json or {}).get("voice_booking", {})
+            choice = pending.get("selected") or {}
+            if not (
+                pending.get("stage") == "awaiting_confirmation"
+                and choice.get("service_id") == service_id
+                and str(choice.get("start_at", "")).removesuffix("Z") == selected.isoformat()
+                and is_explicit_confirmation(confirmation_text or "")
+            ):
+                return "Randevu saatini seçip açıkça onaylamanız gerekiyor. Henüz randevu oluşturmadım.", None
+
         if conversation is not None:
             customer_name = conversation.customer_name or "WhatsApp müşterisi"
             customer_phone = conversation.customer_phone if conversation.source == "whatsapp" else None
             source = "ai_conversation"
-            source_note = "Müşteri konuşma içinde saati açıkça onayladı."
+            source_note = f"Müşteri onay mesajı: {latest.id}"
+            conversation.extra_data = {key: value for key, value in (conversation.extra_data or {}).items() if key != "pending_booking"}
         else:
             assert call is not None
             customer_name = call.lead.name if call.lead and call.lead.name else "Telefon müşterisi"

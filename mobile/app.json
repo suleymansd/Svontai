@@ -9,13 +9,16 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.svontai.mobile",
+      "buildNumber": "5",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "SvontAI hesabınızı güvenli biçimde açmak için Face ID kullanılır."
       }
     },
     "android": {
       "package": "com.svontai.mobile",
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#0B1220",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -34,7 +37,8 @@
         {
           "backgroundColor": "#F7F9FC",
           "image": "./assets/images/svontai-logo.png",
-          "imageWidth": 112
+          "imageWidth": 112,
+          "resizeMode": "contain"
         }
       ],
       "expo-secure-store",

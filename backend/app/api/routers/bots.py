@@ -32,6 +32,7 @@ from app.schemas.bot import (
     BotUpdate,
 )
 from app.services.audit_log_service import AuditLogService
+from app.services.subscription_service import SubscriptionService
 from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.assistant_trainer_service import (
@@ -99,6 +100,7 @@ async def create_bot(
     Returns:
         The created bot.
     """
+    SubscriptionService(db).require_bot_capacity(current_tenant.id)
     bot = Bot(
         tenant_id=current_tenant.id,
         name=bot_data.name,
