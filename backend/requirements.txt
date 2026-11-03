@@ -28,7 +28,7 @@ sentry-sdk[fastapi]>=2.0.0
 boto3>=1.35.0
 
 # Payments
-stripe>=8.5.0
+stripe>=16.1.0
 
 # Security & Encryption
 cryptography>=48.0.1
