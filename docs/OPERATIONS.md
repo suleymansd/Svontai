@@ -56,3 +56,53 @@ gh api repos/suleymansd/Svontai/branches/main/protection/required_status_checks 
 
 The context names are the CI job ids in `.github/workflows/ci.yml` (`secrets`,
 `backend`, `frontend`, `mobile`). Renaming a job requires re-running the command.
+
+## External uptime monitor
+
+`.github/workflows/uptime.yml` runs on a 15-minute cron and opens/updates an issue
+labelled `incident` when it fails, but **GitHub scheduled workflows are best-effort**:
+during load, intervals routinely stretch to an hour or more and runs are skipped
+entirely. Treat it as a secondary alarm and point an external monitor (UptimeRobot,
+Better Stack, Checkly, Pingdom, ... free tiers are enough) at production.
+
+| Setting | Value |
+| --- | --- |
+| URL | `https://svontai-production.up.railway.app/health/ready` |
+| Method | `GET`, no auth, 20 s timeout |
+| Interval | 1 minute |
+| Alert on | HTTP status other than `200` for 2 consecutive checks |
+| Keyword check (optional) | body contains `"worker":"ok"` and `"status":"ready"` |
+
+Expected body (abridged):
+
+```json
+{
+  "status": "ready",
+  "environment": "prod",
+  "components": {"database": "ok", "redis": "ok", "worker": "ok"},
+  "deployment": {
+    "api_commit": "<sha>",
+    "worker_commit": "<sha>",
+    "worker_heartbeat_age_seconds": 12,
+    "worker_heartbeat_max_age_seconds": 300,
+    "migration_heads": ["<head>"],
+    "pipeline_health": {"webhook_inbox": "ok", "operator_outbox": "ok", "ai_delivery": "ok"}
+  }
+}
+```
+
+The endpoint returns `503` with `"status": "not_ready"` when the database or Redis is
+unavailable, when `components.worker` is `stale` (heartbeat older than
+`WORKER_HEARTBEAT_MAX_AGE_SECONDS`, default 300 s; the worker beats every 30 s), or
+when it is `missing` in production (no worker has ever registered). Set the variable
+to `0` on the API service to make the worker fields informational only.
+
+Note: Railway's deploy health check also uses `/health/ready` (see `docs/runbook.md`).
+A stopped worker therefore blocks new API deploys until the worker is back; that is
+intentional (the product is not serving customers without it), but if you need to
+ship an API hotfix during a worker outage, temporarily set
+`WORKER_HEARTBEAT_MAX_AGE_SECONDS=0` on the API service.
+
+Also monitor `https://www.svontai.com/api/frontend-config` (expect `200`) with the
+same interval, and route both alerts to a channel someone actually reads (Slack or
+SMS), not only e-mail.

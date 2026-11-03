@@ -77,6 +77,26 @@ def _check_redis() -> None:
         client.close()
 
 
+def worker_heartbeat_status(age_seconds: int | None, max_age_seconds: int | None = None) -> str:
+    """Classify the worker heartbeat as ``ok``, ``stale`` or ``missing``."""
+    if age_seconds is None:
+        return "missing"
+    limit = settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS if max_age_seconds is None else max_age_seconds
+    if limit > 0 and age_seconds > limit:
+        return "stale"
+    return "ok"
+
+
+def _worker_blocks_readiness(status: str) -> bool:
+    """A stale heartbeat always fails readiness; a heartbeat that never existed only
+    does so in production, where a worker is mandatory (dev/test may run API only)."""
+    if settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS <= 0:
+        return False
+    if status == "stale":
+        return True
+    return status == "missing" and settings.ENVIRONMENT == "prod"
+
+
 async def readiness_status() -> tuple[bool, dict[str, Any]]:
     """Check dependencies required to safely accept customer traffic."""
     components: dict[str, str] = {}
@@ -91,8 +111,10 @@ async def readiness_status() -> tuple[bool, dict[str, Any]]:
         database_status = await asyncio.wait_for(asyncio.to_thread(_check_database), timeout=5)
         components["database"] = "ok"
         deployment.update(database_status)
+        components["worker"] = worker_heartbeat_status(deployment.get("worker_heartbeat_age_seconds"))
     except Exception:
         components["database"] = "unavailable"
+        components["worker"] = "unknown"
 
     if settings.RATE_LIMIT_BACKEND == "redis":
         try:
@@ -103,7 +125,10 @@ async def readiness_status() -> tuple[bool, dict[str, Any]]:
     else:
         components["redis"] = "not_required"
 
-    ready = all(value in {"ok", "not_required"} for value in components.values())
+    ready = all(
+        value in {"ok", "not_required"} for name, value in components.items() if name != "worker"
+    ) and not _worker_blocks_readiness(components["worker"])
+    deployment["worker_heartbeat_max_age_seconds"] = settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS
     return ready, {
         "status": "ready" if ready else "not_ready",
         "environment": settings.ENVIRONMENT,

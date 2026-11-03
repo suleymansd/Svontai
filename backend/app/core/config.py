@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     # only control background health/synchronization traffic.
     INTEGRATION_DIAGNOSTICS_INTERVAL_SECONDS: int = 900
     OPENWA_SESSION_HEALTH_INTERVAL_SECONDS: int = 300
+    # /health/ready reports worker=stale and returns 503 when the worker heartbeat
+    # is older than this. 0 keeps the field informational only.
+    WORKER_HEARTBEAT_MAX_AGE_SECONDS: int = Field(default=300, ge=0)
     OPENWA_RECONNECT_BASE_BACKOFF_SECONDS: int = 900
     OPENWA_RECONNECT_MAX_BACKOFF_SECONDS: int = 21600
     OPENWA_MAX_ACTIVE_SESSIONS: int = 75
