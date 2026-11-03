@@ -175,6 +175,27 @@ class WebhookInboxService:
         row.updated_at = now
         self.db.commit()
 
+    def requeue_dead_letter(self, event_id: uuid.UUID) -> bool:
+        """Give an exhausted event a fresh retry budget; never touches a live or finished row."""
+        now = utc_now()
+        changed = self.db.query(WebhookInboxEvent).filter(
+            WebhookInboxEvent.id == event_id,
+            WebhookInboxEvent.status == "dead_letter",
+        ).update(
+            {
+                "status": "pending",
+                "attempt_count": 0,
+                "available_at": now,
+                "lock_owner": None,
+                "locked_at": None,
+                "locked_until": None,
+                "updated_at": now,
+            },
+            synchronize_session=False,
+        )
+        self.db.commit()
+        return bool(changed)
+
     def mark_failed(self, event_id: uuid.UUID, exc: Exception) -> None:
         row = self._owned(event_id).with_for_update().populate_existing().first()
         if row is None:

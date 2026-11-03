@@ -505,3 +505,178 @@ def test_postgres_parallel_bookings_and_metering(client, workspace):
         list(pool.map(lambda _: meter(), range(2)))
     with SessionLocal() as db:
         assert UsageCounterService(db).get_or_create(tenant_id).message_count == 20
+
+
+def _openwa_inbox_event(db, tenant_id, delivery_id="delivery-1"):
+    import json
+    from app.services.webhook_inbox_service import WebhookInboxService
+    payload = {
+        "event": "message.received", "sessionId": "audit-session", "deliveryId": delivery_id,
+        "data": {"id": "inbox-retry", "from": "905559998877@c.us", "chatId": "905559998877@c.us",
+                 "body": "Merhaba", "type": "text", "fromMe": False, "isGroup": False,
+                 "contact": {"name": "Audit", "isMyContact": True}},
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    row, created = WebhookInboxService(db, owner="setup").enqueue(
+        provider="openwa", body=body, payload=payload, event_type="message.received",
+        tenant_id=tenant_id, provider_reference="audit-session",
+    )
+    return row.id, created
+
+
+def test_inbox_retries_lost_ai_reply_and_redelivery_does_not_duplicate_it(client, workspace, monkeypatch):
+    from app.api.routers import whatsapp_webhook as webhook
+    from app.core.time import utc_now
+    from app.db.session import SessionLocal
+    from app.models.message import Message
+    from app.models.webhook_inbox import WebhookInboxEvent
+    from app.models.whatsapp_account import WhatsAppAccount
+    from app.services.openwa_client import openwa_client
+    from app.services.webhook_inbox_service import WebhookInboxService
+    _, tenant_id, _, conversation_id = workspace
+    generate_reply = AsyncMock(side_effect=[RuntimeError("AI outage"), "Hos geldiniz"])
+    send_text = AsyncMock(return_value={"messageId": "openwa-reply-1"})
+    monkeypatch.setattr(webhook.ai_service, "generate_reply", generate_reply)
+    monkeypatch.setattr(webhook.AssistantProfileService, "build_runtime_context", lambda *args: "audit")
+    monkeypatch.setattr(openwa_client, "send_text", send_text)
+    monkeypatch.setattr(openwa_client, "get_contact", AsyncMock(return_value={"name": "Audit", "isMyContact": True}))
+    with SessionLocal() as db:
+        db.add(WhatsAppAccount(tenant_id=tenant_id, provider="openwa", provider_session_id="audit-session",
+                               display_phone_number="905551112233", is_active=True))
+        db.commit()
+        event_id, created = _openwa_inbox_event(db, tenant_id)
+        assert created
+
+    # Attempt 1: inbound persisted, AI fails -> durable retry recorded on inbox and on the message.
+    with SessionLocal() as db:
+        worker = WebhookInboxService(db, owner="worker-a")
+        assert worker.claim_batch(limit=1) == [event_id]
+        with pytest.raises(RuntimeError, match="AI outage"):
+            asyncio.run(worker.process_claimed(event_id))
+        row = db.get(WebhookInboxEvent, event_id)
+        db.refresh(row)
+        assert (row.status, row.attempt_count, row.lock_owner) == ("retrying", 1, None)
+        assert "AI outage" in row.last_error
+        assert row.payload_json != {}
+        inbound = db.query(Message).filter_by(external_id="inbox-retry", sender="user").one()
+        assert inbound.raw_payload["reply_delivery"]["status"] == "retrying"
+        assert db.query(Message).filter_by(sender="bot").count() == 0
+        row.available_at = utc_now()
+        db.commit()
+
+    # Attempt 2: redelivered event re-runs the reply instead of skipping the existing message.
+    with SessionLocal() as db:
+        worker = WebhookInboxService(db, owner="worker-b")
+        assert worker.claim_batch(limit=1) == [event_id]
+        asyncio.run(worker.process_claimed(event_id))
+        row = db.get(WebhookInboxEvent, event_id)
+        db.refresh(row)
+        assert (row.status, row.attempt_count, row.payload_json) == ("processed", 2, {})
+        assert db.query(Message).filter_by(external_id="inbox-retry", sender="user").count() == 1
+        assert db.query(Message).filter_by(sender="bot").count() == 1
+        inbound = db.query(Message).filter_by(external_id="inbox-retry", sender="user").one()
+        assert inbound.raw_payload["reply_delivery"]["status"] == "completed"
+    assert generate_reply.await_count == 2
+    send_text.assert_awaited_once()
+
+    # Provider redelivery with a new envelope for the same message id must not reply twice.
+    with SessionLocal() as db:
+        event_id, created = _openwa_inbox_event(db, tenant_id, delivery_id="delivery-2")
+        assert created
+        worker = WebhookInboxService(db, owner="worker-c")
+        assert worker.claim_batch(limit=1) == [event_id]
+        asyncio.run(worker.process_claimed(event_id))
+        assert db.get(WebhookInboxEvent, event_id).status == "processed"
+        assert db.query(Message).filter_by(sender="bot").count() == 1
+    assert generate_reply.await_count == 2
+    send_text.assert_awaited_once()
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure"])
+def test_worker_that_lost_its_lease_mid_processing_cannot_touch_new_owner(client, monkeypatch, outcome):
+    from app.api.routers import whatsapp_webhook as webhook
+    from app.core.time import utc_now
+    from app.db.session import SessionLocal
+    from app.models.webhook_inbox import WebhookInboxEvent
+    from app.services.webhook_inbox_service import WebhookInboxService
+    with SessionLocal() as db:
+        row = WebhookInboxEvent(provider="meta_cloud", event_type="whatsapp_business_account",
+                                deduplication_key=uuid4().hex, payload_json={"object": "x"})
+        db.add(row)
+        db.commit()
+        event_id = row.id
+
+    async def handler_that_outlives_its_lease(payload, db, background_tasks=None):
+        with SessionLocal() as other:
+            stale = other.get(WebhookInboxEvent, event_id)
+            stale.locked_until = utc_now() - timedelta(seconds=1)
+            other.commit()
+            assert WebhookInboxService(other, owner="worker-b").claim_batch(limit=1) == [event_id]
+        if outcome == "failure":
+            raise RuntimeError("slow worker failed after lease loss")
+
+    monkeypatch.setattr(webhook, "process_webhook_event", handler_that_outlives_its_lease)
+    with SessionLocal() as db:
+        worker_a = WebhookInboxService(db, owner="worker-a")
+        assert worker_a.claim_batch(limit=1) == [event_id]
+        if outcome == "failure":
+            with pytest.raises(RuntimeError, match="lease loss"):
+                asyncio.run(worker_a.process_claimed(event_id))
+        else:
+            asyncio.run(worker_a.process_claimed(event_id))
+    with SessionLocal() as db:
+        row = db.get(WebhookInboxEvent, event_id)
+        assert (row.status, row.lock_owner, row.attempt_count) == ("processing", "worker-b", 2)
+        assert row.last_error is None
+        assert row.payload_json == {"object": "x"}
+        WebhookInboxService(db, owner="worker-b").mark_processed(event_id)
+        db.refresh(row)
+        assert row.status == "processed"
+
+
+def test_admin_can_requeue_dead_lettered_inbox_event_once(client, workspace):
+    from app.core.time import utc_now
+    from app.db.session import SessionLocal
+    from app.models.webhook_inbox import WebhookInboxEvent
+    from app.services.webhook_inbox_service import WebhookInboxService
+    from tests.test_admin_tools_endpoints import _create_and_login_super_admin
+    tenant_headers, tenant_id, *_ = workspace
+    with SessionLocal() as db:
+        event_id, _ = _openwa_inbox_event(db, tenant_id, delivery_id="dead-letter")
+        row = db.get(WebhookInboxEvent, event_id)
+        row.max_attempts = 1
+        db.commit()
+        service = WebhookInboxService(db, owner="worker-a")
+        assert service.claim_batch(limit=1) == [event_id]
+        service.mark_failed(event_id, RuntimeError("AI outage"))
+        db.refresh(row)
+        assert row.status == "dead_letter"
+        # Only terminal dead letters can be requeued; live leases are never reset underneath a worker.
+        other = WebhookInboxEvent(provider="openwa", event_type="x", deduplication_key=uuid4().hex,
+                                  payload_json={}, status="processing", lock_owner="worker-b",
+                                  locked_until=utc_now() + timedelta(minutes=3), attempt_count=1)
+        db.add(other)
+        db.commit()
+        assert service.requeue_dead_letter(other.id) is False
+        db.refresh(other)
+        assert (other.status, other.lock_owner, other.attempt_count) == ("processing", "worker-b", 1)
+
+    admin_headers = {"Authorization": f"Bearer {_create_and_login_super_admin(client)}"}
+    assert client.get("/admin/webhook-inbox/dead-letters", headers=tenant_headers).status_code == 403
+    listed = client.get("/admin/webhook-inbox/dead-letters", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    assert [item["event_id"] for item in listed.json()] == [str(event_id)]
+    assert listed.json()[0]["last_error"] == "AI outage"
+
+    assert client.post(f"/admin/webhook-inbox/{event_id}/requeue", headers=tenant_headers).status_code == 403
+    requeued = client.post(f"/admin/webhook-inbox/{event_id}/requeue", headers=admin_headers)
+    assert requeued.status_code == 200, requeued.text
+    assert requeued.json() == {"event_id": str(event_id), "status": "pending"}
+    assert client.post(f"/admin/webhook-inbox/{event_id}/requeue", headers=admin_headers).status_code == 409
+    assert client.post(f"/admin/webhook-inbox/{uuid4()}/requeue", headers=admin_headers).status_code == 404
+
+    with SessionLocal() as db:
+        row = db.get(WebhookInboxEvent, event_id)
+        assert (row.status, row.attempt_count, row.lock_owner) == ("pending", 0, None)
+        assert row.payload_json != {}
+        assert WebhookInboxService(db, owner="worker-c").claim_batch(limit=1) == [event_id]
