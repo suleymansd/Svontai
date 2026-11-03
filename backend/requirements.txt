@@ -31,7 +31,7 @@ boto3>=1.35.0
 stripe>=8.5.0
 
 # Security & Encryption
-cryptography>=48.0.1
+cryptography>=50.0.2
 pyasn1>=0.6.4
 pywebpush>=2.0.3
 
