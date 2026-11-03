@@ -1,0 +1,14 @@
+.git
+.github
+**/.DS_Store
+**/.env
+**/.env.*
+!**/.env.example
+!deploy/oracle/.env.oracle.example
+**/node_modules
+**/.next
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+deploy/oracle/migration

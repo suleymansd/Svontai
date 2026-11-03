@@ -1,0 +1,21 @@
+FROM python:3.13-slim-trixie
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+RUN groupadd --system --gid 10001 svontai \
+    && useradd --system --uid 10001 --gid svontai --home-dir /app svontai
+
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY --chown=svontai:svontai backend/voice_gateway /app/voice_gateway
+
+USER svontai
+
+EXPOSE 9001
+
+CMD ["sh", "-c", "exec uvicorn voice_gateway.main:app --host 0.0.0.0 --port 9001 --proxy-headers --forwarded-allow-ips='*'"]
