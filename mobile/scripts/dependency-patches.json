@@ -9,9 +9,9 @@
     }
   },
   "node-forge": {
-    "version": "1.4.0",
+    "version": "1.4.2",
     "files": {
-      "lib/rsa.js": "9beca3180efa1ed5f27079eab44d2fdf86fa7b7a5ae2567c4e89cdb694f566da"
+      "lib/rsa.js": "cd597a0cec51a518d4533eba362d51bfaa48021618201e9a0bdff0968a797fb9"
     }
   },
   "query-string": {
@@ -20,6 +20,6 @@
       "index.js": "fc1ca6e1961ba005e554b1bc0de932d6454bf59bfaea03d02c7261dbdcafcdbd"
     }
   },
-  "decode-uri-component": { "version": "0.5.0", "files": {} },
+  "decode-uri-component": { "version": "0.5.1", "files": {} },
   "uuid": { "version": "11.1.1", "files": {} }
 }
