@@ -33,7 +33,7 @@ stripe>=8.5.0
 # Security & Encryption
 cryptography>=48.0.1
 pyasn1>=0.6.4
-pywebpush>=2.0.3
+pywebpush>=2.5.0
 
 # Utils
 python-dotenv>=1.2.2
