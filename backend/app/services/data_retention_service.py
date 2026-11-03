@@ -17,6 +17,8 @@ from app.models.call import Call
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.data_retention import DataRetentionPolicy
 from app.models.message import Message
+from app.models.webhook_inbox import WebhookInboxEvent
+from app.models.assistant_training_session import AssistantTrainingSession
 from app.models.product_event import ProductEvent
 from app.models.system_event import SystemEvent
 from app.models.ticket import Ticket
@@ -79,6 +81,15 @@ class DataRetentionService:
         )
         call_cutoff = now - timedelta(days=policy.call_data_days)
         return {
+            "terminal_webhooks": self.db.query(WebhookInboxEvent).filter(
+                WebhookInboxEvent.tenant_id == tenant_id,
+                WebhookInboxEvent.status.in_(["processed", "dead_letter"]),
+                WebhookInboxEvent.received_at < now - timedelta(days=max(policy.raw_payload_days, policy.system_event_days)),
+            ).count(),
+            "training_sessions": self.db.query(AssistantTrainingSession).filter(
+                AssistantTrainingSession.tenant_id == tenant_id,
+                AssistantTrainingSession.updated_at < now - timedelta(days=policy.message_content_days),
+            ).count(),
             "message_content": self.db.query(Message).filter(
                 Message.conversation_id.in_(conversation_ids),
                 Message.created_at < now - timedelta(days=policy.message_content_days),
@@ -254,6 +265,16 @@ class DataRetentionService:
         deleted["system_events"] = self.db.query(SystemEvent).filter(
             SystemEvent.tenant_id == str(tenant_id),
             SystemEvent.created_at < now - timedelta(days=policy.system_event_days),
+        ).delete(synchronize_session=False)
+
+        deleted["terminal_webhooks"] = self.db.query(WebhookInboxEvent).filter(
+            WebhookInboxEvent.tenant_id == tenant_id,
+            WebhookInboxEvent.status.in_(["processed", "dead_letter"]),
+            WebhookInboxEvent.received_at < now - timedelta(days=max(policy.raw_payload_days, policy.system_event_days)),
+        ).delete(synchronize_session=False)
+        deleted["training_sessions"] = self.db.query(AssistantTrainingSession).filter(
+            AssistantTrainingSession.tenant_id == tenant_id,
+            AssistantTrainingSession.updated_at < now - timedelta(days=policy.message_content_days),
         ).delete(synchronize_session=False)
 
         policy.last_run_at = now

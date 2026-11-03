@@ -7,7 +7,7 @@ from datetime import datetime
 from app.core.time import utc_now_naive
 from typing import Any
 
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import Depends, HTTPException, status, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.models.tenant import Tenant
 from app.models.tenant_membership import TenantMembership
 from app.services.rbac_service import RbacService
 from app.services.tenant_provisioning_service import TenantProvisioningService
+from app.services.demo_access_service import guard_demo_request
 
 # HTTP Bearer scheme for JWT authentication
 security = HTTPBearer()
@@ -64,7 +65,8 @@ async def get_access_token_payload(
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
 ) -> User:
     """
     Dependency to get the current authenticated user.
@@ -152,6 +154,11 @@ async def get_current_user(
             detail="Hesap geçici olarak kilitlendi"
         )
     
+    demo_access = guard_demo_request(db, user, request)
+    if payload.get("demo_access_id") and (
+        demo_access is None or str(demo_access.id) != payload["demo_access_id"]
+    ):
+        raise HTTPException(status_code=401, detail="Özel erişim oturumu artık geçerli değil.")
     return user
 
 

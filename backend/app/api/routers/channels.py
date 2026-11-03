@@ -23,8 +23,7 @@ from app.db.session import get_db
 from app.core.n8n_security import verify_n8n_request_dependency, verify_n8n_bearer_token
 from app.services.n8n_client import get_n8n_client
 from app.services.whatsapp_gateway_service import whatsapp_gateway_service
-from app.services.subscription_service import SubscriptionService
-from app.services.usage_counter_service import UsageCounterService
+from app.services.reply_usage_service import record_delivered_reply
 from app.services.push_notification_service import send_tenant_push_notification
 from app.models.whatsapp_account import WhatsAppAccount
 from app.models.tenant import Tenant
@@ -279,16 +278,6 @@ async def send_whatsapp_message(
                 reply_to_external_id=run.message_id if run is not None else None,
             )
 
-            # Billing-aware metering (outbound)
-            try:
-                SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
-            except Exception:
-                pass
-            try:
-                UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
-            except Exception:
-                pass
-            
             # Update automation run status
             if run_id:
                 _update_run_success(
@@ -404,16 +393,6 @@ async def send_whatsapp_template(
             reply_to_external_id=run.message_id if run is not None else None,
         )
 
-        # Billing-aware metering (outbound)
-        try:
-            SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
-        except Exception:
-            pass
-        try:
-            UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
-        except Exception:
-            pass
-
         if run_id:
             _update_run_success(db, run_id, tenant_id, {"wa_message_id": wa_message_id, "template": body.template_name})
         return WhatsAppSendResponse(success=True, message_id=wa_message_id, run_id=run_id)
@@ -493,12 +472,6 @@ async def send_whatsapp_document(
             automation_run_id=run_id,
             automation_delivery_key=_delivery_key(run_id, "document"),
         )
-
-        try:
-            SubscriptionService(db).increment_message_count(uuid.UUID(tenant_id))
-            UsageCounterService(db).increment_message_count(uuid.UUID(tenant_id), 1)
-        except Exception:
-            pass
 
         if run_id:
             _update_run_success(db, run_id, tenant_id, {"wa_message_id": wa_message_id, "document": True})
@@ -584,11 +557,6 @@ async def send_whatsapp_media(
             },
         )
         service.mark_sent(asset)
-        try:
-            SubscriptionService(db).increment_message_count(tenant_id)
-            UsageCounterService(db).increment_message_count(tenant_id, 1)
-        except Exception:
-            pass
         if run_id:
             _update_run_success(db, run_id, tenant_id, {"wa_message_id": message_id, "media_asset_id": str(asset.id)})
         return WhatsAppSendResponse(success=True, message_id=message_id, run_id=run_id)
@@ -682,6 +650,10 @@ def _prepare_automation_delivery(
     if not run_id:
         return None, None
 
+    from app.services.reply_quota_service import lock_subscription, reserve_reply
+    parsed_tenant_id = uuid.UUID(str(tenant_id))
+    lock_subscription(db, parsed_tenant_id)
+
     run = db.query(AutomationRun).filter(
         AutomationRun.id == run_id,
         AutomationRun.tenant_id == tenant_id,
@@ -690,6 +662,15 @@ def _prepare_automation_delivery(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Automation run not found")
     if _phone_key(run.from_number) != _phone_key(to_number):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Automation recipient mismatch")
+
+    source = db.query(Message.id).join(Conversation).join(Bot).filter(
+        Bot.tenant_id == parsed_tenant_id, Message.external_id == run.message_id,
+        Message.sender == "user", Conversation.external_user_id.in_([to_number, to_number.lstrip("+"), "+" + to_number.lstrip("+")]),
+    ).first()
+    if source:
+        allowed, reason = reserve_reply(db, parsed_tenant_id, source.id)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
 
     existing = db.query(Message).filter(
         Message.automation_delivery_key == _delivery_key(run_id, delivery_kind),
@@ -815,6 +796,7 @@ async def _store_bot_message(
             raw_payload=raw_payload,
         )
         db.add(message)
+        record_delivered_reply(db, uuid.UUID(str(tenant_id)), message)
         db.commit()
         
         logger.debug(f"Stored bot message for conversation {conversation.id}")

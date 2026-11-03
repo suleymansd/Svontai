@@ -498,11 +498,12 @@ class GoogleCalendarService:
             "Content-Type": "application/json",
         }
         base_url = f"{self.CALENDAR_API_BASE}/calendars/primary/events"
+        event_id = appointment.calendar_event_id or f"svontai{appointment.id.hex}"
 
         if appointment.status == "cancelled":
-            if appointment.calendar_event_id:
+            if event_id:
                 response = httpx.delete(
-                    f"{base_url}/{appointment.calendar_event_id}",
+                    f"{base_url}/{event_id}",
                     headers=headers,
                     params={"sendUpdates": "none"},
                     timeout=20,
@@ -526,13 +527,20 @@ class GoogleCalendarService:
                 timeout=20,
             )
         else:
+            # UUID hex is a valid Calendar base32hex event ID. Retry uses the
+            # same ID even if Google's first response or our DB commit is lost.
             response = httpx.post(
                 base_url,
                 headers=headers,
                 params={"sendUpdates": "none"},
-                json=payload,
+                json={**payload, "id": event_id},
                 timeout=20,
             )
+            if response.status_code == 409:
+                response = httpx.patch(
+                    f"{base_url}/{event_id}", headers=headers,
+                    params={"sendUpdates": "none"}, json=payload, timeout=20,
+                )
         try:
             data = response.json()
         except Exception:

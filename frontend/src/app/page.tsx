@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Logo, LogoIcon } from '@/components/Logo'
 import { AutopilotDemo } from '@/components/marketing/autopilot-demo'
@@ -33,6 +34,7 @@ const customerBrands: Array<{ name: string; logo?: string; logoClassName?: strin
 ]
 
 export default function HomePage() {
+  const router = useRouter()
   return (
     <div className="min-h-screen bg-background overflow-hidden">
       {/* Navigation */}
@@ -159,7 +161,7 @@ export default function HomePage() {
                 size="lg" 
                 variant="outline" 
                 className="w-full sm:w-auto text-lg px-8 h-14 rounded-2xl glass"
-                onClick={() => window.location.href = '/contact'}
+                onClick={() => router.push('/contact')}
               >
                 <Play className="mr-2 w-5 h-5" />
                 Demo Talep Et

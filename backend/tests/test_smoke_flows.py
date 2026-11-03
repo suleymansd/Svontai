@@ -192,6 +192,12 @@ def test_smoke_register_verify_login_and_core_resources(client):
     assert tickets_resp.status_code == 200, tickets_resp.text
     assert any(ticket["id"] == concierge_ticket_id for ticket in tickets_resp.json())
 
+    from app.db.session import SessionLocal
+    from app.services.subscription_service import SubscriptionService
+    from uuid import UUID
+    with SessionLocal() as db:
+        SubscriptionService(db).upgrade_plan(UUID(tenant_id), "pro")
+
     bot_resp = client.post(
         "/bots",
         json={

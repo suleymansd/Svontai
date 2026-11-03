@@ -1,11 +1,14 @@
 # Models module
 from app.models.user import User
+from app.models.demo_access import DemoAccess
 from app.models.tenant import Tenant
 from app.models.bot import Bot
 from app.models.knowledge import BotKnowledgeItem
 from app.models.whatsapp import WhatsAppIntegration
 from app.models.conversation import Conversation, ConversationSource, ConversationStatus
 from app.models.message import Message
+from app.models.reply_reservation import ReplyReservation
+from app.models.operator_delivery import OperatorDelivery
 from app.models.lead import Lead, LeadStatus, LeadSource
 from app.models.whatsapp_account import WhatsAppAccount, TokenStatus, WebhookStatus
 from app.models.onboarding import OnboardingStep, OnboardingProvider, StepStatus, AuditLog

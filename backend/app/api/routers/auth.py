@@ -72,6 +72,7 @@ from app.schemas.email_verification import (
 from app.services.session_service import SessionService
 from app.services.email_service import EmailService
 from app.services.system_event_service import SystemEventService
+from app.services.demo_access_service import guard_demo_request
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -655,6 +656,13 @@ async def refresh_token(
             detail="Kullanıcı bulunamadı"
         )
     
+    demo_access = guard_demo_request(db, user)
+    if payload.get("demo_access_id") and (
+        demo_access is None or str(demo_access.id) != payload["demo_access_id"]
+    ):
+        raise HTTPException(status_code=401, detail="Özel erişim oturumu artık geçerli değil.")
+    if demo_access and not user.is_active:
+        raise HTTPException(status_code=403, detail="Hesap devre dışı bırakılmış")
     session_service = SessionService(db)
     refresh_token_value = incoming_refresh_token
     session_id = payload.get("sid")
@@ -667,6 +675,8 @@ async def refresh_token(
         "mfa": mfa_value,
         "client": client_value,
     }
+    if demo_access:
+        token_claims["demo_access_id"] = str(demo_access.id)
     if client_value == "mobile":
         token_claims["device_id"] = payload.get("device_id")
 
@@ -683,7 +693,7 @@ async def refresh_token(
             UserSession.id == session_uuid,
             UserSession.user_id == user.id
         ).first()
-        if session is None or session.revoked_at is not None:
+        if session is None or session.revoked_at is not None or session.expires_at <= utc_now_naive():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Oturum geçersiz"
@@ -708,6 +718,10 @@ async def refresh_token(
             session_id=str(session.id),
         )
         session_service.rotate_session(session, refresh_token_value)
+
+    if demo_access:
+        session.expires_at = min(session.expires_at, demo_access.expires_at)
+        db.commit()
 
     # Create new access token
     access_token = create_access_token(

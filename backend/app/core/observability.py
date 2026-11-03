@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from app.core.config import settings
 
@@ -24,7 +25,7 @@ def configure_observability(service: str) -> bool:
         environment=settings.ENVIRONMENT,
         traces_sample_rate=max(0.0, min(1.0, settings.SENTRY_TRACES_SAMPLE_RATE)),
         send_default_pii=False,
-        release="svontai@1.0.0",
+        release=f"svontai@{os.getenv('RAILWAY_GIT_COMMIT_SHA') or os.getenv('GIT_SHA') or 'local'}",
         server_name=service,
     )
     sentry_sdk.set_tag("service", service)

@@ -2,7 +2,7 @@
 Schemas for appointment management.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -18,6 +18,11 @@ class AppointmentCreate(BaseModel):
     notes: str | None = None
     reminder_before_minutes: int = Field(default=60, ge=5, le=10080)
 
+    @field_validator("starts_at")
+    @classmethod
+    def normalize_start(cls, value: datetime) -> datetime:
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+
 
 class AppointmentUpdate(BaseModel):
     customer_name: str | None = Field(default=None, min_length=1, max_length=255)
@@ -29,6 +34,15 @@ class AppointmentUpdate(BaseModel):
     notes: str | None = None
     status: str | None = Field(default=None, pattern="^(scheduled|completed|cancelled)$")
     reminder_before_minutes: int | None = Field(default=None, ge=5, le=10080)
+
+    @field_validator("customer_name", "subject", "starts_at", "duration_minutes", "status", "reminder_before_minutes")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Bu alan boş bırakılamaz")
+        if isinstance(value, datetime) and value.tzinfo:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
 
 class AppointmentResponse(BaseModel):

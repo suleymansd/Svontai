@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.models.bot import Bot
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.models.operator_delivery import OperatorDelivery
 
 try:
     import redis
@@ -98,6 +99,12 @@ def _collect_realtime_changes(session: SQLAlchemySession, flush_context: object)
                 ))
 
     for obj in session.dirty:
+        if isinstance(obj, OperatorDelivery) and session.is_modified(obj, include_collections=False):
+            conversation_id = connection.execute(select(Message.conversation_id).where(Message.id == obj.message_id)).scalar_one_or_none()
+            if conversation_id:
+                pending.append((str(obj.tenant_id), {"type": "message.delivery_updated", "conversation_id": str(conversation_id),
+                                                     "message_id": str(obj.message_id), "status": obj.status}))
+            continue
         if not isinstance(obj, Conversation) or not session.is_modified(obj, include_collections=False):
             continue
         tenant_id = connection.execute(

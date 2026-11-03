@@ -19,6 +19,7 @@ from app.core.cors import StrictCORSMiddleware
 from app.core.rate_limit import global_ip_rate_limiter, rate_limit_key
 from app.core.observability import configure_observability
 from app.core.request_limits import RequestBodyLimitMiddleware
+from app.api.routers.demo_access import admin_router as demo_admin_router, auth_router as demo_auth_router
 from app.api.routers import (
     auth_router,
     users_router,
@@ -445,6 +446,8 @@ app.add_middleware(
 
 
 # Include routers - Core
+app.include_router(demo_admin_router)
+app.include_router(demo_auth_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(tenants_router)

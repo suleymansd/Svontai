@@ -35,12 +35,20 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
           token = await authApi.refreshWithCookie()
           setAccessToken(token)
         } catch {
+          if (stopped) return
           retryTimer = window.setTimeout(connect, retryMs)
           retryMs = Math.min(retryMs * 2, 15000)
           return
         }
       }
+      if (stopped) return
       controller = new AbortController()
+      const active = controller
+      let watchdog: number | undefined
+      const resetWatchdog = () => {
+        window.clearTimeout(watchdog)
+        watchdog = window.setTimeout(() => active.abort(), 40_000)
+      }
       const headers: Record<string, string> = {
         Accept: 'text/event-stream',
         Authorization: `Bearer ${token}`,
@@ -49,6 +57,7 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
       if (tenantContextId) headers['X-Tenant-ID'] = tenantContextId
 
       try {
+        resetWatchdog()
         const response = await fetch(`${API_URL}/realtime/events`, {
           credentials: 'include',
           headers,
@@ -60,17 +69,17 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
           throw new Error('token-refreshed')
         }
         if (!response.ok || !response.body) throw new Error(`stream-${response.status}`)
-        setConnected(true)
-        retryMs = 1000
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
         while (!stopped) {
           const { done, value } = await reader.read()
           if (done) break
+          resetWatchdog()
           buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
           const frames = buffer.split('\n\n')
           buffer = frames.pop() || ''
+          if (buffer.length > 65_536) throw new Error('stream-buffer-limit')
           frames.forEach((frame) => {
             const data = frame
               .split('\n')
@@ -79,7 +88,14 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
               .join('\n')
             if (!data) return
             try {
-              callbackRef.current(JSON.parse(data) as RealtimeEvent)
+              const payload = JSON.parse(data)
+              const eventName = frame.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim()
+              const type = payload.type || (eventName === 'ready' ? 'ready' : undefined)
+              if (type === 'ready') {
+                setConnected(payload.live !== false)
+                retryMs = 1000
+              }
+              if (typeof type === 'string') callbackRef.current({ ...payload, type } as RealtimeEvent)
             } catch {
               // Ignore malformed third-party proxy frames.
             }
@@ -90,6 +106,8 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
           setConnected(false)
         }
       } finally {
+        window.clearTimeout(watchdog)
+        active.abort()
         setConnected(false)
         if (!stopped) {
           retryTimer = window.setTimeout(connect, retryMs)

@@ -23,7 +23,7 @@ from app.services.onboarding_service import OnboardingService
 from app.services.meta_api import meta_api_service
 from app.services.system_event_service import SystemEventService
 from app.services.subscription_service import SubscriptionService
-from app.services.usage_counter_service import UsageCounterService
+from app.services.reply_usage_service import record_delivered_reply
 from app.core.encryption import decrypt_token
 from app.core.config import settings
 from app.core.rate_limit import (
@@ -289,8 +289,23 @@ async def process_openwa_message_event(
     )
 
 
-async def process_whatsapp_reply_in_background(
+async def process_whatsapp_reply_in_background(**kwargs) -> None:
+    from app.services.reply_delivery_guard import ReplyDeliveryGuard
+
+    guard = ReplyDeliveryGuard(kwargs["conversation_id"], kwargs["message_id"])
+    if not guard.claim():
+        return
+    try:
+        await _process_whatsapp_reply(delivery_guard=guard, **kwargs)
+        guard.set_status("completed")
+    except Exception:
+        guard.failed()
+        raise
+
+
+async def _process_whatsapp_reply(
     *,
+    delivery_guard,
     tenant_id: uuid.UUID,
     bot_id: uuid.UUID,
     conversation_id: uuid.UUID,
@@ -315,10 +330,14 @@ async def process_whatsapp_reply_in_background(
         subscription_service = SubscriptionService(limit_db)
         if subscription_service.get_subscription(tenant_id) is None:
             subscription_service.create_subscription(tenant_id, "free")
-        can_reply, limit_message = subscription_service.check_message_limit(
-            tenant_id,
-            current_message_already_counted=True,
-        )
+        from app.services.reply_quota_service import reserve_reply
+        source_id = limit_db.query(Message.id).filter(
+            Message.conversation_id == conversation_id,
+            Message.external_id == message_id,
+            Message.sender == "user",
+        ).scalar()
+        can_reply, limit_message = reserve_reply(limit_db, tenant_id, source_id)
+        limit_db.commit()
         if not can_reply:
             logger.warning(
                 "whatsapp.reply_skipped_by_plan_limit tenant_id=%s message_id=%s reason=%s",
@@ -332,6 +351,7 @@ async def process_whatsapp_reply_in_background(
         limit_db.close()
 
     if use_n8n and n8n_workflow_id:
+        delivery_guard.set_status("dispatching")
         run_status = await trigger_n8n_in_background(
             tenant_id=tenant_id,
             from_number=from_number,
@@ -358,7 +378,10 @@ async def process_whatsapp_reply_in_background(
                     message_id,
                     run_status,
                 )
+                from app.services.reply_delivery_guard import ReplyDeliveryUncertain
+                raise ReplyDeliveryUncertain("n8n reply delivery could not be confirmed")
             return
+        delivery_guard.set_status("generating")
         logger.warning(
             "whatsapp.n8n_fallback tenant_id=%s message_id=%s workflow_id=%s",
             tenant_id,
@@ -428,7 +451,7 @@ async def process_whatsapp_reply_in_background(
                 provider,
                 message_id,
             )
-            return
+            raise RuntimeError("WhatsApp account is not connected")
 
         knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
@@ -437,7 +460,6 @@ async def process_whatsapp_reply_in_background(
             return
         appointment_service = AppointmentAvailabilityService(db)
         assistant_profile_service = AssistantProfileService(db)
-        db.refresh(conversation, ["messages"])
         reply = await ai_service.generate_reply(
             bot=bot,
             knowledge_items=knowledge_items,
@@ -445,6 +467,7 @@ async def process_whatsapp_reply_in_background(
             last_user_message=message_content,
             bot_settings=bot.settings,
             runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
+            raise_on_provider_error=True,
         )
         appointment = None
         if assistant_profile_service.capability_enabled(bot, "appointment_management"):
@@ -486,13 +509,16 @@ async def process_whatsapp_reply_in_background(
             return
 
         send_result = {"message_id": None, "raw": None}
+        metered_reply = None
+        delivery_guard.prepare(reply, str(selected_media.asset.id) if selected_media else None)
+        delivery_guard.set_status("dispatching")
         if reply.strip():
             send_result = await whatsapp_gateway_service.send_text(
                 account,
                 to=from_number,
                 text=reply,
             )
-            db.add(Message(
+            metered_reply = Message(
                 conversation_id=conversation.id,
                 sender=MessageSender.BOT.value,
                 content=reply,
@@ -504,7 +530,8 @@ async def process_whatsapp_reply_in_background(
                     "correlation_id": correlation_id,
                     "delivery": send_result.get("raw"),
                 },
-            ))
+            )
+            db.add(metered_reply)
         media_message_id = None
         if selected_media is not None:
             media_service = AssistantMediaService(db)
@@ -519,7 +546,7 @@ async def process_whatsapp_reply_in_background(
                 caption=selected_media.caption,
             )
             media_message_id = media_result.get("message_id")
-            db.add(Message(
+            media_reply = Message(
                 conversation_id=conversation.id,
                 sender=MessageSender.BOT.value,
                 content=f"[{selected_media.asset.media_type}:{selected_media.asset.title}]",
@@ -532,10 +559,15 @@ async def process_whatsapp_reply_in_background(
                     "reply_to_message_id": message_id,
                     "correlation_id": correlation_id,
                 },
-            ))
+            )
+            db.add(media_reply)
+            metered_reply = metered_reply or media_reply
             selected_media.asset.send_count = int(selected_media.asset.send_count or 0) + 1
             selected_media.asset.last_sent_at = utc_now_naive()
+        if metered_reply is not None:
+            record_delivered_reply(db, tenant_id, metered_reply)
         db.commit()
+        delivery_guard.set_status("completed")
         if appointment is not None:
             await send_tenant_push_notification(
                 tenant_id=tenant_id,
@@ -612,6 +644,7 @@ async def process_whatsapp_reply_in_background(
             )
         except Exception:
             logger.exception("Could not persist WhatsApp AI reply failure event")
+        raise
     finally:
         db.close()
 
@@ -1035,24 +1068,21 @@ async def handle_incoming_message(
 
         bot_id = bot_row[0]
         duplicate = (
-            db.query(Message.id)
+            db.query(Message)
             .join(Conversation, Message.conversation_id == Conversation.id)
             .join(Bot, Conversation.bot_id == Bot.id)
             .filter(
                 Bot.tenant_id == tenant_uuid,
                 Message.external_id == message_id,
+                Message.sender == MessageSender.USER.value,
             )
             .first()
         )
         if duplicate:
-            logger.info(
-                "whatsapp.duplicate_message_ignored tenant_id=%s message_id=%s provider=%s",
-                tenant_id_str,
-                message_id,
-                provider,
-            )
-            return
-
+            if (duplicate.raw_payload or {}).get("reply_delivery", {}).get("status") == "completed":
+                return
+            # A retry belongs to its original conversation, even after a primary bot change.
+            bot_id = db.query(Conversation.bot_id).filter(Conversation.id == duplicate.conversation_id).scalar()
         conversation_row = (
             db.query(
                 Conversation.id,
@@ -1124,7 +1154,7 @@ async def handle_incoming_message(
             db.add(new_conversation)
             db.commit()
 
-        incoming_message = Message(
+        incoming_message = duplicate or Message(
             conversation_id=conversation_id,
             sender=MessageSender.USER.value,
             content=message_content,
@@ -1154,16 +1184,6 @@ async def handle_incoming_message(
                 provider,
             )
             return
-
-        try:
-            SubscriptionService(db).increment_message_count(tenant_uuid)
-        except Exception as meter_exc:
-            logger.warning("Subscription usage increment failed tenant_id=%s error=%s", tenant_id_str, meter_exc)
-
-        try:
-            UsageCounterService(db).increment_message_count(tenant_uuid, 1)
-        except Exception as meter_exc:
-            logger.warning("Usage counter increment failed tenant_id=%s error=%s", tenant_id_str, meter_exc)
 
         if (
             not conversation_ai_reply_enabled

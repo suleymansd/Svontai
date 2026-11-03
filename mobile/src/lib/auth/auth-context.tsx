@@ -2,10 +2,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/lib/api/endpoints';
-import { clearMobileSession, restoreMobileSession, setSessionExpiredHandler } from '@/lib/api/client';
+import { ApiError, clearMobileSession, restoreMobileSession, setSessionExpiredHandler } from '@/lib/api/client';
 import type { MeContext } from '@/lib/api/types';
 
-type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+type AuthStatus = 'loading' | 'offline' | 'authenticated' | 'unauthenticated';
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -13,6 +13,7 @@ type AuthContextValue = {
   signIn: (email: string, password: string, twoFactorCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
   reloadProfile: () => Promise<void>;
+  retrySession: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -21,6 +22,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [me, setMe] = useState<MeContext | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const retrySession = useCallback(() => {
+    setStatus('loading');
+    setRestoreAttempt((value) => value + 1);
+  }, []);
 
   const expireSession = useCallback(() => {
     setMe(null);
@@ -52,15 +58,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
           setMe(profile);
           setStatus('authenticated');
         }
-      } catch {
-        await clearMobileSession();
-        if (active) setStatus('unauthenticated');
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          await clearMobileSession();
+          if (active) setStatus('unauthenticated');
+        } else if (active) {
+          setStatus('offline');
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [restoreAttempt]);
 
   const signIn = useCallback(async (email: string, password: string, twoFactorCode?: string) => {
     await loginRequest(email, password, twoFactorCode);
@@ -75,8 +85,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [expireSession]);
 
   const value = useMemo(
-    () => ({ status, me, signIn, signOut, reloadProfile }),
-    [status, me, signIn, signOut, reloadProfile],
+    () => ({ status, me, signIn, signOut, reloadProfile, retrySession }),
+    [status, me, signIn, signOut, reloadProfile, retrySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -201,12 +201,14 @@ class DatabaseBackupService:
     def _verify_restore(self, dump_path: Path, expected_heads: tuple[str, ...]) -> None:
         restore_database = f"svontai_restore_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{secrets.token_hex(3)}"
         maintenance_env = self._postgres_env("postgres")
+        created = False
         try:
             self._run_command(
                 ["createdb", "--maintenance-db=postgres", restore_database],
                 env=maintenance_env,
                 timeout_seconds=120,
             )
+            created = True
             restore_env = self._postgres_env(restore_database)
             self._run_command(
                 ["pg_restore", "--no-owner", "--no-privileges", "--dbname", restore_database, str(dump_path)],
@@ -236,11 +238,12 @@ class DatabaseBackupService:
             if restored_tables != CRITICAL_TABLES:
                 raise DatabaseBackupError(f"Restored critical tables are incomplete: {restored_tables}")
         finally:
-            self._run_command(
-                ["dropdb", "--if-exists", "--force", restore_database],
-                env=maintenance_env,
-                timeout_seconds=120,
-            )
+            if created:
+                self._run_command(
+                    ["dropdb", "--if-exists", "--force", restore_database],
+                    env=maintenance_env,
+                    timeout_seconds=120,
+                )
 
     @staticmethod
     def _r2_client():
@@ -331,6 +334,22 @@ class DatabaseBackupService:
                 Delete={"Objects": expired[offset : offset + 1000], "Quiet": True},
             )
         return len(expired)
+
+    def verify_stored_backup(self, object_key: str, encrypted_sha256: str, migration_heads: tuple[str, ...]) -> None:
+        """Recheck remote bytes and restore into a disposable database, never the source."""
+        with tempfile.TemporaryDirectory(prefix="svontai-remote-restore-") as temp_dir:
+            directory = Path(temp_dir)
+            directory.chmod(0o700)
+            encrypted_path = directory / "backup.aes256gcm"
+            dump_path = directory / "backup.dump"
+            self._r2_client().download_file(
+                settings.DATABASE_BACKUP_R2_BUCKET, object_key, str(encrypted_path),
+            )
+            encrypted_path.chmod(0o600)
+            if not secrets.compare_digest(self._sha256(encrypted_path), encrypted_sha256):
+                raise DatabaseBackupError("Downloaded R2 backup checksum does not match")
+            self._decrypt(encrypted_path, dump_path)
+            self._verify_restore(dump_path, migration_heads)
 
     def run(self) -> DatabaseBackupResult:
         now = datetime.now(timezone.utc)

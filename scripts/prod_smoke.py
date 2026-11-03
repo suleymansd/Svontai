@@ -7,6 +7,7 @@ Environment:
   SMARTWA_SMOKE_ACCESS_TOKEN: optional short-lived bearer token for protected checks
   SMARTWA_SMOKE_EMAIL/SMARTWA_SMOKE_PASSWORD: preferred credentials for a fresh smoke login
   SMARTWA_SMOKE_TENANT_ID: optional tenant context for protected checks
+  SMARTWA_EXPECTED_COMMIT: optional exact API/worker release revision
 """
 
 from __future__ import annotations
@@ -189,7 +190,7 @@ def _check_deployment_alignment(backend_url: str) -> Result:
     api_commit = str(deployment.get("api_commit") or "unknown")
     worker_commit = str(deployment.get("worker_commit") or "unknown")
     heartbeat_age = deployment.get("worker_heartbeat_age_seconds")
-    if expected_head not in heads:
+    if heads != {expected_head}:
         return Result("deployment alignment", False, f"migration heads={sorted(heads)!r}, expected={expected_head}")
     if "unknown" in {api_commit, worker_commit}:
         return Result("deployment alignment", False, "API or worker commit identity is unavailable")
@@ -199,8 +200,16 @@ def _check_deployment_alignment(backend_url: str) -> Result:
             False,
             f"API commit {api_commit[:12]} != worker commit {worker_commit[:12]}",
         )
-    if not isinstance(heartbeat_age, int) or heartbeat_age > 120:
+    expected_commit = (os.getenv("SMARTWA_EXPECTED_COMMIT") or "").strip()
+    if expected_commit and api_commit != expected_commit:
+        return Result("deployment alignment", False, f"API/worker commit {api_commit[:12]} != expected {expected_commit[:12]}")
+    if type(heartbeat_age) is not int or not 0 <= heartbeat_age <= 120:
         return Result("deployment alignment", False, f"worker heartbeat age={heartbeat_age!r}")
+    pipeline_health = deployment.get("pipeline_health")
+    if not isinstance(pipeline_health, dict) or set(pipeline_health) != {"webhook_inbox", "operator_outbox", "ai_delivery"}:
+        return Result("delivery pipeline", False, "operational delivery evidence is missing")
+    if any(value != "ok" for value in pipeline_health.values()):
+        return Result("delivery pipeline", False, f"delivery queues require attention: {pipeline_health}")
     return Result(
         "deployment alignment",
         True,

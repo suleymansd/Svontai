@@ -3,7 +3,7 @@ import { normalizeApiUrl } from '@/lib/api-url'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_ACTIONS = new Set(['login', 'refresh', 'logout'])
+const ALLOWED_ACTIONS = new Set(['login', 'refresh', 'logout', 'demo-login'])
 
 export async function POST(
   request: NextRequest,

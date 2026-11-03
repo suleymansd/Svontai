@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { DeliveryStatus } from '@/components/conversations/delivery-status'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare,
@@ -69,6 +70,7 @@ const statusColors: Record<string, string> = {
 }
 
 export default function OperatorPage() {
+  const request = useRef<{ id: string; content: string; key: string } | null>(null)
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
@@ -145,19 +147,27 @@ export default function OperatorPage() {
 
   // Send message mutation
   const sendMutation = useMutation({
-    mutationFn: ({ conversationId, content }: { conversationId: string, content: string }) =>
-      operatorApi.sendMessage(conversationId, content),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['operator-messages', selectedConversation] })
-      setNewMessage('')
+    mutationFn: ({ conversationId, content }: { conversationId: string, content: string }) => {
+      if (!request.current || request.current.id !== conversationId || request.current.content !== content) {
+        request.current = { id: conversationId, content, key: crypto.randomUUID() }
+      }
+      return operatorApi.sendMessage(conversationId, content, request.current.key)
+    },
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['operator-messages', variables.conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['deliveries', variables.conversationId] })
       const payload = response.data
+      if (payload.delivered || payload.delivery_status === 'failed') request.current = null
       if (payload?.delivered === false) {
         toast({
-          title: 'Gönderim Başarısız',
-          description: payload?.note || 'Mesaj kaydedildi ama WhatsApp tarafına iletilemedi.',
+          title: 'Teslimat doğrulanamadı',
+          description: payload?.note || 'Tekrar göndermeden önce konuşmayı kontrol edin.',
           variant: 'destructive'
         })
         return
+      }
+      if (selectedConversation === variables.conversationId) {
+        setNewMessage((draft) => draft === variables.content ? '' : draft)
       }
       toast({ title: 'Mesaj gönderildi' })
     },
@@ -281,7 +291,13 @@ export default function OperatorPage() {
                 {conversations?.map(conv => (
                   <div
                     key={conv.id}
-                    onClick={() => setSelectedConversation(conv.id)}
+                    onClick={() => {
+                      if (sendMutation.isPending || conv.id === selectedConversation) return
+                      if (newMessage.trim() && !window.confirm('Gönderilmemiş taslağı silip diğer konuşmaya geçilsin mi?')) return
+                      setNewMessage('')
+                      request.current = null
+                      setSelectedConversation(conv.id)
+                    }}
                     className={cn(
                       'p-4 cursor-pointer transition-all duration-200',
                       selectedConversation === conv.id
@@ -422,12 +438,13 @@ export default function OperatorPage() {
                 </div>
 
                 {/* Input */}
+                <DeliveryStatus conversationId={selectedConversation!} />
                 {selectedConv.is_ai_paused && (
                   <div className="p-4 border-t dark:border-slate-800">
                     <form
                       onSubmit={(e) => {
                         e.preventDefault()
-                        if (newMessage.trim() && selectedConversation) {
+                        if (newMessage.trim() && selectedConversation && !sendMutation.isPending) {
                           sendMutation.mutate({
                             conversationId: selectedConversation,
                             content: newMessage
@@ -438,6 +455,7 @@ export default function OperatorPage() {
                     >
                       <Input
                         value={newMessage}
+                        disabled={sendMutation.isPending}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Mesajınızı yazın..."
                         className="flex-1 input-glow rounded-xl transition-all duration-300"

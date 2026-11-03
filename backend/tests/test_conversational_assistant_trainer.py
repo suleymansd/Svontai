@@ -40,10 +40,19 @@ def _headers(token: str, tenant_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "X-Tenant-ID": tenant_id}
 
 
+def _enable_specialists(tenant_id):
+    from uuid import UUID
+    from app.db.session import SessionLocal
+    from app.services.subscription_service import SubscriptionService
+    with SessionLocal() as db:
+        SubscriptionService(db).upgrade_plan(UUID(tenant_id), "premium")
+
+
 def test_chat_trainer_drafts_and_idempotently_applies_specialist(client, monkeypatch):
     from app.services.ai_service import ai_service
 
     token, tenant_id = _tenant_session(client, "trainer@example.com")
+    _enable_specialists(tenant_id)
     headers = _headers(token, tenant_id)
     proposal = {
         "status": "ready",
@@ -123,6 +132,7 @@ def test_primary_assistant_uses_active_specialist_knowledge_only(client, monkeyp
     from app.services.ai_service import ai_service
 
     token, tenant_id = _tenant_session(client, "trainer-effective@example.com")
+    _enable_specialists(tenant_id)
     headers = _headers(token, tenant_id)
     profile = client.get("/bots/assistant-profile", headers=headers).json()
     primary_id = profile["assistant"]["id"]

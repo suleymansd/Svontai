@@ -9,7 +9,7 @@ from typing import Optional, List
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 
 from app.models.appointment import Appointment
 from app.models.automation import AutomationRun, AutomationRunStatus
@@ -495,6 +495,23 @@ class AnalyticsService:
         upcoming_until = now + timedelta(hours=24)
         items: list[dict] = []
 
+        from app.models.operator_delivery import OperatorDelivery
+        delivery_query = self.db.query(OperatorDelivery, Message.conversation_id).join(Message).filter(
+            OperatorDelivery.tenant_id == tenant_id,
+            or_(OperatorDelivery.status == "uncertain",
+                and_(OperatorDelivery.status == "failed", OperatorDelivery.updated_at >= recent_at)),
+        )
+        delivery_count = delivery_query.count()
+        deliveries = delivery_query.order_by(OperatorDelivery.updated_at.desc()).limit(5).all()
+        for delivery, conversation_id in deliveries:
+            items.append({
+                "id": f"delivery:{delivery.message_id}", "kind": "delivery_uncertain", "severity": "high",
+                "title": "Mesaj teslimatını kontrol edin",
+                "description": "Gönderim doğrulanamadı. Mesaj otomatik tekrar gönderilmez.",
+                "href": f"/dashboard/conversations?conversation={conversation_id}",
+                "cta_label": "Konuşmayı Aç", "occurred_at": delivery.updated_at,
+            })
+
         handoff_query = self.db.query(Conversation).join(Bot).filter(
             Bot.tenant_id == tenant_id,
             Conversation.status.in_(["waiting", "human_takeover"]),
@@ -605,7 +622,7 @@ class AnalyticsService:
         return {
             "generated_at": now,
             "window_hours": window_hours,
-            "required_count": handoff_count + len(unresolved_automation_runs) + failed_call_count + calendar_failure_count,
+            "required_count": handoff_count + delivery_count + len(unresolved_automation_runs) + failed_call_count + calendar_failure_count,
             "items": items,
             "upcoming_appointments": [
                 {

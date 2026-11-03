@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import shutil
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -136,3 +137,76 @@ def test_upload_requires_encryption_and_restore_metadata(monkeypatch, tmp_path, 
     assert client.metadata["encryption"] == "aes-256-gcm"
     assert client.metadata["restore-verified"] == "true"
     assert client.metadata["backup-format"] == "postgresql-custom"
+
+
+def test_remote_backup_verification_downloads_authenticates_and_restores(monkeypatch, tmp_path, backup_settings):
+    service = DatabaseBackupService()
+    source = tmp_path / "original.dump"
+    source.write_bytes(b"pg-dump-fixture")
+    remote = tmp_path / "remote.aes256gcm"
+    service._encrypt(source, remote)
+    restored = []
+
+    class FakeClient:
+        def download_file(self, bucket, key, filename):
+            assert bucket == settings.DATABASE_BACKUP_R2_BUCKET
+            assert key == "postgres/latest.dump.aes256gcm"
+            shutil.copyfile(remote, filename)
+
+    monkeypatch.setattr(service, "_r2_client", lambda: FakeClient())
+    monkeypatch.setattr(service, "_verify_restore", lambda path, heads: restored.append((path.read_bytes(), heads)))
+    checksum = service._sha256(remote)
+    service.verify_stored_backup("postgres/latest.dump.aes256gcm", checksum, ("056",))
+    assert restored == [(b"pg-dump-fixture", ("056",))]
+    with pytest.raises(DatabaseBackupError, match="checksum"):
+        service.verify_stored_backup("postgres/latest.dump.aes256gcm", "0" * 64, ("056",))
+    assert len(restored) == 1
+
+
+def test_latest_backup_checks_all_pages_and_rejects_stale_objects(monkeypatch, backup_settings):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("verify_backup", Path(__file__).resolve().parents[2] / "scripts" / "verify_production_backup.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    now = datetime.now(timezone.utc)
+    recent = {"Key": "postgres/new.dump.aes256gcm", "LastModified": now - timedelta(hours=1)}
+
+    class FakeClient:
+        def get_paginator(self, operation):
+            assert operation == "list_objects_v2"
+            return self
+
+        def paginate(self, **kwargs):
+            yield {"Contents": [{"Key": "postgres/old.dump.aes256gcm", "LastModified": now - timedelta(days=7)}]}
+            yield {"Contents": [recent, {"Key": "postgres/note.txt", "LastModified": now}]}
+
+        def head_object(self, **kwargs):
+            assert kwargs["Key"] == recent["Key"]
+            return {"ContentLength": 1024, "Metadata": {
+                "encryption": "aes-256-gcm", "restore-verified": "true", "backup-format": "postgresql-custom",
+                "sha256": "a" * 64, "alembic-heads": "056",
+            }}
+
+    service = DatabaseBackupService()
+    monkeypatch.setattr(service, "_r2_client", lambda: FakeClient())
+    assert module._latest_object(service)["object_key"] == recent["Key"]
+    recent["LastModified"] = now - timedelta(days=4)
+    with pytest.raises(RuntimeError, match="stale"):
+        module._latest_object(service)
+
+
+def test_restore_cleanup_never_drops_a_database_it_did_not_create(monkeypatch, tmp_path, backup_settings):
+    service = DatabaseBackupService()
+    commands = []
+    monkeypatch.setattr(service, "_postgres_env", lambda *args: {})
+
+    def fail_create(command, **kwargs):
+        commands.append(command[0])
+        raise DatabaseBackupError("createdb denied")
+
+    monkeypatch.setattr(service, "_run_command", fail_create)
+    with pytest.raises(DatabaseBackupError, match="createdb denied"):
+        service._verify_restore(tmp_path / "fixture.dump", ("056",))
+    assert commands == ["createdb"]

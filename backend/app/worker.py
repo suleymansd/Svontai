@@ -647,30 +647,47 @@ def _run_data_retention() -> None:
             tenants = db.query(Tenant.id).all()
             completed = 0
             for (tenant_id,) in tenants:
-                result = service.run(tenant_id)
-                if result.get("status") == "completed":
-                    completed += 1
+                try:
+                    result = service.run(tenant_id)
+                    if result.get("status") == "completed":
+                        completed += 1
+                except Exception as exc:
+                    db.rollback()
+                    logger.exception("data_retention failed tenant=%s", tenant_id)
+                    capture_exception(exc)
             logger.info("data_retention_cycle tenants=%s completed=%s", len(tenants), completed)
     finally:
         db.close()
 
 
 def _process_webhook_inbox() -> None:
-    claim_db = SessionLocal()
-    try:
-        event_ids = WebhookInboxService(claim_db).claim_batch(limit=20, lease_seconds=180)
-    finally:
-        claim_db.close()
-
-    for event_id in event_ids:
+    for _ in range(20):
+        # Claim only work that can start now; queued batch leases can expire.
         event_db = SessionLocal()
         try:
-            asyncio.run(WebhookInboxService(event_db).process_claimed(event_id))
+            service = WebhookInboxService(event_db)
+            event_ids = service.claim_batch(limit=1, lease_seconds=180)
+            if not event_ids:
+                break
+            event_id = event_ids[0]
+            asyncio.run(service.process_claimed(event_id))
         except Exception as exc:
-            logger.error("webhook_inbox event_id=%s failed: %s", event_id, exc)
+            logger.error("webhook_inbox processing failed: %s", exc)
             capture_exception(exc)
         finally:
             event_db.close()
+
+
+def _process_operator_outbox() -> None:
+    from app.models.operator_delivery import OperatorDelivery
+    from app.services.operator_delivery_service import dispatch_operator_message, mark_stale_deliveries
+    with SessionLocal() as db:
+        mark_stale_deliveries(db)
+        pending = db.query(OperatorDelivery.message_id).filter_by(status="queued").order_by(
+            OperatorDelivery.updated_at,
+        ).limit(20).all()
+    for item in pending:
+        asyncio.run(dispatch_operator_message(item.message_id))
 
 
 async def main() -> None:
@@ -678,6 +695,7 @@ async def main() -> None:
     await asyncio.to_thread(_wait_for_database_schema)
     tasks = [
         asyncio.create_task(_run_every("worker_heartbeat", 30, _record_worker_heartbeat)),
+        asyncio.create_task(_run_every("operator_outbox", 5, _process_operator_outbox)),
         asyncio.create_task(_run_every("webhook_inbox", settings.WEBHOOK_INBOX_POLL_INTERVAL_SECONDS, _process_webhook_inbox)),
         asyncio.create_task(_run_every("appointment_reminders", settings.APPOINTMENT_REMINDER_INTERVAL_SECONDS, _dispatch_reminders)),
         asyncio.create_task(_run_every("real_estate_automation", settings.REAL_ESTATE_AUTOMATION_INTERVAL_SECONDS, _run_real_estate_automation)),

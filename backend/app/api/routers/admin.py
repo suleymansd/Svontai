@@ -1563,6 +1563,84 @@ async def force_tenant_plan(
     )
 
 
+class WebhookInboxDeadLetterItem(BaseModel):
+    event_id: str
+    tenant_id: Optional[str]
+    provider: str
+    event_type: str
+    attempt_count: int
+    max_attempts: int
+    last_error: Optional[str]
+    received_at: datetime
+    updated_at: datetime
+
+
+class WebhookInboxRequeueResponse(BaseModel):
+    event_id: str
+    status: str
+
+
+@router.get("/webhook-inbox/dead-letters", response_model=list[WebhookInboxDeadLetterItem])
+async def list_webhook_inbox_dead_letters(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Inbound provider events that exhausted automatic retries and need an operator decision."""
+    from app.models.webhook_inbox import WebhookInboxEvent
+
+    rows = (
+        db.query(WebhookInboxEvent)
+        .filter(WebhookInboxEvent.status == "dead_letter")
+        .order_by(WebhookInboxEvent.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        WebhookInboxDeadLetterItem(
+            event_id=str(row.id),
+            tenant_id=str(row.tenant_id) if row.tenant_id else None,
+            provider=row.provider,
+            event_type=row.event_type,
+            attempt_count=row.attempt_count,
+            max_attempts=row.max_attempts,
+            last_error=row.last_error,
+            received_at=row.received_at,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+
+
+@router.post("/webhook-inbox/{event_id}/requeue", response_model=WebhookInboxRequeueResponse)
+async def requeue_webhook_inbox_event(
+    event_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Reset a dead-lettered event so the worker retries it; the payload was never discarded."""
+    from app.models.webhook_inbox import WebhookInboxEvent
+    from app.services.webhook_inbox_service import WebhookInboxService
+
+    row = db.get(WebhookInboxEvent, event_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook event not found")
+    if not WebhookInboxService(db).requeue_dead_letter(event_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only dead-lettered events can be requeued")
+    log_admin_action(
+        db,
+        admin,
+        "admin.webhook_inbox.requeue",
+        resource_type="webhook_inbox_event",
+        resource_id=str(event_id),
+        payload={"tenant_id": str(row.tenant_id) if row.tenant_id else None, "provider": row.provider},
+        request=request,
+    )
+    db.commit()
+    return WebhookInboxRequeueResponse(event_id=str(event_id), status="pending")
+
+
 @router.get("/sales-inquiries", response_model=SalesInquiryListResponse)
 async def list_sales_inquiries(
     inquiry_status: str | None = Query(default=None, alias="status"),

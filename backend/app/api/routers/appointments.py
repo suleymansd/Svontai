@@ -24,6 +24,7 @@ from app.schemas.appointment import (
     AppointmentUpdate
 )
 from app.services.appointment_availability_service import AppointmentAvailabilityService
+from app.services.appointment_booking_guard import lock_booking_calendar, require_available_interval
 from app.services.audit_log_service import AuditLogService
 from app.services.email_service import EmailService
 from app.services.push_notification_service import send_tenant_push_notification
@@ -116,6 +117,8 @@ async def create_appointment(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ):
+    lock_booking_calendar(db, current_tenant.id)
+    require_available_interval(db, current_tenant.id, payload.starts_at, payload.duration_minutes)
     appointment = Appointment(
         tenant_id=current_tenant.id,
         created_by=current_user.id,
@@ -133,7 +136,7 @@ async def create_appointment(
     db.commit()
     db.refresh(appointment)
 
-    if appointment.customer_email:
+    if appointment.customer_email and (current_tenant.settings or {}).get("provisioning_source") != "private_demo":
         background_tasks.add_task(
             EmailService.send_appointment_created_email,
             appointment.customer_email,
@@ -177,6 +180,7 @@ async def update_appointment(
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["dashboard:edit"]))
 ):
+    lock_booking_calendar(db, current_tenant.id)
     appointment = db.query(Appointment).filter(
         Appointment.id == appointment_id,
         Appointment.tenant_id == current_tenant.id
@@ -185,6 +189,13 @@ async def update_appointment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Randevu bulunamadı")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("status", appointment.status) != "cancelled":
+        require_available_interval(
+            db, current_tenant.id,
+            update_data.get("starts_at", appointment.starts_at),
+            update_data.get("duration_minutes", appointment.duration_minutes),
+            exclude_id=appointment.id,
+        )
     for key, value in update_data.items():
         setattr(appointment, key, value)
     if {"customer_name", "customer_email", "customer_phone", "subject", "starts_at", "duration_minutes", "notes", "status"} & update_data.keys():

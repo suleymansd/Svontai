@@ -170,7 +170,12 @@ def test_ai_action_books_only_a_current_slot(client):
         }
         reply = f"Randevunuzu oluşturdum. <svontai_action>{json.dumps(action)}</svontai_action>"
         clean, appointment = service.apply_ai_action(tenant=tenant, conversation=conversation, reply=reply)
-
+        assert appointment is None
+        assert "onaylıyor musunuz" in clean
+        from app.models.message import Message
+        db.add(Message(conversation_id=conversation.id, sender="user", content="Evet onaylıyorum"))
+        db.commit()
+        clean, appointment = service.apply_ai_action(tenant=tenant, conversation=conversation, reply=reply)
         assert clean == "Randevunuzu oluşturdum."
         assert appointment is not None
         assert appointment.customer_name == "Ayşe"
@@ -212,7 +217,11 @@ def test_ai_action_books_voice_call_once(client):
         }
         reply = f"Randevunuzu oluşturdum. <svontai_action>{json.dumps(action)}</svontai_action>"
 
-        clean, appointment = service.apply_ai_action(tenant=tenant, call=call, reply=reply)
+        _, unconfirmed = service.apply_ai_action(tenant=tenant, call=call, reply=reply)
+        assert unconfirmed is None
+        call.meta_json = {"voice_booking": {"stage": "awaiting_confirmation", "selected": action}}
+        db.commit()
+        clean, appointment = service.apply_ai_action(tenant=tenant, call=call, reply=reply, confirmation_text="Evet onaylıyorum")
         assert clean == "Randevunuzu oluşturdum."
         assert appointment is not None
         assert appointment.call_id == call.id

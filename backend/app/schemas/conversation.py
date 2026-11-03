@@ -47,6 +47,8 @@ class ConversationResponse(ConversationBase):
 class ConversationWithMessages(ConversationResponse):
     """Schema for conversation with messages."""
     messages: list["MessageResponse"] = []
+    has_more_messages: bool = False
+    next_message_cursor: UUID | None = None
 
 
 # Avoid circular import
