@@ -24,6 +24,7 @@ from app.services.meta_api import meta_api_service
 from app.services.system_event_service import SystemEventService
 from app.services.subscription_service import SubscriptionService
 from app.services.reply_usage_service import record_delivered_reply
+from app.services.ai_budget_service import AIBudgetExceeded
 from app.core.encryption import decrypt_token
 from app.core.config import settings
 from app.core.rate_limit import (
@@ -303,6 +304,45 @@ async def process_whatsapp_reply_in_background(**kwargs) -> None:
         raise
 
 
+async def _handle_ai_budget_exceeded(db, *, tenant_id: uuid.UUID, conversation: Conversation, message_id: str, exc) -> None:
+    """Budget reached: no model call, no customer message; mark the inbound and hand the chat to an operator."""
+    from app.models.reply_reservation import ReplyReservation
+    from app.services.ai_budget_service import ai_budget_service
+    from app.services.reply_quota_service import lock_subscription
+
+    lock_subscription(db, tenant_id)
+    inbound = db.query(Message).filter(
+        Message.conversation_id == conversation.id,
+        Message.external_id == message_id,
+        Message.sender == MessageSender.USER.value,
+    ).populate_existing().with_for_update().first()
+    if inbound is not None:
+        state = dict((inbound.raw_payload or {}).get("reply_delivery") or {})
+        inbound.raw_payload = {**(inbound.raw_payload or {}), "reply_delivery": {
+            **state, "outcome": "budget_exceeded", "budget_scope": exc.scope,
+        }}
+        reservation = db.get(ReplyReservation, inbound.id)
+        if reservation is not None and reservation.tenant_id == tenant_id and reservation.state == "reserved":
+            reservation.state = "budget_exceeded"
+    ticket = HumanHandoffService(db).escalate(conversation, str(tenant_id), ("ai_budget_exceeded",))
+    db.commit()
+    first_today = ai_budget_service.emit_exceeded_event_once(db, tenant_id, exc)
+    logger.warning(
+        "whatsapp.reply_skipped_by_ai_budget tenant_id=%s message_id=%s scope=%s used=%s limit=%s",
+        tenant_id, message_id, exc.scope, exc.used, exc.limit,
+    )
+    if first_today:
+        await send_tenant_push_notification(
+            tenant_id=tenant_id,
+            event_type="new_lead",
+            title="AI günlük bütçesi doldu",
+            body="Yeni mesajlar bugün operatör kuyruğuna alınıyor. Konuşmaları panelden yanıtlayın.",
+            url="/dashboard/operator",
+            tag="svontai-ai-budget",
+            extra={"ticket_id": ticket.id, "conversation_id": str(conversation.id)},
+        )
+
+
 async def _process_whatsapp_reply(
     *,
     delivery_guard,
@@ -331,6 +371,17 @@ async def _process_whatsapp_reply(
         if subscription_service.get_subscription(tenant_id) is None:
             subscription_service.create_subscription(tenant_id, "free")
         from app.services.reply_quota_service import reserve_reply
+        # Quota unit is an AI reply: a contact excluded from AI must not reserve or consume one.
+        policy = limit_db.query(
+            Conversation.ai_reply_enabled, Conversation.is_ai_paused, Conversation.status,
+        ).filter(Conversation.id == conversation_id).first()
+        if policy is None or not policy[0] or policy[1] or policy[2] == ConversationStatus.HUMAN_TAKEOVER.value:
+            logger.info(
+                "whatsapp.direct_reply_blocked_by_contact_policy tenant_id=%s conversation_id=%s",
+                tenant_id,
+                conversation_id,
+            )
+            return
         source_id = limit_db.query(Message.id).filter(
             Message.conversation_id == conversation_id,
             Message.external_id == message_id,
@@ -460,15 +511,21 @@ async def _process_whatsapp_reply(
             return
         appointment_service = AppointmentAvailabilityService(db)
         assistant_profile_service = AssistantProfileService(db)
-        reply = await ai_service.generate_reply(
-            bot=bot,
-            knowledge_items=knowledge_items,
-            conversation=conversation,
-            last_user_message=message_content,
-            bot_settings=bot.settings,
-            runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
-            raise_on_provider_error=True,
-        )
+        try:
+            reply = await ai_service.generate_reply(
+                bot=bot,
+                knowledge_items=knowledge_items,
+                conversation=conversation,
+                last_user_message=message_content,
+                bot_settings=bot.settings,
+                runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
+                raise_on_provider_error=True,
+            )
+        except AIBudgetExceeded as exc:
+            await _handle_ai_budget_exceeded(
+                db, tenant_id=tenant_id, conversation=conversation, message_id=message_id, exc=exc,
+            )
+            return
         appointment = None
         if assistant_profile_service.capability_enabled(bot, "appointment_management"):
             reply, appointment = appointment_service.apply_ai_action(

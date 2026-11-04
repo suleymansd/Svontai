@@ -218,6 +218,7 @@ Kurallar:
             user_text=json.dumps(context, ensure_ascii=False),
             max_tokens=900,
             temperature=0.15,
+            tenant_id=tenant.id,
         )
         try:
             payload = self._parse_json_object(raw)

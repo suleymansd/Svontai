@@ -42,7 +42,7 @@ def get_bot_for_tenant(bot_id: UUID, tenant: Tenant, db: Session) -> Bot:
 async def list_knowledge_items(
     bot_id: UUID,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=200),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"]))

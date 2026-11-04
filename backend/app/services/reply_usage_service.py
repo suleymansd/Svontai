@@ -51,7 +51,9 @@ def record_delivered_reply(
     db.execute(update(TenantSubscription).where(
         TenantSubscription.tenant_id == tenant_id,
     ).values(messages_used_this_month=TenantSubscription.messages_used_this_month + 1))
-    UsageCounterService(db).increment(tenant_id=tenant_id, message_count=1, period_key=period, commit=False)
+    UsageCounterService(db).increment(
+        tenant_id=tenant_id, message_count=1, period_key=period, commit=False, idempotency_key=f"ai_reply:{anchor_id}",
+    )
     anchor.raw_payload = {**payload, "reply_usage": {
         "period": period, "charged_at": now.isoformat(), "reply_message_id": str(reply.id),
     }}

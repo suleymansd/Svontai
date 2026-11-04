@@ -4,10 +4,45 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+RELEASE_ENV_VARS = (
+    "GIT_COMMIT",
+    "GIT_COMMIT_SHA",
+    "RAILWAY_GIT_COMMIT_SHA",
+    "SOURCE_COMMIT",
+    "SOURCE_VERSION",
+    "GIT_SHA",
+)
+
+
+def resolve_commit_sha() -> str | None:
+    """Return the deployed commit from the platform environment, else from git."""
+    for name in RELEASE_ENV_VARS:
+        value = str(os.getenv(name) or "").strip()
+        if value:
+            return value[:64]
+    try:
+        completed = subprocess.run(  # nosec B603 B607
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha = completed.stdout.strip()
+    return sha[:64] if completed.returncode == 0 and sha else None
+
+
+def resolve_release(service: str = "svontai") -> str:
+    """Sentry release tag: ``svontai@<commit sha>`` or ``svontai@unknown``."""
+    return f"{service}@{resolve_commit_sha() or 'unknown'}"
 
 
 def configure_observability(service: str) -> bool:
@@ -25,7 +60,7 @@ def configure_observability(service: str) -> bool:
         environment=settings.ENVIRONMENT,
         traces_sample_rate=max(0.0, min(1.0, settings.SENTRY_TRACES_SAMPLE_RATE)),
         send_default_pii=False,
-        release=f"svontai@{os.getenv('RAILWAY_GIT_COMMIT_SHA') or os.getenv('GIT_SHA') or 'local'}",
+        release=resolve_release(),
         server_name=service,
     )
     sentry_sdk.set_tag("service", service)

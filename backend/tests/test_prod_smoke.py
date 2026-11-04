@@ -44,4 +44,4 @@ def test_release_alignment(smoke, monkeypatch, changes, ok):
 
 
 def test_repository_has_one_migration_head(smoke):
-    assert smoke._repository_migration_head() == "057"
+    assert smoke._repository_migration_head() == "058"

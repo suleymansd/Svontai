@@ -41,6 +41,7 @@ from app.services.assistant_trainer_service import (
 )
 from app.services.system_event_service import SystemEventService
 from app.services.ai_service import ai_service
+from app.services.ai_budget_service import AIBudgetExceeded
 from app.core.rate_limit import (
     assistant_rate_limiter,
     rate_limit_key,
@@ -181,19 +182,25 @@ async def simulate_assistant_reply(
         for turn in payload.history
     ]
     started_at = perf_counter()
-    reply = await ai_service.generate_reply(
-        bot=bot,
-        knowledge_items=knowledge_items,
-        conversation=conversation,
-        last_user_message=payload.message,
-        bot_settings=bot_settings,
-        runtime_context="""
+    try:
+        reply = await ai_service.generate_reply(
+            bot=bot,
+            knowledge_items=knowledge_items,
+            conversation=conversation,
+            last_user_message=payload.message,
+            bot_settings=bot_settings,
+            runtime_context="""
 ### SIMULASYON MODU
 Bu konuşma yayın öncesi güvenli önizlemedir. Dış sisteme mesaj gönderme, lead veya randevu
 oluşturma ve işlem yapılmış gibi konuşma. Gerçek işlem gerektiren talepte müşteriye canlı
 ortamda izleyeceğin doğal yanıtı göster, ancak işlemin bu önizlemede kaydedilmediğini belirtme.
 """,
-    )
+        )
+    except AIBudgetExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Günlük AI bütçesi doldu. Önizleme yarın (UTC) tekrar kullanılabilir.",
+        ) from exc
     return AssistantSimulationResponse(
         reply=reply,
         history_count=len(payload.history) + 2,

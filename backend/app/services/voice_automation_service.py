@@ -519,7 +519,9 @@ class VoiceAutomationService:
         job.status = OutboundCallJobStatus.RUNNING.value if is_live else OutboundCallJobStatus.COMPLETED.value
         self.db.commit()
 
-        UsageCounterService(self.db).increment_outbound_calls(job.tenant_id, 1)
+        UsageCounterService(self.db).increment(
+            tenant_id=job.tenant_id, outbound_calls=1, idempotency_key=f"outbound_call:{job.id}",
+        )
         self._log(
             job.tenant_id,
             "VOICE_OUTBOUND_CALL_CREATED",
@@ -655,6 +657,7 @@ class VoiceAutomationService:
                 user_text=(text or "")[:1000],
                 max_tokens=80,
                 temperature=0,
+                tenant_id=settings.tenant_id,
             )
             payload = json.loads(raw.strip().removeprefix("```json").removesuffix("```").strip())
             trigger = str(payload.get("trigger") or "none")

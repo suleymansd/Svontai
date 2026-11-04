@@ -667,7 +667,8 @@ export const operatorApi = {
 
 // Appointments API
 export const appointmentsApi = {
-  list: (params?: { status?: string }) => api.get('/appointments', { params }),
+  list: (params?: { status?: string; starts_from?: string; after_id?: string; limit?: number }) =>
+    api.get('/appointments', { params }),
   getSettings: () => api.get('/appointments/settings'),
   updateSettings: (data: AppointmentSettings) => api.patch('/appointments/settings', data),
   getAvailability: (params?: { start_date?: string; days?: number; service_id?: string }) =>
@@ -739,7 +740,7 @@ export interface AppointmentAvailability {
 
 // Notes API
 export const notesApi = {
-  list: (params?: { archived?: boolean }) => api.get('/notes', { params }),
+  list: (params?: { archived?: boolean; skip?: number; limit?: number }) => api.get('/notes', { params }),
   create: (data: {
     title: string
     content: string

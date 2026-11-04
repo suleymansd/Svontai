@@ -79,7 +79,7 @@ export default function ToolWorkspacePage() {
     if (!isNoteTool) return
     setNotesLoading(true)
     try {
-      const response = await notesApi.list({ archived: false })
+      const response = await notesApi.list({ archived: false, limit: 200 })
       setNotes(response.data || [])
     } catch (error: any) {
       toast({

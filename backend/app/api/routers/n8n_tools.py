@@ -35,6 +35,7 @@ from app.services.assistant_knowledge_service import AssistantKnowledgeService
 from app.services.assistant_profile_service import AssistantProfileService
 from app.services.assistant_media_service import AssistantMediaService
 from app.services.ai_service import ai_service
+from app.services.ai_budget_service import AIBudgetExceeded
 from app.services.audit_log_service import AuditLogService
 from app.services.usage_counter_service import UsageCounterService
 from app.services.push_notification_service import send_tenant_push_notification
@@ -43,6 +44,7 @@ from app.services.ai_response_quality_service import AIResponseQualityService, H
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1/n8n", tags=["n8n Tools"])
+_BUDGET_DETAIL = "Günlük AI bütçesi doldu; istek modele gönderilmedi."
 
 
 _NON_DIGIT_RE = re.compile(r"[^0-9+]")
@@ -265,14 +267,17 @@ async def generate_ai_reply(
     appointment_service = AppointmentAvailabilityService(db)
     assistant_profile_service = AssistantProfileService(db)
     knowledge_items = AssistantKnowledgeService.list_effective(db, bot)
-    reply = await ai_service.generate_reply(
-        bot=bot,
-        knowledge_items=knowledge_items,
-        conversation=conversation,
-        last_user_message=body.message,
-        bot_settings=bot.settings,
-        runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
-    )
+    try:
+        reply = await ai_service.generate_reply(
+            bot=bot,
+            knowledge_items=knowledge_items,
+            conversation=conversation,
+            last_user_message=body.message,
+            bot_settings=bot.settings,
+            runtime_context=assistant_profile_service.build_runtime_context(tenant, bot),
+        )
+    except AIBudgetExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=_BUDGET_DETAIL) from exc
     appointment = None
     if assistant_profile_service.capability_enabled(bot, "appointment_management"):
         reply, appointment = appointment_service.apply_ai_action(
@@ -360,8 +365,11 @@ async def generate_tool_text(
             system_prompt=_TOOL_AI_PROMPTS[body.purpose],
             user_text=body.text.strip(),
             max_tokens=1600 if body.purpose == "report_generator" else 900,
+            tenant_id=UUID(body.tenant_id),
             temperature=0.25,
         )
+    except AIBudgetExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=_BUDGET_DETAIL) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except Exception as exc:

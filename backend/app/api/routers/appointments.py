@@ -2,11 +2,12 @@
 Appointment management routes with email reminders.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from app.core.time import utc_now_naive
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -96,15 +97,40 @@ async def get_appointment_availability(
 @router.get("", response_model=list[AppointmentResponse])
 async def list_appointments(
     status_filter: str | None = Query(default=None, alias="status"),
+    starts_from: datetime | None = Query(default=None),
+    after_id: UUID | None = Query(default=None),
+    limit: int = Query(100, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
     _: None = Depends(require_permissions(["tools:read"]))
 ):
+    """
+    List appointments ordered by (starts_at, id).
+
+    The result is bounded by ``limit`` (max 200). Pass the ``id`` of the last
+    returned row as ``after_id`` to fetch the next stable page; rows created
+    between requests cannot shift or duplicate items across pages.
+    """
     query = db.query(Appointment).filter(Appointment.tenant_id == current_tenant.id)
     if status_filter:
         query = query.filter(Appointment.status == status_filter)
-    appointments = query.order_by(Appointment.starts_at.asc()).all()
+    if starts_from is not None:
+        if starts_from.tzinfo is not None:
+            starts_from = starts_from.astimezone(timezone.utc).replace(tzinfo=None)
+        query = query.filter(Appointment.starts_at >= starts_from)
+    if after_id is not None:
+        cursor = db.query(Appointment).filter(
+            Appointment.id == after_id,
+            Appointment.tenant_id == current_tenant.id,
+        ).first()
+        if cursor is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Randevu bulunamadı")
+        query = query.filter(or_(
+            Appointment.starts_at > cursor.starts_at,
+            and_(Appointment.starts_at == cursor.starts_at, Appointment.id > cursor.id),
+        ))
+    appointments = query.order_by(Appointment.starts_at.asc(), Appointment.id.asc()).limit(limit).all()
     return [AppointmentResponse.model_validate(item) for item in appointments]
 
 

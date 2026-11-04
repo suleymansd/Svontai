@@ -47,6 +47,7 @@ from app.models.voice_automation import (
 )
 from app.models.lead_note import LeadNote
 from app.models.usage_counter import TenantUsageCounter
+from app.models.usage_ledger import UsageLedgerEntry
 from app.models.telephony import TelephonyNumber
 from app.models.google_oauth_token import GoogleOAuthToken
 from app.models.stripe_webhook_event import StripeWebhookEvent
@@ -156,6 +157,7 @@ __all__ = [
     "OutboundCallJobStatus",
     "LeadNote",
     "TenantUsageCounter",
+    "UsageLedgerEntry",
     "TelephonyNumber",
     "GoogleOAuthToken",
     "StripeWebhookEvent",

@@ -538,7 +538,9 @@ class N8NClient:
                 # Billing-aware metering: a successful webhook trigger counts as a workflow run.
                 # (Tool calls are metered separately via /api/v1/n8n/usage/increment or internal services.)
                 try:
-                    UsageCounterService(self.db).increment_workflow_runs(tenant_id, 1)
+                    UsageCounterService(self.db).increment(
+                        tenant_id=tenant_id, workflow_runs=1, idempotency_key=f"workflow_run:{run.id}",
+                    )
                 except Exception:
                     # Never fail the workflow due to metering.
                     pass

@@ -51,6 +51,7 @@ from app.core.rate_limit import (
 from app.core.widget_session import InvalidWidgetSession, issue_widget_session, verify_widget_session
 from app.services.subscription_service import SubscriptionService
 from app.services.reply_usage_service import record_delivered_reply
+from app.services.ai_budget_service import AIBudgetExceeded
 
 from app.services.demo_access_service import prevent_public_demo_bot
 
@@ -359,6 +360,15 @@ async def send_chat_message(
             ),
             raise_on_provider_error=True,
         )
+    except AIBudgetExceeded as exc:
+        db.rollback()
+        release_reply(db, bot.tenant_id, user_message.id)
+        db.commit()
+        logger.warning("Widget reply skipped: daily AI budget exceeded tenant_id=%s scope=%s", bot.tenant_id, exc.scope)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Asistan bugün için yanıt kapasitesine ulaştı. Ekibimiz size en kısa sürede dönecek.",
+        ) from exc
     except Exception as exc:
         db.rollback()
         release_reply(db, bot.tenant_id, user_message.id)

@@ -240,7 +240,11 @@ class HumanHandoffService:
                 ticket_id=ticket.id,
                 sender_id=None,
                 sender_type="system",
-                body="Yanıt gönderim öncesi kalite kontrolünde durduruldu. Nedenler: " + ", ".join(reasons),
+                body=(
+                    "Günlük AI bütçesi doldu; bu konuşma yanıtlanmadı ve operatör kuyruğuna alındı."
+                    if "ai_budget_exceeded" in reasons
+                    else "Yanıt gönderim öncesi kalite kontrolünde durduruldu. Nedenler: " + ", ".join(reasons)
+                ),
             ))
 
         self.db.commit()

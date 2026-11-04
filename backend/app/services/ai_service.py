@@ -5,11 +5,13 @@ import json
 import re
 from typing import Optional
 from functools import lru_cache
+from uuid import UUID
 
 from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.rate_limit import RateLimiter
+from app.services.ai_budget_service import AIBudgetExceeded, ai_budget_service, estimate_tokens
 from app.models.bot import Bot
 from app.models.knowledge import BotKnowledgeItem
 from app.models.conversation import Conversation
@@ -74,6 +76,41 @@ class AIService:
             required_key = "GEMINI_API_KEY" if self.provider == "gemini" else "OPENAI_API_KEY"
             raise RuntimeError(f"{required_key} is not configured")
         return self.client
+
+    async def _complete(
+        self,
+        *,
+        tenant_id: UUID | None,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Single metered entry point for the model: budget check, call, usage record."""
+        ai_budget_service.check(tenant_id)
+        response = await self._get_client().chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        self._record_usage(tenant_id, response, messages)
+        return response
+
+    def _record_usage(self, tenant_id: UUID | None, response, messages: list[dict]) -> None:
+        usage = getattr(response, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        if not isinstance(prompt_tokens, int):
+            prompt_tokens = sum(estimate_tokens(str(item.get("content") or "")) for item in messages)
+        if not isinstance(completion_tokens, int):
+            try:
+                completion_tokens = estimate_tokens(response.choices[0].message.content or "")
+            except Exception:
+                completion_tokens = 0
+        try:
+            ai_budget_service.record(tenant_id, prompt_tokens, completion_tokens, model=self.model)
+        except Exception:
+            logger.exception("ai.usage_record_failed tenant_id=%s", tenant_id)
     
     def _get_tone_instructions(self, tone: str) -> str:
         """Get tone-specific instructions."""
@@ -365,8 +402,8 @@ C: {item.answer}
         messages.append({"role": "user", "content": last_user_message})
         
         try:
-            response = await self._get_client().chat.completions.create(
-                model=self.model,
+            response = await self._complete(
+                tenant_id=bot.tenant_id,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=0.55,
@@ -378,6 +415,8 @@ C: {item.answer}
             
             return reply
         
+        except AIBudgetExceeded:
+            raise  # not a provider failure: callers route the conversation to the operator queue
         except Exception:
             logger.exception("%s AI response generation failed", self.provider)
             if raise_on_provider_error:
@@ -387,7 +426,8 @@ C: {item.answer}
     async def generate_summary(
         self,
         messages: list[Message],
-        max_length: int = 100
+        max_length: int = 100,
+        tenant_id: UUID | None = None,
     ) -> str:
         """Generate a summary of the conversation."""
         if not messages:
@@ -400,8 +440,8 @@ C: {item.answer}
         ])
         
         try:
-            response = await self._get_client().chat.completions.create(
-                model=self.model,
+            response = await self._complete(
+                tenant_id=tenant_id,
                 messages=[
                     {
                         "role": "system",
@@ -418,6 +458,8 @@ C: {item.answer}
             
             return response.choices[0].message.content or ""
         
+        except AIBudgetExceeded:
+            return ""
         except Exception:
             logger.exception("%s conversation summary generation failed", self.provider)
             return ""
@@ -429,10 +471,14 @@ C: {item.answer}
         user_text: str,
         max_tokens: int = 1200,
         temperature: float = 0.3,
+        tenant_id: UUID | None = None,
     ) -> str:
-        """Run a provider-neutral, server-controlled text generation task."""
-        response = await self._get_client().chat.completions.create(
-            model=self.model,
+        """Run a provider-neutral, server-controlled text generation task.
+
+        Raises AIBudgetExceeded before calling the model when the daily budget is spent.
+        """
+        response = await self._complete(
+            tenant_id=tenant_id,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text},
@@ -490,8 +536,8 @@ C: {item.answer}
             })
         messages.append({"role": "user", "content": user_text})
         try:
-            response = await self._get_client().chat.completions.create(
-                model=self.model,
+            response = await self._complete(
+                tenant_id=bot.tenant_id,
                 messages=messages,
                 max_tokens=140,
                 temperature=0.65,
@@ -499,6 +545,9 @@ C: {item.answer}
             reply = (response.choices[0].message.content or "").strip()
             reply = re.sub(r"[*_`#]+", "", reply).strip()
             return reply or "Sizi dinliyorum. Biraz daha ayrıntı paylaşır mısınız?"
+        except AIBudgetExceeded:
+            logger.warning("%s voice reply skipped: daily AI budget exceeded tenant_id=%s", self.provider, bot.tenant_id)
+            return "Şu anda yanıt oluşturamıyorum. Lütfen daha sonra tekrar deneyin."
         except Exception:
             logger.exception("%s voice response generation failed", self.provider)
             return "Şu anda yanıt oluşturamıyorum. Lütfen daha sonra tekrar deneyin."

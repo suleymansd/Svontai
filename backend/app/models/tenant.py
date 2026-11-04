@@ -92,12 +92,14 @@ class Tenant(Base):
     subscription: Mapped["TenantSubscription | None"] = relationship(
         "TenantSubscription",
         back_populates="tenant",
-        uselist=False
+        uselist=False,
+        cascade="all, delete-orphan"
     )
     onboarding: Mapped["TenantOnboarding | None"] = relationship(
         "TenantOnboarding",
         back_populates="tenant",
-        uselist=False
+        uselist=False,
+        cascade="all, delete-orphan"
     )
     
     # n8n Automation relationships
