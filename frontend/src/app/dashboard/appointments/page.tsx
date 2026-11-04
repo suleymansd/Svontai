@@ -81,7 +81,7 @@ export default function AppointmentsPage() {
     setLoading(true)
     try {
       const [appointmentsResponse, settingsResponse, availabilityResponse] = await Promise.all([
-        appointmentsApi.list(),
+        appointmentsApi.list({ limit: 200 }),
         appointmentsApi.getSettings(),
         appointmentsApi.getAvailability({ days: 14 }),
       ])

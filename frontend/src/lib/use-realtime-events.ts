@@ -44,6 +44,7 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
       if (stopped) return
       controller = new AbortController()
       const active = controller
+      let revoked = false
       let watchdog: number | undefined
       const resetWatchdog = () => {
         window.clearTimeout(watchdog)
@@ -95,6 +96,10 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
                 setConnected(payload.live !== false)
                 retryMs = 1000
               }
+              if (type === 'unauthorized') {
+                // Server-side revocation (deactivated, removed from tenant, role change, session revoked).
+                revoked = true
+              }
               if (typeof type === 'string') callbackRef.current({ ...payload, type } as RealtimeEvent)
             } catch {
               // Ignore malformed third-party proxy frames.
@@ -109,7 +114,15 @@ export function useRealtimeEvents(onEvent: (event: RealtimeEvent) => void) {
         window.clearTimeout(watchdog)
         active.abort()
         setConnected(false)
-        if (!stopped) {
+        if (!stopped && revoked) {
+          // Pick up the new session/role before reconnecting; give up if the session is gone.
+          try {
+            setAccessToken(await authApi.refreshWithCookie())
+            retryTimer = window.setTimeout(connect, 1000)
+          } catch {
+            setAccessToken(null)
+          }
+        } else if (!stopped) {
           retryTimer = window.setTimeout(connect, retryMs)
           retryMs = Math.min(retryMs * 2, 15000)
         }

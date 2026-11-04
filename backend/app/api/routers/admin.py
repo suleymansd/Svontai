@@ -38,6 +38,7 @@ from app.models.real_estate import RealEstatePackSettings
 from app.models.sales_inquiry import SalesInquiry
 from app.models.invoice import Invoice
 from app.schemas.user import UserResponse, UserAdminUpdate
+from app.services.data_retention_service import DataRetentionService, LegalHoldActive
 from app.schemas.tenant import TenantResponse
 from app.schemas.plan import PlanCreate, PlanUpdate, PlanResponse
 from app.schemas.tool import ToolCreate, ToolResponse
@@ -2312,18 +2313,59 @@ async def delete_tenant(
             detail="Tenant not found"
         )
 
+    retention = DataRetentionService(db)
+    try:
+        deleted = retention.purge_tenant(tenant.id)
+    except LegalHoldActive:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tenant is under legal hold; lift the hold before deleting"
+        )
+
     log_admin_action(
         db,
         admin,
         "admin.tenant.delete",
         "tenant",
-        str(tenant.id),
-        {"name": tenant.name},
+        str(tenant_id),
+        {"name": tenant.name, "deleted": deleted},
         request=request
     )
-
-    db.delete(tenant)
     db.commit()
+
+
+class TenantLegalHoldUpdate(BaseModel):
+    enabled: bool
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/tenants/{tenant_id}/legal-hold")
+async def set_tenant_legal_hold(
+    tenant_id: UUID,
+    payload: TenantLegalHoldUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    request: Request = None
+) -> dict:
+    """Place or lift a legal hold; while held, retention purge and tenant deletion are blocked."""
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    service = DataRetentionService(db)
+    policy = service.get_or_create(tenant.id)
+    policy.legal_hold = payload.enabled
+    log_admin_action(
+        db,
+        admin,
+        "admin.tenant.legal_hold",
+        "tenant",
+        str(tenant.id),
+        {"enabled": payload.enabled, "reason": payload.reason},
+        request=request
+    )
+    db.commit()
+    db.refresh(policy)
+    return service.serialize(policy)
 
 
 @router.get("/health", response_model=SystemHealth)
