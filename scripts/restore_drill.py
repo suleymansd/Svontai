@@ -168,11 +168,13 @@ def cmd_restore(args: argparse.Namespace) -> int:
         with tempfile.TemporaryDirectory(prefix="svontai-drill-") as temp_dir:
             dump_path = archive
             if archive.name.endswith(ENCRYPTED_SUFFIX):
-                key = args.encryption_key_b64 or os.environ.get("DATABASE_BACKUP_ENCRYPTION_KEY_B64", "")
-                if not key:
+                encryption_material = os.environ.get("DATABASE_BACKUP_ENCRYPTION_KEY_B64", "")
+                if args.encryption_key_b64:
+                    encryption_material = args.encryption_key_b64
+                if not encryption_material:
                     raise DrillError("Encrypted archive needs --encryption-key-b64 or DATABASE_BACKUP_ENCRYPTION_KEY_B64")
                 dump_path = Path(temp_dir) / "database.dump"
-                _decrypt(archive, dump_path, key)
+                _decrypt(archive, dump_path, encryption_material)
                 result["decrypted"] = True
             _run(["pg_restore", "--list", str(dump_path)], maintenance_env, timeout=300)
             _run(["createdb", drill_database], maintenance_env, timeout=120)

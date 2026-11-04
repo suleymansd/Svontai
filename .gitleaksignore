@@ -1,0 +1,2 @@
+# gitleaks false positive: variable named key assigned from CLI arg, no secret value
+be1be7d6e931a6be8ebaa28505c1b33fb96ea413:scripts/restore_drill.py:generic-api-key:171
