@@ -657,6 +657,7 @@ class VoiceAutomationService:
                 user_text=(text or "")[:1000],
                 max_tokens=80,
                 temperature=0,
+                tenant_id=settings.tenant_id,
             )
             payload = json.loads(raw.strip().removeprefix("```json").removesuffix("```").strip())
             trigger = str(payload.get("trigger") or "none")

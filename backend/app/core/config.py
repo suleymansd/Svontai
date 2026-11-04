@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     AI_MAX_REPLY_TOKENS: int = 800
     AI_REQUEST_TIMEOUT_SECONDS: int = 30
     AI_REQUEST_MAX_RETRIES: int = 1
+    # Hard daily spend caps (tokens per UTC day). Generation stops without calling
+    # the model once a cap is reached; the operator queue takes over.
+    AI_DAILY_TOKEN_BUDGET_PER_TENANT: int = 200000
+    AI_DAILY_TOKEN_BUDGET_GLOBAL: int = 1000000
     
     # WhatsApp Cloud API (Legacy - for direct integration)
     WHATSAPP_BASE_URL: str = "https://graph.facebook.com/v17.0"
@@ -576,6 +580,10 @@ class Settings(BaseSettings):
             missing_real_time_config.append("5<=AI_REQUEST_TIMEOUT_SECONDS<=120")
         if not 0 <= self.AI_REQUEST_MAX_RETRIES <= 3:
             missing_real_time_config.append("0<=AI_REQUEST_MAX_RETRIES<=3")
+        if self.AI_DAILY_TOKEN_BUDGET_GLOBAL <= 0 or self.AI_DAILY_TOKEN_BUDGET_PER_TENANT <= 0:
+            missing_real_time_config.append("positive AI_DAILY_TOKEN_BUDGET_GLOBAL/AI_DAILY_TOKEN_BUDGET_PER_TENANT")
+        if self.AI_DAILY_TOKEN_BUDGET_PER_TENANT > self.AI_DAILY_TOKEN_BUDGET_GLOBAL:
+            missing_real_time_config.append("AI_DAILY_TOKEN_BUDGET_PER_TENANT<=AI_DAILY_TOKEN_BUDGET_GLOBAL")
         if self.WEBHOOK_PUBLIC_URL.startswith("http://localhost") or self.BACKEND_URL.startswith("http://localhost"):
             missing_real_time_config.append("public WEBHOOK_PUBLIC_URL/BACKEND_URL")
         if self.FRONTEND_URL.startswith("http://localhost"):
