@@ -173,7 +173,10 @@ async def ingest_voice_event(
         )
 
         if body.event_type == "voice_call_completed" and call_row.duration_seconds:
-            UsageCounterService(db).increment_voice_seconds(body.tenant_id, call_row.duration_seconds)
+            UsageCounterService(db).increment(
+                tenant_id=body.tenant_id, voice_seconds=call_row.duration_seconds,
+                idempotency_key=f"voice_seconds:{call_row.id}",
+            )
 
     n8n = N8NClient(db)
     if not n8n.should_use_n8n(body.tenant_id):

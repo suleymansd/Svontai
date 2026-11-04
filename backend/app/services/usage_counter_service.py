@@ -3,7 +3,7 @@ Tenant usage counter service (monthly) for billing-aware metering.
 """
 
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 from sqlalchemy import update
@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.models.usage_counter import TenantUsageCounter
+from app.models.usage_ledger import UsageLedgerEntry
 
 
 def _current_period_key_utc(now: datetime | None = None) -> str:
@@ -67,15 +68,28 @@ class UsageCounterService:
         period_key: str | None = None,
         extra: dict | None = None,
         commit: bool = True,
+        idempotency_key: str | None = None,
     ) -> TenantUsageCounter:
+        """Add to the monthly counters.
+
+        With ``idempotency_key`` (reservation id, provider message id, run id)
+        the increment is recorded in the unique-indexed usage ledger inside the
+        same transaction, so a retried job that replays the key adds nothing.
+        """
+        period_key = period_key or _current_period_key_utc()
         counter = self.get_or_create(tenant_id, period_key=period_key, commit=commit)
+        amounts = {
+            "message_count": message_count, "voice_seconds": voice_seconds,
+            "workflow_runs": workflow_runs, "tool_calls": tool_calls,
+            "outbound_calls": outbound_calls,
+        }
+        if idempotency_key and not self._claim_ledger(tenant_id, idempotency_key, period_key, amounts):
+            if commit:
+                self.db.commit()
+            return counter
         values = {
             name: getattr(TenantUsageCounter, name) + max(0, int(amount))
-            for name, amount in {
-                "message_count": message_count, "voice_seconds": voice_seconds,
-                "workflow_runs": workflow_runs, "tool_calls": tool_calls,
-                "outbound_calls": outbound_calls,
-            }.items()
+            for name, amount in amounts.items()
         }
         if extra:
             current = self.db.query(TenantUsageCounter).filter_by(id=counter.id).populate_existing().with_for_update().one()
@@ -87,3 +101,13 @@ class UsageCounterService:
             self.db.flush()
         self.db.refresh(counter)
         return counter
+
+    def _claim_ledger(self, tenant_id: UUID, idempotency_key: str, period_key: str, amounts: dict) -> bool:
+        """Return True exactly once per key; the unique index arbitrates concurrent retries."""
+        insert = pg_insert if self.db.get_bind().dialect.name == "postgresql" else sqlite_insert
+        result = self.db.execute(insert(UsageLedgerEntry).values(
+            id=uuid4(), tenant_id=tenant_id, idempotency_key=idempotency_key[:160], period_key=period_key,
+            amounts_json={name: int(amount) for name, amount in amounts.items() if amount},
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ).on_conflict_do_nothing(index_elements=["idempotency_key"]))
+        return bool(result.rowcount)
