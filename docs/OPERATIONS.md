@@ -106,3 +106,25 @@ ship an API hotfix during a worker outage, temporarily set
 Also monitor `https://www.svontai.com/api/frontend-config` (expect `200`) with the
 same interval, and route both alerts to a channel someone actually reads (Slack or
 SMS), not only e-mail.
+
+## Quota unit
+
+Pricing sells "AI yanıtı/ay" (`frontend/src/lib/public-plans.ts`); the backend meters
+exactly that unit, and nothing else counts against it.
+
+| Event | Reply quota (`messages_used_this_month`, `tenant_usage_counters.message_count`) | AI token budget |
+| --- | --- | --- |
+| Inbound customer message | none (stored only) | none |
+| AI reply generated **and delivered** (text, or text + media answering the same inbound) | **1 unit**, charged once per inbound message (`reply_usage` on the inbound row, ledger key `ai_reply:<inbound id>`) | input + output tokens of the call |
+| Inbound for a contact with AI disabled, paused or in human takeover | none (no reservation is made) | none (model is not called) |
+| Operator-sent message (`/operator` outbox) | none | none |
+| Reply attempt that fails before delivery or is refused by the daily AI budget | none (reservation released / marked `budget_exceeded`) | none |
+| Delivery left uncertain (provider timeout) | reservation held until the operator resolves it as sent (1 unit) or not sent (0) | tokens already spent are counted |
+
+Plan limits (`plans.message_limit`) are therefore "delivered AI replies per calendar
+month (UTC)". `reserve_reply` holds a unit while a reply is in flight so parallel
+workers cannot overspend; `tenant_usage_counters.extra_json` additionally records
+`ai_input_tokens`, `ai_output_tokens`, `ai_calls` and the rolling `ai_tokens_today`
+used by the daily AI budget (`AI_DAILY_TOKEN_BUDGET_PER_TENANT`,
+`AI_DAILY_TOKEN_BUDGET_GLOBAL`). When a budget is reached the conversation is handed
+to the operator queue and `SystemEvent AI_BUDGET_EXCEEDED` is logged once per tenant per day.

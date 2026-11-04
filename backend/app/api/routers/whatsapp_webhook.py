@@ -371,6 +371,17 @@ async def _process_whatsapp_reply(
         if subscription_service.get_subscription(tenant_id) is None:
             subscription_service.create_subscription(tenant_id, "free")
         from app.services.reply_quota_service import reserve_reply
+        # Quota unit is an AI reply: a contact excluded from AI must not reserve or consume one.
+        policy = limit_db.query(
+            Conversation.ai_reply_enabled, Conversation.is_ai_paused, Conversation.status,
+        ).filter(Conversation.id == conversation_id).first()
+        if policy is None or not policy[0] or policy[1] or policy[2] == ConversationStatus.HUMAN_TAKEOVER.value:
+            logger.info(
+                "whatsapp.direct_reply_blocked_by_contact_policy tenant_id=%s conversation_id=%s",
+                tenant_id,
+                conversation_id,
+            )
+            return
         source_id = limit_db.query(Message.id).filter(
             Message.conversation_id == conversation_id,
             Message.external_id == message_id,
