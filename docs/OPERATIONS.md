@@ -212,3 +212,65 @@ the contents of a production object; the monthly checklist covers that.
    `RESTIC_PASSWORD` and confirm two people can still read it.
 6. Note any drift from the targets: RPO 24 h (daily dump), RTO 60 min for the
    database (measured `restore_seconds` plus redeploy), owner: platform owner.
+
+## Release tagging and error tracking
+
+Audit A26: every Sentry event must say which build produced it. Sentry's free
+Developer plan is sufficient for all three apps; the DSNs stay in environment
+variables (`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`), never in code.
+
+### Backend and worker
+
+`backend/app/core/observability.py` sets `release=svontai@<commit>` and
+`environment=settings.ENVIRONMENT`. The commit comes from the first non-empty of
+`GIT_COMMIT`, `GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`, `SOURCE_COMMIT`,
+`SOURCE_VERSION`, `GIT_SHA`, then `git rev-parse HEAD` when a checkout is present,
+else `unknown`. Railway injects `RAILWAY_GIT_COMMIT_SHA` automatically. The Oracle
+images contain no `.git`, so the deploy must pass the SHA in: add
+`GIT_COMMIT=$(git rev-parse HEAD)` to `deploy/oracle/.env.oracle` at deploy time
+(or an `environment:` entry on the `api` and `worker` services) and confirm with
+`/health/ready` -> `deployment.api_commit`. An event tagged `svontai@unknown` means
+this step was skipped.
+
+### Web (Next.js)
+
+`frontend/sentry.server.config.ts`, `sentry.edge.config.ts` and
+`src/instrumentation-client.ts` tag `release=svontai-web@<sha>`. Server and edge
+read `SENTRY_RELEASE`, `VERCEL_GIT_COMMIT_SHA` or `GIT_COMMIT`; the browser bundle
+can only see `NEXT_PUBLIC_SENTRY_RELEASE` or `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`.
+On Vercel enable **Settings > Environment Variables > Automatically expose System
+Environment Variables** so both `VERCEL_GIT_COMMIT_SHA` values exist. For the
+Oracle image pass `NEXT_PUBLIC_SENTRY_RELEASE` as a build arg next to
+`NEXT_PUBLIC_SENTRY_DSN`. Source maps are optional on the free tier; if wanted,
+set `SENTRY_AUTH_TOKEN` and `withSentryConfig` in `next.config.js` uploads them at
+build time (not enabled today; stack traces are still readable from the minified
+names plus release).
+
+### Mobile (Expo) - setup steps, not yet installed
+
+The mobile app has no crash reporting. Do this when it is scheduled; nothing
+below adds a dependency to the repository until step 1 is run on purpose.
+
+1. Create a React Native project in the same free Sentry org and copy its DSN.
+2. In `mobile/`: `npx expo install @sentry/react-native` (Expo SDK 57 compatible)
+   and add `"@sentry/react-native/expo"` to `plugins` in `app.json` with
+   `organization` and `project`; this wires native crash capture and source map
+   upload into `expo prebuild`/EAS without extra config.
+3. Initialise once at app start (before the root component):
+   `Sentry.init({ dsn: process.env.EXPO_PUBLIC_SENTRY_DSN, environment:
+   process.env.EXPO_PUBLIC_APP_ENV ?? 'dev', release:
+   'svontai-mobile@' + Application.nativeApplicationVersion + '+' +
+   Application.nativeBuildVersion, dist: Application.nativeBuildVersion,
+   sendDefaultPii: false, tracesSampleRate: 0.05, enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN })`.
+   `expo-application` is already available through the Expo SDK. Keep the DSN in
+   EAS secrets / `.env` as `EXPO_PUBLIC_SENTRY_DSN`; it is public by design but
+   should not be committed.
+4. Wrap the root with `Sentry.wrap(App)` and keep `beforeSend` stripping phone
+   numbers, message bodies and e-mail addresses (same PII rule as the backend).
+5. Set `SENTRY_AUTH_TOKEN` as an EAS secret so release builds upload source maps
+   and dSYMs; verify with a test crash from a TestFlight/internal build and check
+   the event shows `release` = app version + build number.
+6. Alerting: in Sentry create one alert rule per project ("new issue in
+   `environment:prod`") routed to the channel the owner reads (e-mail or Slack
+   free integration), and point `/health/ready` monitoring (see above) at the same
+   channel. Free-tier quota is 5k errors/month; keep `tracesSampleRate` <= 0.05.
