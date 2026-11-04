@@ -128,3 +128,171 @@ workers cannot overspend; `tenant_usage_counters.extra_json` additionally record
 used by the daily AI budget (`AI_DAILY_TOKEN_BUDGET_PER_TENANT`,
 `AI_DAILY_TOKEN_BUDGET_GLOBAL`). When a budget is reached the conversation is handed
 to the operator queue and `SystemEvent AI_BUDGET_EXCEEDED` is logged once per tenant per day.
+
+## Backup and restore drill
+
+Audit A24 asked for proof that a backup can actually be restored somewhere other
+than the server that produced it. The code path is `DatabaseBackupService`
+(`backend/app/services/database_backup_service.py`); the drill tooling is
+`scripts/restore_drill.py` and `.github/workflows/backup-drill.yml`.
+
+### Where backups live
+
+All names below are environment variable names (see
+`deploy/oracle/.env.oracle.example`); the values are secrets and are not in git.
+
+| What | Where | Produced by |
+| --- | --- | --- |
+| PostgreSQL dumps (`pg_dump --format=custom`, AES-256-GCM, `.dump.aes256gcm`) | R2 bucket `DATABASE_BACKUP_R2_BUCKET`, key prefix `DATABASE_BACKUP_R2_PREFIX/` (default `postgres/`) | Worker scheduled job, every `DATABASE_BACKUP_INTERVAL_SECONDS` (daily), retention `DATABASE_BACKUP_RETENTION_DAYS` (30) |
+| OpenWA sessions, n8n data, legacy artifacts (restic repository) | Same bucket, path `oracle-volumes/`, repository password `RESTIC_PASSWORD` | `deploy/oracle/scripts/backup-volumes.sh`, systemd timer nightly at 03:35 Europe/Istanbul |
+| Customer artifacts | R2 bucket `ARTIFACT_R2_BUCKET` (prefix `ARTIFACT_R2_PREFIX`) | Written directly by the app; **not** covered by either backup job, relies on R2 durability |
+
+Every dump object carries `sha256`, `encryption`, `backup-format`,
+`restore-verified` and migration-head metadata. The dump key is
+`DATABASE_BACKUP_ENCRYPTION_KEY_B64`: it must be kept in a separate vault (password
+manager entry shared with at least two people), never in R2 and never rotated
+without re-encrypting or expiring the old objects. Losing it loses every backup.
+
+### Running the drill by hand
+
+Needs `pg_restore`/`psql` of the same major as the server that produced the dump
+(production is PostgreSQL 17) and a scratch PostgreSQL server you are allowed to
+create and drop databases on. The drill never writes to the database named in the
+URL; it creates `svontai_drill_<timestamp>` next to it and drops it afterwards.
+
+1. Fetch the newest object (any S3 client works against R2), for example:
+
+   ```sh
+   aws --endpoint-url "$DATABASE_BACKUP_R2_ENDPOINT_URL" s3 ls "s3://$DATABASE_BACKUP_R2_BUCKET/postgres/" --recursive | sort | tail -1
+   aws --endpoint-url "$DATABASE_BACKUP_R2_ENDPOINT_URL" s3 cp "s3://$DATABASE_BACKUP_R2_BUCKET/<key>" ./database.dump.aes256gcm
+   ```
+
+2. Restore and report (the key may also be passed with `--encryption-key-b64`):
+
+   ```sh
+   DATABASE_BACKUP_ENCRYPTION_KEY_B64=... backend/.venv/bin/python scripts/restore_drill.py restore \
+     ./database.dump.aes256gcm \
+     --database-url postgresql+psycopg://user:pass@127.0.0.1:5432/postgres \
+     --min-messages 1 --result-json drill-result.json
+   ```
+
+   Output is one JSON line with `counts` for `tenants`, `users`, `messages`,
+   `appointments`, `newest_message_at`, `migration_heads`, `restore_seconds` (your
+   measured RTO for the database part) and `ok`. Exit code is non-zero when the
+   archive cannot be decrypted, `pg_restore` fails, a critical table is missing, or
+   the counts are below the `--min-*` thresholds (default: at least one tenant and
+   one user). Hosts other than `127.0.0.1`/`localhost` are refused unless
+   `--allow-remote` is passed.
+
+3. Alternatively, on the worker host with production settings loaded,
+   `python scripts/verify_production_backup.py --restore-latest` downloads the
+   newest object, checks its checksum and metadata and restore-tests it in a
+   disposable database on the production server (same server, so it proves the
+   archive but not an independent recovery path).
+
+To rehearse end to end without production data (what CI does):
+
+```sh
+backend/.venv/bin/python scripts/restore_drill.py seed --database-url "$SOURCE_URL" --messages 25
+DATABASE_URL="$SOURCE_URL" DATABASE_BACKUP_ENCRYPTION_KEY_B64="$KEY" \
+  backend/.venv/bin/python scripts/restore_drill.py create-archive --output drill/database.dump.aes256gcm
+DATABASE_BACKUP_ENCRYPTION_KEY_B64="$KEY" \
+  backend/.venv/bin/python scripts/restore_drill.py restore drill/database.dump.aes256gcm --database-url "$SCRATCH_URL" --min-messages 25
+```
+
+### Scheduled drill in CI
+
+`.github/workflows/backup-drill.yml` runs every Monday 04:30 UTC and on
+`workflow_dispatch`. In one job it migrates and seeds a Postgres 17 service,
+produces an encrypted archive through `DatabaseBackupService`, restores it with
+`restore_drill.py` and uploads the manifest and result JSON as the
+`backup-drill-<run id>` artifact (90 days). It needs one repository secret:
+
+- `BACKUP_DRILL_ENCRYPTION_KEY_B64`: a throw-away 32-byte key, base64 encoded
+  (`python3 -c 'import os,base64;print(base64.b64encode(os.urandom(32)).decode())'`).
+  **Never** reuse the production `DATABASE_BACKUP_ENCRYPTION_KEY_B64` here.
+
+When the secret is absent the job prints a `::notice::` and exits green so that
+forks and fresh clones do not fail; check the run log, not only the badge. The
+workflow restores a CI-seeded archive, so it proves the tooling and format, not
+the contents of a production object; the monthly checklist covers that.
+
+### Monthly checklist (owner, ~20 minutes)
+
+1. Run `python scripts/verify_production_backup.py` on the worker host (or read
+   the latest R2 object's `LastModified`): the newest dump must be younger than
+   36 hours and carry `restore-verified=true`.
+2. Download that object to a machine that is not the production host and run
+   `scripts/restore_drill.py restore` against a scratch PostgreSQL 17. Record
+   `restore_seconds`, `counts` and `newest_message_at` in the ops log; the newest
+   message must be from the backup day.
+3. Run `deploy/oracle/scripts/verify-volume-restore.sh` on the host for the
+   restic snapshots (OpenWA sessions and n8n data).
+4. Confirm the last `Backup Restore Drill` workflow run is green and recent (the
+   schedule is best-effort; dispatch it manually if it was skipped).
+5. Open the vault entry for `DATABASE_BACKUP_ENCRYPTION_KEY_B64` and
+   `RESTIC_PASSWORD` and confirm two people can still read it.
+6. Note any drift from the targets: RPO 24 h (daily dump), RTO 60 min for the
+   database (measured `restore_seconds` plus redeploy), owner: platform owner.
+
+## Release tagging and error tracking
+
+Audit A26: every Sentry event must say which build produced it. Sentry's free
+Developer plan is sufficient for all three apps; the DSNs stay in environment
+variables (`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`), never in code.
+
+### Backend and worker
+
+`backend/app/core/observability.py` sets `release=svontai@<commit>` and
+`environment=settings.ENVIRONMENT`. The commit comes from the first non-empty of
+`GIT_COMMIT`, `GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`, `SOURCE_COMMIT`,
+`SOURCE_VERSION`, `GIT_SHA`, then `git rev-parse HEAD` when a checkout is present,
+else `unknown`. Railway injects `RAILWAY_GIT_COMMIT_SHA` automatically. The Oracle
+images contain no `.git`, so the deploy must pass the SHA in: add
+`GIT_COMMIT=$(git rev-parse HEAD)` to `deploy/oracle/.env.oracle` at deploy time
+(or an `environment:` entry on the `api` and `worker` services) and confirm with
+`/health/ready` -> `deployment.api_commit`. An event tagged `svontai@unknown` means
+this step was skipped.
+
+### Web (Next.js)
+
+`frontend/sentry.server.config.ts`, `sentry.edge.config.ts` and
+`src/instrumentation-client.ts` tag `release=svontai-web@<sha>`. Server and edge
+read `SENTRY_RELEASE`, `VERCEL_GIT_COMMIT_SHA` or `GIT_COMMIT`; the browser bundle
+can only see `NEXT_PUBLIC_SENTRY_RELEASE` or `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`.
+On Vercel enable **Settings > Environment Variables > Automatically expose System
+Environment Variables** so both `VERCEL_GIT_COMMIT_SHA` values exist. For the
+Oracle image pass `NEXT_PUBLIC_SENTRY_RELEASE` as a build arg next to
+`NEXT_PUBLIC_SENTRY_DSN`. Source maps are optional on the free tier; if wanted,
+set `SENTRY_AUTH_TOKEN` and `withSentryConfig` in `next.config.js` uploads them at
+build time (not enabled today; stack traces are still readable from the minified
+names plus release).
+
+### Mobile (Expo) - setup steps, not yet installed
+
+The mobile app has no crash reporting. Do this when it is scheduled; nothing
+below adds a dependency to the repository until step 1 is run on purpose.
+
+1. Create a React Native project in the same free Sentry org and copy its DSN.
+2. In `mobile/`: `npx expo install @sentry/react-native` (Expo SDK 57 compatible)
+   and add `"@sentry/react-native/expo"` to `plugins` in `app.json` with
+   `organization` and `project`; this wires native crash capture and source map
+   upload into `expo prebuild`/EAS without extra config.
+3. Initialise once at app start (before the root component):
+   `Sentry.init({ dsn: process.env.EXPO_PUBLIC_SENTRY_DSN, environment:
+   process.env.EXPO_PUBLIC_APP_ENV ?? 'dev', release:
+   'svontai-mobile@' + Application.nativeApplicationVersion + '+' +
+   Application.nativeBuildVersion, dist: Application.nativeBuildVersion,
+   sendDefaultPii: false, tracesSampleRate: 0.05, enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN })`.
+   `expo-application` is already available through the Expo SDK. Keep the DSN in
+   EAS secrets / `.env` as `EXPO_PUBLIC_SENTRY_DSN`; it is public by design but
+   should not be committed.
+4. Wrap the root with `Sentry.wrap(App)` and keep `beforeSend` stripping phone
+   numbers, message bodies and e-mail addresses (same PII rule as the backend).
+5. Set `SENTRY_AUTH_TOKEN` as an EAS secret so release builds upload source maps
+   and dSYMs; verify with a test crash from a TestFlight/internal build and check
+   the event shows `release` = app version + build number.
+6. Alerting: in Sentry create one alert rule per project ("new issue in
+   `environment:prod`") routed to the channel the owner reads (e-mail or Slack
+   free integration), and point `/health/ready` monitoring (see above) at the same
+   channel. Free-tier quota is 5k errors/month; keep `tracesSampleRate` <= 0.05.
