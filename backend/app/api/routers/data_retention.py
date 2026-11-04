@@ -91,6 +91,34 @@ async def update_retention_policy(
     return service.serialize(policy)
 
 
+@router.get("/export")
+async def export_tenant_data(
+    request: Request,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_permissions(["dashboard:edit"])),
+) -> dict:
+    """Portable JSON export of every table holding the tenant's personal data."""
+    require_rate_limit(
+        retention_rate_limiter,
+        rate_limit_key(request, "retention-export", tenant.id, current_user.id),
+        "Veri dışa aktarma saatte en fazla beş kez çalıştırılabilir.",
+    )
+    export = DataRetentionService(db).export(tenant.id)
+    AuditLogService(db).log(
+        action="data_retention.export",
+        tenant_id=str(tenant.id),
+        user_id=str(current_user.id),
+        resource_type="data_retention_policy",
+        resource_id=str(tenant.id),
+        payload={"counts": export["counts"]},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return export
+
+
 @router.post("/run")
 async def run_retention_now(
     request: Request,
